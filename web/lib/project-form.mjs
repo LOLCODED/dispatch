@@ -16,12 +16,12 @@ export function formFromProject(project) {
     validation: project.validation.filter(step => !smokeStep(step)), smoke: project.validation.find(smokeStep) ?? null, setup: project.setup,
     risk: riskSettings(project.risk, project.validation), scopes: projectScopes(project), instructions: project.instructions ?? [], protectedPaths: project.protectedPaths ?? [], linked: project.linked ?? [], linkedEnv: project.linkedEnv ?? {},
     review: project.review === true, browser: project.browser?.enabled === true, headed: project.browser?.headed === true, memory: project.memory !== false, trackRemote: project.trackRemote !== false, dispatchCoAuthor: project.dispatchCoAuthor !== false,
-    connectors: structuredClone(project.connectors ?? {}),
+    allowSensitiveFiles: project.allowSensitiveFiles === true, connectors: structuredClone(project.connectors ?? {}),
   };
 }
 
 export function blankForm(path = '') {
-  return { risk: { mode: 'agent', minimumChecks: { low: [], medium: [], high: [] }, guidance: '' }, path, name: '', base: '', git: true, validation: [], smoke: null, setup: [], scopes: [], instructions: [], protectedPaths: [], linked: [], linkedEnv: {}, review: false, browser: false, headed: false, memory: true, trackRemote: true, dispatchCoAuthor: true, connectors: {} };
+  return { risk: { mode: 'agent', minimumChecks: { low: [], medium: [], high: [] }, guidance: '' }, path, name: '', base: '', git: true, validation: [], smoke: null, setup: [], scopes: [], instructions: [], protectedPaths: [], linked: [], linkedEnv: {}, review: false, browser: false, headed: false, memory: true, trackRemote: true, dispatchCoAuthor: true, allowSensitiveFiles: false, connectors: {} };
 }
 
 export function formFromInspect(info) {
@@ -67,5 +67,5 @@ export function projectPayload(form, repositoryPath) {
     validation: [...form.validation, ...(form.smoke ? [form.smoke] : [])], setup: form.setup, checkScopes: scopes, risk: form.risk,
     instructions: lines(form.instructions), protectedPaths: lines(form.protectedPaths), linked: form.linked, linkedEnv: Object.fromEntries(Object.entries(form.linkedEnv).map(([id, name]) => [id, name.trim()]).filter(([id, name]) => name && form.linked.includes(id))), trackRemote: git && form.trackRemote,
     connectors: form.connectors,
-    browser: { enabled: form.browser, headed: form.browser && form.headed }, review: form.review, memory: form.memory, dispatchCoAuthor: git && form.dispatchCoAuthor };
+    browser: { enabled: form.browser, headed: form.browser && form.headed }, review: form.review, memory: form.memory, dispatchCoAuthor: git && form.dispatchCoAuthor, allowSensitiveFiles: form.allowSensitiveFiles };
 }

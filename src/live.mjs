@@ -42,6 +42,7 @@ import { checkScope, projectScopes, recipeScopes, protectedPaths } from './check
 import { changeFlags, sqlToRun } from './flags.mjs';
 import { RiskChecks } from './risk-checks.mjs';
 import { RepositoryTool } from './repository-tool.mjs';
+import { SensitiveWrites } from './sensitive-writes.mjs';
 import { excludePlaceholders, removeSandboxPlaceholders, sandboxPlaceholders } from './sandbox-placeholders.mjs';
 import { pullRequestState } from './board-state.mjs';
 import { riskSettings, riskEnabled, riskPrompt } from './risk-policy.mjs';
@@ -158,7 +159,7 @@ export class LiveService {
     this.workspaceRoot = join(resolve(engine.dataDir), 'live-workspaces'); this.shadowRoot = join(resolve(engine.dataDir), 'shadow');
     this.logRoot = join(resolve(engine.dataDir), 'live-logs');
     mkdirSync(this.workspaceRoot, { recursive: true }); mkdirSync(this.logRoot, { recursive: true });
-    this.landings = new Landings(this); this.riskChecks = new RiskChecks(this); this.pullRequests = new PullRequests(this); this.linked = new LinkedRepositories(this); this.repositories = new RepositoryTool(this);
+    this.landings = new Landings(this); this.riskChecks = new RiskChecks(this); this.pullRequests = new PullRequests(this); this.linked = new LinkedRepositories(this); this.repositories = new RepositoryTool(this); this.sensitiveWrites = new SensitiveWrites(this);
     this.reconcileWorktrees();
   }
   get projects() { return this.engine.store.state.projects; }
@@ -249,13 +250,14 @@ export class LiveService {
     if (input.review !== undefined && typeof input.review !== 'boolean') throw new InputError('Review must be a boolean.');
     if (input.memory !== undefined && typeof input.memory !== 'boolean') throw new InputError('Memory must be a boolean.');
     if (input.dispatchCoAuthor !== undefined && typeof input.dispatchCoAuthor !== 'boolean') throw new InputError('dispatch as co-author must be a boolean.');
+    if (input.allowSensitiveFiles !== undefined && typeof input.allowSensitiveFiles !== 'boolean') throw new InputError('Allow sensitive files must be a boolean.');
     const access = input.access ?? old?.access ?? 'inherit';
     if (!['inherit', 'full'].includes(access)) throw new InputError('Project access must be inherit or full.');
     const instructions = operatorInstructions(input.instructions ?? old?.instructions), protectedPaths = protectedPathSettings(input.protectedPaths ?? old?.protectedPaths);
     if (input.trackRemote !== undefined && typeof input.trackRemote !== 'boolean') throw new InputError('Track remote must be a boolean.');
     const browser = browserSettings(input.browser ?? old?.browser), linked = linkedSettings(input.linked ?? old?.linked, this.projects, id), linkedEnv = linkedEnvSettings(input.linkedEnv ?? old?.linkedEnv, linked);
     let risk; try { risk = riskSettings(input.risk ?? old?.risk, validation); } catch (error) { throw new InputError(error.message); }
-    const project = { risk, browser, review: input.review ?? old?.review ?? false, memory: input.memory ?? old?.memory ?? true, dispatchCoAuthor: !plain && (input.dispatchCoAuthor ?? old?.dispatchCoAuthor ?? true), access, connectors: integrations, id: id ?? randomUUID(), name: String(input.name || info.name).slice(0, 100), repositoryPath: info.repositoryPath, baseBranch: plain ? null : input.baseBranch, validation, setup, checkScopes, instructions, protectedPaths, linked, linkedEnv, trackRemote: !plain && (input.trackRemote ?? old?.trackRemote ?? true), provider: 'codex', maxRepairs: 1, ...(plain ? { git: false } : {}) };
+    const project = { risk, browser, review: input.review ?? old?.review ?? false, memory: input.memory ?? old?.memory ?? true, dispatchCoAuthor: !plain && (input.dispatchCoAuthor ?? old?.dispatchCoAuthor ?? true), allowSensitiveFiles: input.allowSensitiveFiles ?? old?.allowSensitiveFiles ?? false, access, connectors: integrations, id: id ?? randomUUID(), name: String(input.name || info.name).slice(0, 100), repositoryPath: info.repositoryPath, baseBranch: plain ? null : input.baseBranch, validation, setup, checkScopes, instructions, protectedPaths, linked, linkedEnv, trackRemote: !plain && (input.trackRemote ?? old?.trackRemote ?? true), provider: 'codex', maxRepairs: 1, ...(plain ? { git: false } : {}) };
     if (old) { delete old.textOnly; delete old.git; Object.assign(old, project); } else this.projects.push(project);
     const saved = old ?? project;
     if (input.instructions !== undefined || !old) this.brain.replaceRules(saved, instructions);

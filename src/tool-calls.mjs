@@ -12,12 +12,13 @@ export class DispatchToolCalls {
   constructor(live) { this.live = live; }
   tools(run, contract, { readOnly = false } = {}) {
     const browser = run.project?.browser?.enabled === true && Boolean(this.live.browserCall);
-    return toolSet({ risk: !readOnly && riskEnabled(run.project), question: contract.questions === 'tool' && !readOnly, memory: run.project?.memory !== false && !readOnly, browser: browser && (!readOnly || contract.readOnlyTools === true), review: !readOnly && run.kind !== 'answer', repository: !readOnly && run.kind === 'change' && Boolean(this.live.repositories) });
+    return toolSet({ risk: !readOnly && riskEnabled(run.project), question: contract.questions === 'tool' && !readOnly, memory: run.project?.memory !== false && !readOnly, browser: browser && (!readOnly || contract.readOnlyTools === true), review: !readOnly && run.kind !== 'answer', repository: !readOnly && run.kind === 'change' && Boolean(this.live.repositories), permission: !readOnly && run.kind !== 'answer' && contract.permissionPrompts === 'tool' && Boolean(this.live.sensitiveWrites) });
   }
   async call(run, name, args, { tools, signal, readOnly = false } = {}) {
     const tool = tools.find(item => item.name === name);
     if (!tool) return { content: textContent({ error: 'Unknown dispatch tool.' }), isError: true };
-    if (JSON.stringify(args ?? {}).length > limits.args) return { content: textContent({ error: 'Tool arguments are too large.' }), isError: true };
+    // A permission request carries the whole file the agent wants to write.
+    if (tool.kind !== 'permission' && JSON.stringify(args ?? {}).length > limits.args) return { content: textContent({ error: 'Tool arguments are too large.' }), isError: true };
     const callId = randomUUID(), started = Date.now();
     this.live.steps?.append(run, { kind: 'tool.call', callId, name, server: 'dispatch', input: args ?? {} });
     try {
@@ -36,6 +37,7 @@ export class DispatchToolCalls {
     if (tool.kind === 'question') return this.question(run, args, options);
     if (tool.kind === 'risk') return this.live.riskChecks.call(run, args, options);
     if (tool.kind === 'repository') return this.live.repositories.call(run, args, options);
+    if (tool.kind === 'permission') return this.live.sensitiveWrites.call(run, args, options);
     if (tool.kind === 'memory') return this.live.memoryTool(run, args);
     if (tool.kind === 'browser') return this.live.browserCall(run, tool.name, args, options);
     throw new InputError('Unknown dispatch tool kind.');

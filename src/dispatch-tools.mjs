@@ -29,6 +29,11 @@ export const repositoryTool = {
   }, required: ['action', 'path'], additionalProperties: false },
 };
 
+export const permissionTool = {
+  name: 'dispatch_permission', kind: 'permission', description: 'Used by Claude Code itself to ask dispatch about a tool request that needs approval. Do not call it directly; just use the tool you need.',
+  inputSchema: { type: 'object', properties: { tool_name: { type: 'string' }, input: { type: 'object' }, tool_use_id: { type: 'string' } }, required: ['tool_name', 'input'], additionalProperties: false },
+};
+
 const ref = { type: 'string', pattern: '^(?:f\\d{1,5})?e\\d{1,5}$', description: 'Element ref from the last snapshot' };
 const browser = (name, description, properties = {}, required = []) => ({ name: `dispatch_browser_${name}`, kind: 'browser', description, inputSchema: { type: 'object', properties, required, additionalProperties: false } });
 export const browserTools = [
@@ -58,11 +63,11 @@ export const browserReviewTool = {
   }, required: ['assessment', 'steps', 'screenshots'], additionalProperties: false },
 };
 
-export const dispatchTools = Object.fromEntries([questionTool, memoryTool, riskTool, repositoryTool, browserReviewTool, ...browserTools].map(tool => [tool.name, tool]));
+export const dispatchTools = Object.fromEntries([questionTool, memoryTool, riskTool, repositoryTool, permissionTool, browserReviewTool, ...browserTools].map(tool => [tool.name, tool]));
 export const bridgeTools = [questionTool, memoryTool];
 
-export function toolSet({ question = false, memory = false, browser = false, review = false, risk = false, repository = false } = {}) {
-  return [...(question ? [questionTool] : []), ...(memory ? [memoryTool] : []), ...(browser ? browserTools : []), ...(browser && review ? [browserReviewTool] : []), ...(risk ? [riskTool] : []), ...(repository ? [repositoryTool] : [])];
+export function toolSet({ question = false, memory = false, browser = false, review = false, risk = false, repository = false, permission = false } = {}) {
+  return [...(question ? [questionTool] : []), ...(memory ? [memoryTool] : []), ...(browser ? browserTools : []), ...(browser && review ? [browserReviewTool] : []), ...(risk ? [riskTool] : []), ...(repository ? [repositoryTool] : []), ...(permission ? [permissionTool] : [])];
 }
 export const toolNames = tools => tools.map(tool => tool.name);
 export const toolSchemaCharacters = tools => JSON.stringify(tools.map(({ name, description, inputSchema }) => ({ name, description, inputSchema }))).length;

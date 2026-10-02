@@ -7,6 +7,7 @@ import { cliProblem, localEnvironment } from './local-tools.mjs';
 import { openToolBridge } from './tool-bridge.mjs';
 import { blockedOutcome, browserPointer, browserTool, runJsonLines } from './cli-stream.mjs';
 import { claudeLimits, claudeUsageText } from './provider-limits.mjs';
+import { permissionTool } from './dispatch-tools.mjs';
 
 const efforts = ['low', 'medium', 'high', 'xhigh', 'max'].map(reasoningEffort => ({ reasoningEffort }));
 // Claude Code resolves these documented aliases to the newest model the account can use.
@@ -17,10 +18,12 @@ const mutating = ['Bash', 'Edit', 'Write', 'NotebookEdit'];
 const excluded = ['AskUserQuestion', 'Agent', 'Task', 'WebFetch', 'WebSearch'];
 const sandbox = writableRoots => ({ sandbox: { enabled: true, autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: false, failIfUnavailable: true, ...(writableRoots.length ? { filesystem: { allowWrite: writableRoots } } : {}) } });
 
-// Owner turns write through Claude's OS sandbox unless the operator chose full access;
-// nothing may prompt, so any escalation is refused. Review turns cannot call mutating tools.
+// Owner turns write through Claude's OS sandbox unless the operator chose full access. Prompts go to dispatch's
+// permission tool when the turn has it (it approves only sensitive-file writes in the worktrees) and are refused otherwise.
+// Review turns cannot call mutating tools.
 export function claudeArgs({ sessionId, resume, execution, readOnly = false, mcpConfig, mcpTools = [], writableRoots = [], readableRoots = [], fullAccess = false, streamInput = false }) {
-  const args = ['-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages', '--permission-prompts', 'none'];
+  const prompts = mcpConfig && !readOnly && mcpTools.includes(permissionTool.name) ? ['host', '--permission-prompt-tool', `mcp__dispatch__${permissionTool.name}`] : ['none'];
+  const args = ['-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages', '--permission-prompts', ...prompts];
   if (streamInput) args.push('--input-format', 'stream-json');
   args.push(...(resume ? ['--resume', sessionId] : ['--session-id', sessionId]));
   if (execution?.model) args.push('--model', execution.model);
@@ -103,7 +106,7 @@ export function claudeOutcome({ result, state, sessionId }) {
 
 export class ClaudeAdapter {
   constructor({ execute = runProcess, command = 'claude', bridge = openToolBridge } = {}) { this.execute = execute; this.command = command; this.bridge = bridge; }
-  get contract() { return { questions: 'tool', tools: 'mcp', browserTools: 'mcp', sessions: true, modelSwitch: true, streaming: true, readOnlyTurns: true, readOnlyTools: true, writableRoots: true }; }
+  get contract() { return { questions: 'tool', tools: 'mcp', browserTools: 'mcp', sessions: true, modelSwitch: true, streaming: true, readOnlyTurns: true, readOnlyTools: true, writableRoots: true, permissionPrompts: 'tool' }; }
   get commandOptions() { return { inheritEnv: false, env: localEnvironment(), timeoutMs: 10000 }; }
   async probe() {
     const result = await this.execute(this.command, ['--version'], this.commandOptions);
