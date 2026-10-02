@@ -64,13 +64,15 @@ export function codexMcpArgs(bridge, { name = 'dispatch', timeoutSeconds = 600 }
 export async function openToolBridge(handlers) {
   const dir = await mkdtemp(join(tmpdir(), 'dispatch-tools-'));
   const socketPath = join(dir, 'tools.sock'), token = randomBytes(32).toString('hex'), state = { active: 0 };
-  const names = toolNames(handlers.tools ?? bridgeTools), sockets = new Set();
+  const advertised = handlers.tools ?? bridgeTools, names = toolNames(advertised), sockets = new Set();
+  const schemaPath = join(dir, 'tools.json');
+  await writeFile(schemaPath, JSON.stringify(advertised.map(({ name, description, inputSchema }) => ({ name, description, inputSchema }))), { mode: 0o600 });
   const server = net.createServer(socket => { sockets.add(socket); socket.once('close', () => sockets.delete(socket)); serve(socket, Buffer.from(token), handlers, state); });
   try { await new Promise((resolve, reject) => { server.once('error', reject); server.listen(socketPath, resolve); }); }
   catch (error) { await rm(dir, { recursive: true, force: true }); throw error; }
   return {
     names,
-    mcp: { command: process.execPath, args: [mcpServer], env: { DISPATCH_TOOL_SOCKET: socketPath, DISPATCH_TOOL_TOKEN: token, DISPATCH_TOOL_NAMES: names.join(',') } },
+    mcp: { command: process.execPath, args: [mcpServer], env: { DISPATCH_TOOL_SOCKET: socketPath, DISPATCH_TOOL_TOKEN: token, DISPATCH_TOOL_NAMES: names.join(','), DISPATCH_TOOL_SCHEMAS: schemaPath } },
     async writeConfig(name, value) { const path = join(dir, name); await mkdir(dirname(path), { recursive: true, mode: 0o700 }); await writeFile(path, JSON.stringify(value), { mode: 0o600 }); return path; },
     async close() { const closed = new Promise(resolve => server.close(resolve)); for (const socket of sockets) socket.destroy(); await closed; await rm(dir, { recursive: true, force: true }); },
   };

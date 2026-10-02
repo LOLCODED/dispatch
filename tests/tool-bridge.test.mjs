@@ -74,3 +74,13 @@ test('a tool-agnostic bridge advertises only the supplied tools, forwards MCP co
   const args = codexMcpArgs({ mcp: { command: '/usr/bin/no"de', args: ['/tmp/a b/mcp-server.mjs'], env: { DISPATCH_TOOL_SOCKET: '/tmp/x\\y.sock', DISPATCH_TOOL_TOKEN: 'tok', DISPATCH_TOOL_NAMES: 'dispatch_memory' } } });
   assert.deepEqual(args, ['-c', 'mcp_servers.dispatch.command="/usr/bin/no\\"de"', '-c', 'mcp_servers.dispatch.args=["/tmp/a b/mcp-server.mjs"]', '-c', 'mcp_servers.dispatch.env={DISPATCH_TOOL_SOCKET="/tmp/x\\\\y.sock",DISPATCH_TOOL_TOKEN="tok",DISPATCH_TOOL_NAMES="dispatch_memory"}', '-c', 'mcp_servers.dispatch.tool_timeout_sec=600', '-c', 'mcp_servers.dispatch.default_tools_approval_mode="approve"']);
 });
+
+test('the MCP server advertises connector tools from the schemas the bridge wrote for this turn', async t => {
+  const tools = [{ name: 'box_list', kind: 'connector', description: 'List things.', inputSchema: { type: 'object', properties: { all: { type: 'boolean' } } } }];
+  const bridge = await openToolBridge({ tools, call: async (name, args) => ({ content: [{ type: 'text', text: JSON.stringify({ name, args }) }], isError: false }) });
+  const client = mcpClient(bridge.mcp);
+  t.after(async () => { client.close(); await bridge.close(); });
+  assert.equal(statSync(bridge.mcp.env.DISPATCH_TOOL_SCHEMAS).mode & 0o077, 0);
+  assert.deepEqual((await client.request('tools/list', {})).result.tools, [{ name: 'box_list', description: 'List things.', inputSchema: tools[0].inputSchema }]);
+  assert.deepEqual(JSON.parse((await client.request('tools/call', { name: 'box_list', arguments: { all: true } })).result.content[0].text), { name: 'box_list', args: { all: true } });
+});

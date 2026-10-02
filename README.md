@@ -118,13 +118,13 @@ Follow-ups, answers and repairs reuse the same session and worktree, and re-run 
 dispatch is early and says so. Every feature is labelled **live-verified** (run against a real provider) or **tested with doubles** (automated tests with controlled CLIs and real Git and Chromium).
 
 - **Live-verified:** Codex runs, repairs, follow-ups, questions and review; Claude Code runs; local models through Ollama with Claude Code, OpenCode and pi; the dispatch browser on Codex and Claude Code; tasks across several repositories; check scopes; the browser smoke check; new repositories.
-- **Tested with doubles:** Cursor, and OpenCode and pi with hosted models; Claude Code questions and review; UI review questions with screenshots and the live app; the live browser stage; the GitHub connector; ticket connectors (intake, comment writeback, state moves) and run-event notifications; repository memory.
+- **Tested with doubles:** Cursor, and OpenCode and pi with hosted models; Claude Code questions and review; UI review questions with screenshots and the live app; the live browser stage; the GitHub connector; ticket connectors (intake, comment writeback, state moves) and run-event notifications; connector agent tools; repository memory.
 
 ## Docs
 
 - [Guide](docs/GUIDE.md) — setup, runs, checks, browser, memory, connectors, delivery, configuration
 - [Architecture](docs/ARCHITECTURE.md) — lifecycle, validation, delivery internals
-- [Integrations](docs/INTEGRATIONS.md) — providers, connectors, and writing your own (tickets, delivery, notifications)
+- [Integrations](docs/INTEGRATIONS.md) — providers, connectors, and writing your own (tickets, delivery, notifications, agent tools)
 - [Contributing](CONTRIBUTING.md) · [Testing](docs/TESTING.md)
 
 ## Development

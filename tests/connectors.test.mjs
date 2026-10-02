@@ -160,3 +160,38 @@ test('added connectors persist, reload at startup, report failures and remove cl
   assert.deepEqual(plugins.remove('alpha'), { path: good, id: 'alpha' });
   assert.deepEqual(registry.ids(), []); assert.deepEqual(store.state.connectorPlugins, []); assert.equal(plugins.remove('alpha'), null);
 });
+
+const toolConnector = (runs = []) => ({ id: 'box', name: 'Box', settings: { scope: { label: 'Scope', type: 'string', default: 'all' } }, actions: {
+  look: { label: 'Look', access: 'read', tools: { list: { description: 'List things.', inputSchema: { type: 'object', properties: {} }, run: async (args, ctx) => { runs.push([args, ctx]); return { items: [] }; } } } },
+  change: { label: 'Change', access: 'write', tools: { reset: { description: 'Reset things.', inputSchema: { type: 'object' }, run: async () => new Promise(() => {}) } } },
+} });
+
+test('connector actions may declare agent tools, named after the connector and validated like hooks', () => {
+  assert.equal(validateConnector(toolConnector()).id, 'box');
+  assert.deepEqual(describeConnector(toolConnector()).actions.map(action => [action.id, action.hooks, action.tools]), [['look', [], ['box_list']], ['change', [], ['box_reset']]]);
+  const tool = { description: 'x', inputSchema: { type: 'object' }, run: () => {} };
+  const bad = [{ ...toolConnector(), id: 'dispatch' },
+    { ...toolConnector(), actions: { a: { label: 'A', access: 'read' } } },
+    { ...toolConnector(), actions: { a: { label: 'A', access: 'read', tools: { 'Bad-Name': tool } } } },
+    { ...toolConnector(), id: `b${'o'.repeat(30)}`, actions: { a: { label: 'A', access: 'read', tools: { [`t${'x'.repeat(16)}`]: tool } } } },
+    { ...toolConnector(), actions: { a: { label: 'A', access: 'read', tools: { t: { ...tool, run: 'no' } } } } },
+    { ...toolConnector(), actions: { a: { label: 'A', access: 'read', tools: { t: { ...tool, description: '' } } } } },
+    { ...toolConnector(), actions: { a: { label: 'A', access: 'read', tools: { t: { ...tool, inputSchema: { type: 'string' } } } } } },
+    { ...toolConnector(), actions: { a: { label: 'A', access: 'read', tools: { t: tool } }, b: { label: 'B', access: 'write', tools: { t: tool } } } }];
+  for (const connector of bad) assert.throws(() => validateConnector(connector));
+});
+
+test('agent tools reach only repositories that use the connector, honour action switches and read-only turns, and get the workspace', async () => {
+  const runs = [], connectors = new ConnectorService({ registry: new ConnectorRegistry([toolConnector(runs)]), store: storeDouble(), timeoutMs: 20 });
+  const project = { connectors: { box: { enabled: true, settings: { scope: 'mine' } } } }, writable = { connectors: { box: { enabled: true, actions: { change: true } } } };
+  assert.deepEqual(connectors.agentTools({ connectors: {} }), []);
+  assert.deepEqual(connectors.agentTools(project).map(tool => [tool.name, tool.kind]), [['box_list', 'connector']]);
+  assert.deepEqual(connectors.agentTools(writable).map(tool => tool.name), ['box_list', 'box_reset']);
+  assert.deepEqual(connectors.agentTools(writable, { readOnly: true }).map(tool => tool.name), ['box_list']);
+  assert.deepEqual(await connectors.callTool(project, 'box_list', { a: 1 }, { workspace: '/w' }), { items: [] });
+  assert.deepEqual([runs[0][0], runs[0][1].settings, runs[0][1].workspace], [{ a: 1 }, { scope: 'mine' }, '/w']);
+  await assert.rejects(connectors.callTool(project, 'box_reset', {}), ConnectorNotPermitted);
+  await assert.rejects(connectors.callTool(writable, 'box_reset', {}, { readOnly: true }), ConnectorNotPermitted);
+  await assert.rejects(connectors.callTool(writable, 'box_reset', {}), /did not answer box_reset within/);
+  await assert.rejects(connectors.callTool({ connectors: {} }, 'box_list', {}), /No connector tool box_list/);
+});

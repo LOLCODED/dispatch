@@ -34,3 +34,17 @@ test('DispatchToolCalls gates by contract and project settings and records corre
   const huge = await calls.call(run, 'dispatch_memory', { action: 'remember', text: 'x'.repeat(20000) }, { tools });
   assert.equal(huge.isError, true); assert.match(huge.content[0].text, /too large/);
 });
+
+test('DispatchToolCalls adds the repository’s connector tools and routes their calls with the run workspace', async () => {
+  const seen = [];
+  const connectors = { agentTools: (project, { readOnly }) => [{ name: 'box_list', kind: 'connector', description: 'List.', inputSchema: { type: 'object' } }, ...(readOnly ? [] : [{ name: 'box_reset', kind: 'connector', description: 'Reset.', inputSchema: { type: 'object' } }])], callTool: async (project, name, args, options) => { seen.push([name, args, options]); return { ok: true }; } };
+  const calls = new DispatchToolCalls({ connectors, memoryTool: () => ({}) });
+  const run = { kind: 'change', workspace: '/w', project: { memory: false } };
+  assert.deepEqual(toolNames(calls.tools(run, { questions: 'native' })), ['box_list', 'box_reset']);
+  assert.deepEqual(toolNames(calls.tools({ ...run, kind: 'answer' }, { questions: 'native' })), ['box_list']);
+  assert.deepEqual(toolNames(calls.tools(run, { questions: 'native' }, { readOnly: true })), []);
+  assert.deepEqual(toolNames(calls.tools(run, { questions: 'native', readOnlyTools: true }, { readOnly: true })), ['box_list']);
+  const tools = calls.tools(run, { questions: 'native' });
+  assert.deepEqual(JSON.parse((await calls.call(run, 'box_reset', { all: true }, { tools })).content[0].text), { ok: true });
+  assert.deepEqual(seen, [['box_reset', { all: true }, { signal: undefined, workspace: '/w', readOnly: false }]]);
+});

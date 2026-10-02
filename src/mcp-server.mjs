@@ -1,9 +1,11 @@
 import net from 'node:net';
+import { readFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { bridgeTools, toolsByName } from './dispatch-tools.mjs';
 
 const socketPath = process.env.DISPATCH_TOOL_SOCKET, token = process.env.DISPATCH_TOOL_TOKEN;
-const advertised = process.env.DISPATCH_TOOL_NAMES ? toolsByName(process.env.DISPATCH_TOOL_NAMES.split(',')) : bridgeTools;
+// Connector tools are not in the static registry, so the bridge hands over every schema the turn advertises.
+const advertised = process.env.DISPATCH_TOOL_SCHEMAS ? JSON.parse(readFileSync(process.env.DISPATCH_TOOL_SCHEMAS, 'utf8')) : process.env.DISPATCH_TOOL_NAMES ? toolsByName(process.env.DISPATCH_TOOL_NAMES.split(',')) : bridgeTools;
 const tools = advertised.map(({ name, description, inputSchema }) => ({ name, description, inputSchema }));
 const send = message => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...message }) + '\n');
 const unavailable = { ok: false, content: [{ type: 'text', text: JSON.stringify({ error: 'dispatch is unavailable for this turn.' }) }] };

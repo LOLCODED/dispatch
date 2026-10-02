@@ -14,7 +14,7 @@ Off until enabled under **Settings → Providers**. Run `claude auth login`. Own
 
 ## Connectors
 
-Everything dispatch does outside your machine goes through a connector: reading tickets, commenting on them, pushing branches, opening pull requests, reading CI, and reacting to run events. dispatch's core names no connector. Connectors ship as folders and load through one loader:
+Everything dispatch does outside your machine goes through a connector: reading tickets, commenting on them, pushing branches, opening pull requests, reading CI, reacting to run events, and giving the agent tools for local services such as Docker. dispatch's core names no connector. Connectors ship as folders and load through one loader:
 
 - **Built in:** every folder under `src/connectors/<name>/` with a `package.json` is loaded at startup. GitHub (`src/connectors/github/`) is the only one today and is the reference implementation. Delete the folder and dispatch still runs, with no delivery connector.
 - **Added by you:** `dispatch connector add <folder>`, `dispatch connector list` and `dispatch connector remove <id>`, or **Settings › Connectors**.
@@ -64,7 +64,7 @@ The module's default export is `createConnector(dispatch)`. The `dispatch` objec
 ```js
 export default function createConnector(dispatch) {
   return {
-    id: 'acme',                 // 2–31 lowercase letters or digits, starting with a letter; not "text"
+    id: 'acme',                 // 2–31 lowercase letters or digits, starting with a letter; not "text" or "dispatch"
     name: 'Acme',
     description: 'Shown in Settings and repository settings.',      // optional
     icon: 'M12 2 2 22h20z',     // optional: SVG path data for a 24 × 24 view box, filled with the accent colour
@@ -80,7 +80,7 @@ export default function createConnector(dispatch) {
 }
 ```
 
-`actions` is required and is what you see when you open a connector in **Settings › Connectors**: one switch per action. Each hook belongs to exactly one action, and dispatch calls a hook only while its action is permitted. Group hooks so each switch means one thing a user might want to refuse. `status()` is asked only once the connector is turned on in Settings or used by a repository, and has 15 seconds to answer; a missing `authenticated` counts as `available`.
+`actions` is required and is what you see when you open a connector in **Settings › Connectors**: one switch per action. An action has `hooks`, [agent `tools`](#agent-tools), or both. Each hook and tool belongs to exactly one action, and dispatch calls a hook only while its action is permitted. Group hooks so each switch means one thing a user might want to refuse. `status()` is asked only once the connector is turned on in Settings or used by a repository, and has 15 seconds to answer; a missing `authenticated` counts as `available`.
 
 Pairs that must come together: `ticket.detect` with `ticket.read`; `ticket.states` with `ticket.setState`; `delivery.openPullRequest` needs `delivery.push`. dispatch rejects a connector that breaks a rule, names an unknown hook, or puts one hook in two actions.
 
@@ -88,7 +88,7 @@ Pairs that must come together: `ticket.detect` with `ticket.read`; `ticket.state
 
 Each action resolves, in order: the repository's own switch (Repositories › a repository › Extras), the global switch (Settings › Connectors › the connector), then the default: **read actions on, write actions off**. A repository stores its own switch only while it differs from the global one, so changing the global default reaches every repository that has not overridden it.
 
-Separately, a repository chooses which connectors it **uses**. Everything automatic needs both: reading a pasted link, delivering after `ready`, commenting the result, offering a state move, and run events. A button the operator presses (**Open pull request**, or a choice on the state-move offer) needs only the action permitted. A repository uses at most one connector that pushes branches, and a plain folder (no Git) uses none.
+Separately, a repository chooses which connectors it **uses**. Everything automatic needs both: reading a pasted link, delivering after `ready`, commenting the result, offering a state move, run events, and agent tools. A button the operator presses (**Open pull request**, or a choice on the state-move offer) needs only the action permitted. A repository uses at most one connector that pushes branches, and a plain folder (no Git) uses none.
 
 Per repository the saved shape is `connectors.<id> = { enabled, actions: { <action>: true|false }, settings: { ... } }`; `POST /api/projects/:id/connectors` merges `{ "<id>": { enabled, actions, settings } }`, where `null` resets an action or setting to its default. Global switches are `POST /api/connectors` with `{ id, enabled?, actions? }`, and `GET /api/connectors` lists every connector with its actions and settings.
 
@@ -102,6 +102,7 @@ Every hook receives its arguments and then a context, `ctx`:
 | `settings` | This repository's settings for the connector, with defaults filled in |
 | `memory` | What the connector remembered for this repository |
 | `remember(values)` | Merges `values` into that memory (kept outside the repository) |
+| `workspace` | Agent tools only: the run's worktree, for reading files the agent wrote there |
 
 Each call has 60 seconds. A hook that throws is reported on the run; throw an `Error` with a message a person can act on, optionally with `error.kind` (for example `unauthenticated`, `rate-limited`, `rejected`) and `error.transient`.
 
@@ -145,6 +146,20 @@ A pull request is `{ number, url, state, headRefOid?, reused?, baseRefName?, rev
 ```
 
 `url` links to the run page. Events are fire-and-forget: dispatch does not wait for them, and an error is logged on the run without changing it.
+
+#### Agent tools
+
+An action can give the agent tools for the length of a turn, for services its sandbox cannot reach (Claude Code's and Codex's sandboxes block, for example, the Docker socket):
+
+```js
+actions: {
+  inspect: { label: 'Inspect containers', access: 'read', tools: {
+    logs: { description: 'Recent logs of an allowed container.', inputSchema: { type: 'object', properties: { container: { type: 'string' } }, additionalProperties: false }, run: async (args, ctx) => ({ output: '…' }) },
+  } },
+}
+```
+
+The agent sees `<connector id>_<tool name>` (here `docker_logs`) on dispatch's MCP server, next to dispatch's own tools; names are lowercase letters, digits and `_`, at most 48 characters together. dispatch attaches a tool only while the repository uses the connector and the tool's action is permitted, and checks both again on every call. Read-only turns (questions about the repository) get only tools of `read` actions. `run(args, ctx)` returns any JSON value, which the agent receives as text cut at 24,000 characters; arguments over 16,000 characters are refused before `run`; each call has 60 seconds. A tool runs in the dispatch server, outside the agent's sandbox, so validate every argument and keep anything that changes state in a `write` action. Calls and results appear in the run's steps. Every attached schema costs context on every turn; keep descriptions short.
 
 ### Examples
 
@@ -190,7 +205,7 @@ export default function createConnector() {
 
 Turn on **Email when ready for review** in Settings (it is a write, so it starts off), then **Use Mail** in a repository and fill in **Send to**. The same shape works for a webhook: call `fetch` in the hook.
 
-The delivery example is GitHub: [`src/connectors/github/index.mjs`](../src/connectors/github/index.mjs).
+The delivery example is GitHub: [`src/connectors/github/index.mjs`](../src/connectors/github/index.mjs). An agent-tool example is the Docker connector (container and PostgreSQL tools behind a per-repository allowlist), which lives in a repository of its own.
 
 ### Testing a connector
 

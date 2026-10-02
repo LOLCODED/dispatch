@@ -1,4 +1,4 @@
-import { describeConnector, validateConnector } from './contract.mjs';
+import { describeConnector, exposedToolName, validateConnector } from './contract.mjs';
 
 export class ConnectorRegistry {
   constructor(list = [], { builtIn = [] } = {}) {
@@ -21,8 +21,11 @@ export class ConnectorRegistry {
   }
   hook(id, name) {
     const connector = this.get(id);
-    for (const [action, spec] of Object.entries(connector?.actions ?? {})) if (spec.hooks[name]) return { connector, action, access: spec.access, run: spec.hooks[name] };
+    for (const [action, spec] of Object.entries(connector?.actions ?? {})) if (spec.hooks?.[name]) return { connector, action, access: spec.access, run: spec.hooks[name] };
     return null;
+  }
+  tools() {
+    return this.list.flatMap(connector => Object.entries(connector.actions).flatMap(([action, spec]) => Object.entries(spec.tools ?? {}).map(([name, tool]) => ({ connector, action, access: spec.access, name: exposedToolName(connector, name), tool }))));
   }
   withHook(name) { return this.list.map(connector => this.hook(connector.id, name)).filter(Boolean); }
   describe() { return this.list.map(connector => describeConnector(connector, { builtIn: this.builtIn.has(connector.id) })); }
