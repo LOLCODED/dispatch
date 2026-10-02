@@ -129,6 +129,24 @@ test('a landing starts at once instead of waiting behind the tasks-at-a-time lim
   gate.release(); await settle(engine, busy); await settle(engine, waiting);
 });
 
+test('a second landing on the same branch waits for the first, while one on another branch runs at once', async t => {
+  let release; const resolving = new Promise(resolve => { release = resolve; });
+  const behavior = byTicket({ 'dispatch is landing': async options => { await resolving; return resolvesNote(options); }, 'Add A': writes({ 'value.txt': 'changed', 'note.txt': 'A\n' }), 'Add B': writes({ 'value.txt': 'changed', 'note.txt': 'B\n' }), 'Add C': writes({ 'value.txt': 'changed', 'c.txt': 'C' }), 'Add D': writes({ 'value.txt': 'changed', 'd.txt': 'D' }) });
+  const { live, engine, project, repo } = await liveFixture(t, { behavior });
+  const [a, b, c, d] = await readyTasks(live, engine, project, ['Add A', 'Add B', 'Add C', 'Add D']);
+  await git(repo, ['branch', 'other', 'main']);
+  const first = await live.landings.create({ runIds: [a.id, b.id] });
+  await until(() => first.landing.items[1].resolutionRunId);
+  const second = await live.landings.create({ runIds: [c.id] }), elsewhere = await land(live, engine, [d], { target: 'other' });
+  assert.equal(elsewhere.status, 'ready', JSON.stringify(elsewhere.events.at(-1)));
+  assert.equal(second.status, 'queued');
+  assert.throws(() => engine.startNow(second.id), /same branch/);
+  release(); await settle(engine, first); await settle(engine, second);
+  assert.deepEqual([first.status, second.status], ['ready', 'ready'], JSON.stringify(second.events.at(-1)));
+  assert.deepEqual((await log(repo, 'main', '-4')).split('\n'), ['Add C', 'Add B', 'Add A', 'Initial']);
+  assert.deepEqual((await log(repo, 'other', '-2')).split('\n'), ['Add D', 'Initial']);
+});
+
 test('landing requests are validated: one repository, ready tasks only, known strategy and branch', async t => {
   const { live, engine, project } = await liveFixture(t, { behavior: writes({ 'value.txt': 'changed' }) });
   const [task] = await readyTasks(live, engine, project, ['Change the value']);

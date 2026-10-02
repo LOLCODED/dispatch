@@ -57,11 +57,21 @@ export class Engine {
     return { held: false };
   }
   limited() { return [...this.active.values()].filter(x => !x.landing).length; }
-  landingIn(projectId) { return [...this.active.values()].some(x => x.landing === projectId); }
+  landingTargets(run) { return this.live.landings.targetsOf(run); }
+  busyTargets() { return new Set([...this.active.values()].flatMap(x => x.targets ?? [])); }
+  // Earlier queued landings reserve their branches too, so a later landing cannot overtake one that waits on a shared branch.
+  launchLandings(waiting) {
+    const busy = this.busyTargets();
+    for (const run of waiting) {
+      const targets = this.landingTargets(run), free = !targets.some(target => busy.has(target));
+      for (const target of targets) busy.add(target);
+      if (free) this.launch(run);
+    }
+  }
   pump() {
     if (this.stopping || this.holds || this.queueHold) return;
     const waiting = this.queuedInStartOrder().filter(x => !this.active.has(x.id));
-    for (const run of waiting.filter(x => x.kind === 'landing')) if (!this.landingIn(run.projectId)) this.launch(run);
+    this.launchLandings(waiting.filter(x => x.kind === 'landing'));
     for (const run of waiting.filter(x => x.kind !== 'landing')) {
       if (this.limited() >= this.concurrency) break;
       this.launch(run);
@@ -72,7 +82,8 @@ export class Engine {
     const promise = this.work(run, controller.signal).catch(error => {
       if (!terminal.has(run.status)) this.transition(run, 'failed', `Runner error: ${error.message}`);
     }).finally(async () => { this.active.delete(run.id); await this.live?.finished?.(run); this.pump(); });
-    this.active.set(run.id, { controller, promise, landing: run.kind === 'landing' && run.projectId });
+    const landing = run.kind === 'landing';
+    this.active.set(run.id, { controller, promise, landing, targets: landing ? this.landingTargets(run) : [] });
   }
   startNow(id) {
     const run = this.get(id);
@@ -80,6 +91,7 @@ export class Engine {
     if (run.status !== 'queued') throw new InputError('Only a queued run can start now', 409);
     if (this.stopping) throw new InputError('Server is stopping', 503);
     if (this.queueHold) throw new InputError('The queue is held for an update; start it after the update.', 409);
+    if (run.kind === 'landing' && this.landingTargets(run).some(target => this.busyTargets().has(target))) throw new InputError('Another landing is moving the same branch; this one starts when it finishes.', 409);
     this.event(run, 'start', 'Started now by operator, ahead of the tasks-at-a-time limit.'); this.launch(run);
     return run;
   }

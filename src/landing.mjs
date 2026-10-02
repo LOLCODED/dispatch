@@ -74,6 +74,8 @@ const lanes = run => [...(run.landing.target ? [{ lane: null, label: run.landing
 export class Landings {
   constructor(live) { this.live = live; this.engine = live.engine; }
 
+  targetsOf(run) { return lanes(run).map(lane => `${lane.root}\0${lane.target}`); }
+
   tasks(runIds) {
     if (!Array.isArray(runIds) || !runIds.length || runIds.length > maxTasks || new Set(runIds).size !== runIds.length) throw new InputError(`Choose 1 to ${maxTasks} ready tasks to land.`);
     const runs = this.engine.runs, byId = new Map(runs.map(run => [run.id, run]));
