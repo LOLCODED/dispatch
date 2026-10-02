@@ -117,7 +117,7 @@ export function TaskBoard({ runs, tasks, board, projects, onEdit }) {
     <div className="board-toolbar"><FolderBar folders={folders} scope={scope} onScope={setScope}/><ListControls controls={controls} sorts={taskSorts} searchLabel="Search tasks" placeholder="Search tasks…"/></div>
     {controls.query.trim() && !Object.values(view).some(entries => entries.length) && <p className="muted">Nothing matches the search.</p>}
     <DecisionGroup entries={view.decision} folders={folders} reviewing={view.review.length > 0}/>
-    {['active', 'queued', 'review', 'awaiting', 'todo'].map(state => <Group key={state} state={state} entries={view[state]} folders={folders} suggestions={suggestions} onEdit={onEdit} resetKey={resetKey}/>)}
+    {['active', 'reviewing', 'queued', 'review', 'awaiting', 'todo'].map(state => <Group key={state} state={state} entries={view[state]} folders={folders} suggestions={suggestions} onEdit={onEdit} resetKey={resetKey}/>)}
     <Collapsed state="completed" entries={view.completed} folders={folders} suggestions={suggestions} onEdit={onEdit} resetKey={resetKey}/>
     <Collapsed state="archived" entries={view.archived} folders={folders} resetKey={resetKey}/>
   </div>;

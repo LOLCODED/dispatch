@@ -27,6 +27,7 @@ function useReferenceDrop(setDraft) {
 }
 
 export function composerMode(run) {
+  if (run.handingOff) return 'handoff';
   if (terminal.has(run.status)) return run.sessionId ? 'followup' : 'unavailable';
   return run.sessionId ? 'interrupt' : 'starting';
 }
@@ -36,6 +37,7 @@ const placeholders = {
   interrupt: 'Redirect the agent — sending stops this turn and continues with your note…',
   starting: 'Draft your next instruction — you can interrupt once the agent session starts…',
   unavailable: 'Draft your next instruction — reference diff lines or drop screenshots here…',
+  handoff: 'Chat reopens when the landing or pull request finishes.',
 };
 
 function SubmitButton({ mode, command, question, disabled }) {
@@ -48,9 +50,10 @@ export function RunComposer({ run, question, draft, setDraft, composerRef, onUpd
   const { state } = useWorkspace(), { keybinds } = usePreferences(), command = question ? null : parseCommand(draft);
   const { busy, error, setError, perform } = useAction(), drop = useReferenceDrop(setDraft);
   const attachments = useAttachments(`run:${run.id}`, setError), reading = attachments.documents.reading;
-  const mode = composerMode(run), canSend = mode === 'followup' || mode === 'interrupt', suggestion = mode === 'followup' ? suggestedReply(run) : null;
+  const mode = composerMode(run), locked = mode === 'handoff', canSend = mode === 'followup' || mode === 'interrupt', suggestion = mode === 'followup' ? suggestedReply(run) : null;
   const submit = event => {
     event.preventDefault();
+    if (locked) return;
     if (command?.name === 'todo') { perform(async () => { if (!command.text) throw new Error('Describe the task after /todo.'); const task = await api('/api/tasks', { projectId: run.projectId, input: command.text, sourceRunId: run.id }); setDraft(''); setSavedTask(task.title); window.dispatchEvent(new Event('dispatch-refresh')); }); return; }
     if (command) { if (!command.text) { navigate('/brain'); return; } perform(async () => { const result = await api('/api/brain/forget', { text: command.text, projectId: run.projectId }); setForget({ query: command.text, matches: result.matches }); }); return; }
     if (!canSend || !draft.trim() || reading) return;
@@ -60,15 +63,15 @@ export function RunComposer({ run, question, draft, setDraft, composerRef, onUpd
   const change = event => { setDraft(event.target.value); setSavedTask(''); };
   return <form onSubmit={submit} onPaste={attachments.pasted.paste} className={`composer run-composer ${drop.over ? 'is-drop-target' : ''}`} {...drop.handlers}>
     <label className="sr-only" htmlFor="followup-input">{question ? 'Your answer' : 'Continue this ticket'}</label>
-    <Textarea ref={composerRef} id="followup-input" value={draft} onChange={change} onKeyDown={keys} placeholder={suggestion ?? placeholders[mode]} aria-describedby={suggestion ? 'followup-suggestion' : undefined} maxLength={12000} rows={2}/>
+    <Textarea ref={composerRef} id="followup-input" value={draft} onChange={change} onKeyDown={keys} placeholder={suggestion ?? placeholders[mode]} aria-describedby={suggestion ? 'followup-suggestion' : undefined} maxLength={12000} rows={2} disabled={locked}/>
     <AttachmentList attachments={attachments} busy={busy}/>
     {forget && <ForgetCard query={forget.query} matches={forget.matches} projects={state.projects} onDone={() => { setForget(null); setDraft(''); }}/>}
     <div className="composer-bar">
-      <div className="composer-pickers">{run.kind !== 'landing' && <RunModel run={run} disabled={busy} onUpdate={onUpdate} onError={setError}/>}</div>
+      <div className="composer-pickers">{run.kind !== 'landing' && <RunModel run={run} disabled={busy || locked} onUpdate={onUpdate} onError={setError}/>}</div>
       <div className="composer-actions">
         {suggestion && !question && !draft.trim() && <small id="followup-suggestion" className="suggestion-hint"><kbd>Tab</kbd> to use</small>}
-        {!command && <AttachButton attachments={attachments} disabled={busy}/>}
-        <SubmitButton mode={mode} command={command} question={question} disabled={busy || (command ? command.name === 'todo' && !command.text : !canSend || !draft.trim() || reading)}/>
+        {!command && <AttachButton attachments={attachments} disabled={busy || locked}/>}
+        <SubmitButton mode={mode} command={command} question={question} disabled={busy || locked || (command ? command.name === 'todo' && !command.text : !canSend || !draft.trim() || reading)}/>
       </div>
     </div>
     {savedTask && <p className="muted" role="status">Saved to Todo: {savedTask}</p>}

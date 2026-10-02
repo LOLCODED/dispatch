@@ -3,7 +3,7 @@ import { openRemaining } from './remaining.mjs';
 
 export const activeStatuses = new Set(['queued', 'preparing', 'implementing', 'validating', 'reviewing', 'repairing', 'publishing', 'landing']);
 const decisionStatuses = new Set(['blocked', 'budget_exceeded', 'failed', 'interrupted']);
-export const groupOrder = ['decision', 'active', 'queued', 'review', 'awaiting', 'todo', 'completed'];
+export const groupOrder = ['decision', 'active', 'reviewing', 'queued', 'review', 'awaiting', 'todo', 'completed'];
 
 export const conversationKey = root => root.taskId ?? root.id;
 export const hasPendingRequest = run => Boolean(run.pendingRequest ?? run.interactions?.some(interaction => interaction.status === 'pending'));
@@ -25,6 +25,7 @@ export function pullRequestState(run) {
 export function taskState({ latest, item = {} }) {
   if (!latest) return item.archivedAt ? 'archived' : 'todo';
   if (activeStatuses.has(latest.status)) return hasPendingRequest(latest) ? 'decision' : latest.status === 'queued' ? 'queued' : 'active';
+  if (latest.handingOff) return 'reviewing';
   if (item.archivedAt) return 'archived';
   if (item.pause?.runId === latest.id) return 'paused';
   const pullRequest = pullRequestState(latest);
@@ -88,12 +89,12 @@ function entryFolderIds(entry, items, byId) {
 
 export function boardView({ runs = [], tasks = [], board = {}, folderId = null }) {
   const folders = board.folders ?? [], items = board.items ?? {}, scope = folderId && folderScope(folders, folderId), byId = new Map(runs.map(run => [run.id, run]));
-  const view = { decision: [], active: [], queued: [], review: [], awaiting: [], todo: [], completed: [], archived: [] };
+  const view = { decision: [], active: [], reviewing: [], queued: [], review: [], awaiting: [], todo: [], completed: [], archived: [] };
   for (const entry of entries({ runs, tasks, items })) {
     if (scope && !entryFolderIds(entry, items, byId).some(id => scope.has(id))) continue;
     view[groupOf(entry.state)].push(entry);
   }
-  for (const group of ['decision', 'active', 'queued', 'review', 'awaiting', 'completed', 'archived']) view[group].sort((a, b) => activityAt(b) - activityAt(a));
+  for (const group of ['decision', 'active', 'reviewing', 'queued', 'review', 'awaiting', 'completed', 'archived']) view[group].sort((a, b) => activityAt(b) - activityAt(a));
   return view;
 }
 

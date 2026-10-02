@@ -274,7 +274,7 @@ a.board-title:hover { text-decoration:underline; text-underline-offset:4px; text
 .board-dot-button { width:24px; height:24px; display:grid; place-items:center; border-radius:50%; flex:none; }
 .board-dot-button:hover, .board-dot-button[data-state=open] { background:var(--secondary); }
 .board-dot { width:9px; height:9px; border-radius:50%; background:var(--tone); flex:none; display:inline-block; }
-.state-todo { --tone:var(--muted-foreground); } .state-active, .state-queued { --tone:var(--active); } .state-decision, .state-paused { --tone:var(--attention); } .state-review { --tone:var(--primary); } .state-awaiting { --tone:var(--muted-foreground); } .state-completed { --tone:var(--success); } .state-archived { --tone:var(--border); }
+.state-todo { --tone:var(--muted-foreground); } .state-active, .state-reviewing, .state-queued { --tone:var(--active); } .state-decision, .state-paused { --tone:var(--attention); } .state-review { --tone:var(--primary); } .state-awaiting { --tone:var(--muted-foreground); } .state-completed { --tone:var(--success); } .state-archived { --tone:var(--border); }
 .board-dot.state-active { animation:board-pulse 1.8s ease-in-out infinite; }
 @keyframes board-pulse { 50% { opacity:.3; } }
 @media (prefers-reduced-motion: reduce) { :root:not([data-motion=full]) .board-dot.state-active { animation:none; } }
@@ -1030,6 +1030,7 @@ legend { font-size:12px; font-weight:600; margin-bottom:8px; }
 .verdict { position:relative; margin:14px 0; padding:10px 0 10px 16px; font-size:13px; }
 .verdict::before { content:''; position:absolute; left:0; top:6px; bottom:6px; width:2px; border-radius:2px; background:var(--muted-foreground); }
 .verdict.tone-success::before { background:var(--success); }
+.verdict.tone-active::before { background:var(--active); }
 .verdict.tone-attention::before { background:var(--attention); }
 .verdict.tone-danger::before { background:var(--destructive); }
 .verdict h2 { margin:0 0 6px; font-size:15px; font-weight:600; }

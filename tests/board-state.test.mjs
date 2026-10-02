@@ -16,6 +16,12 @@ test('every run status maps to one board state', () => {
   assert.equal(taskState({ latest: null, item: { archivedAt: 'now' } }), 'archived');
 });
 
+test('a task being landed or opened as a pull request is reviewing, not ready for review', () => {
+  for (const handingOff of ['landing', 'publishing']) assert.equal(taskState({ latest: run('r', 'ready', { handingOff }) }), 'reviewing', handingOff);
+  const view = boardView({ runs: [run('r', 'ready', { handingOff: 'landing' })] });
+  assert.deepEqual([view.reviewing.length, view.review.length], [1, 0]);
+});
+
 test('a pending native question needs a decision even while the run is active', () => {
   assert.equal(taskState({ latest: run('r', 'implementing', { pendingRequest: { id: 'q' } }) }), 'decision');
   assert.equal(taskState({ latest: run('r', 'implementing', { interactions: [{ status: 'pending' }] }) }), 'decision');

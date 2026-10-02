@@ -588,6 +588,7 @@ export class LiveService {
   async followup(id, input, { project, mergeIn, mergeInto, attachments = decodeAttachments(input) } = {}) {
     const previous = this.engine.get(id);
     if (previous.mode !== 'live' || !terminal.has(previous.status)) throw new InputError('Wait for the live run to stop before continuing.', 409);
+    if (!mergeIn && previous.status === 'ready' && (this.openingPullRequests.has(previous.id) || this.landings.landingOf(previous))) throw new InputError('This task is being landed or opened as a pull request. Continue it after that finishes.', 409);
     if (typeof input.input !== 'string' || !input.input.trim() || input.input.length > 12000) throw new InputError('Enter follow-up instructions (up to 12,000 characters).');
     if (!previous.sessionId || !existsSync(previous.workspace)) throw new InputError('No resumable session is available. dispatch a new ticket.');
     if (alive(previous.workerPid)) throw new InputError('The previous worker process is still alive. Stop it before continuing.', 409);
@@ -1250,6 +1251,7 @@ export class LiveService {
     if (run.mode !== 'live' || run.kind === 'answer' || !run.workspace?.startsWith(this.workspaceRoot)) throw new InputError('This run has no dispatch worktree.', 404);
     const chain = this.chain(run);
     if (chain.some(item => !terminal.has(item.status) || this.engine.active.has(item.id) || alive(item.workerPid))) throw new InputError('Stop the runs using this worktree before removing it.', 409);
+    if (!landed && (this.openingPullRequests.has(run.id) || this.landings.landingOf(run))) throw new InputError('This task is being landed or opened as a pull request. Remove its worktree after that finishes.', 409);
     if (!existsSync(run.workspace)) { for (const item of chain) item.worktreeRemovedAt ??= new Date().toISOString(); this.engine.store.save(); return run; }
     const root = run.project.repositoryPath, at = new Date().toISOString();
     await git(root, ['worktree', 'remove', '--force', run.workspace]);

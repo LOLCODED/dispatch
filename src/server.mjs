@@ -55,12 +55,17 @@ function deliveryView(delivery) {
     ci: ci ? { sha: ci.sha, state: ci.state, failing: failingChecks(ci).slice(0, 5).map(check => cap(check.name, 120)) } : null,
   };
 }
+const handoffOf = (run, live) => live.openingPullRequests.has(run.id) ? 'publishing' : run.status === 'ready' && live.landings.landingOf(run) ? 'landing' : null;
+function handoffView(run, live) {
+  const handingOff = handoffOf(run, live);
+  return { handingOff, landable: !handingOff && landable(run), publishable: !handingOff && publishable(run, live.autoDelivery(run)) };
+}
 function runSummary(run, live) {
   return {
     id: run.id, mode: run.mode, kind: run.kind ?? 'change', title: run.title, summary: workerSummary(run), request: cap(run.input, requestLength), status: run.status, projectId: run.projectId, project: { name: run.project?.name },
     ticketId: run.ticketId, taskId: run.taskId, createdAt: run.createdAt, startedAt: run.startedAt, finishedAt: run.finishedAt, previousRunId: run.previousRunId, supersededBy: run.supersededBy,
     resumable: Boolean(run.sessionId), question: cap(run.question, 2000), plan: run.plan === true, remaining: run.remaining && { items: run.remaining.items.slice(0, 12), resolution: run.remaining.resolution ?? null }, pendingRequest: pendingRequest(run),
-    reason: cap(run.events?.findLast(event => event.kind === run.status)?.message, 240), insights: runInsights(run), landable: landable(run), publishable: publishable(run, live.autoDelivery(run)), worktreeRemovedAt: run.worktreeRemovedAt, delivery: deliveryView(run.delivery),
+    reason: cap(run.events?.findLast(event => event.kind === run.status)?.message, 240), insights: runInsights(run), ...handoffView(run, live), worktreeRemovedAt: run.worktreeRemovedAt, delivery: deliveryView(run.delivery),
     repositories: repositoriesView(run), landedRunIds: run.landing?.items.map(item => item.runId),
   };
 }
@@ -118,7 +123,7 @@ async function connectorPluginRoute(live, req, path) {
 export function createServer(engine, { assetRoot = root, devFraming = false } = {}) {
   const live = engine.live ?? new LiveService(engine);
   const tasks = new Tasks(live), board = new Board(live), storage = new Storage(live), appAssets = snapshotAppAssets(assetRoot), traceViewer = snapshotTraceViewer();
-  const viewRun = run => ({ ...run, ...(run.mode === 'live' ? { insights: runInsights(run), landable: landable(run), publishable: publishable(run, live.autoDelivery(run)), repositories: repositoriesView(run) } : {}) });
+  const viewRun = run => ({ ...run, ...(run.mode === 'live' ? { insights: runInsights(run), ...handoffView(run, live), repositories: repositoriesView(run) } : {}) });
   return http.createServer(async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('X-Content-Type-Options', 'nosniff');

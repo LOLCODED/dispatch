@@ -129,6 +129,18 @@ test('a landing starts at once instead of waiting behind the tasks-at-a-time lim
   gate.release(); await settle(engine, busy); await settle(engine, waiting);
 });
 
+test('a task is held by its landing until the landing settles, so it cannot be landed twice', async t => {
+  const { live, engine, project } = await liveFixture(t, { behavior: writes({ 'value.txt': 'changed' }) });
+  const [task] = await readyTasks(live, engine, project, ['Change the value']);
+  const landing = await live.landings.create({ runIds: [task.id] });
+  assert.equal(live.landings.landingOf(task), landing);
+  await assert.rejects(live.landings.create({ runIds: [task.id] }), /already being landed/);
+  await assert.rejects(live.removeWorktree(task.id), /being landed/);
+  await assert.rejects(live.followup(task.id, { input: 'One more thing' }), /being landed/);
+  await settle(engine, landing);
+  assert.equal(live.landings.landingOf(task), null);
+});
+
 test('a second landing on the same branch waits for the first, while one on another branch runs at once', async t => {
   let release; const resolving = new Promise(resolve => { release = resolve; });
   const behavior = byTicket({ 'dispatch is landing': async options => { await resolving; return resolvesNote(options); }, 'Add A': writes({ 'value.txt': 'changed', 'note.txt': 'A\n' }), 'Add B': writes({ 'value.txt': 'changed', 'note.txt': 'B\n' }), 'Add C': writes({ 'value.txt': 'changed', 'c.txt': 'C' }), 'Add D': writes({ 'value.txt': 'changed', 'd.txt': 'D' }) });

@@ -12,6 +12,7 @@ const isAnswer = run => run.kind === 'answer' || run.answered === true;
 const inPlace = run => run.project?.git === false;
 const verdicts = { ready: run => isAnswer(run) ? 'Answer ready' : run.kind === 'landing' ? `Landed${run.landing.target ? ` on ${run.landing.target}` : ''}` : inPlace(run) ? 'Ready in the folder' : 'Ready to hand off', blocked: () => 'Needs your decision', failed: () => 'Failed', cancelled: () => 'Cancelled', interrupted: () => 'Interrupted', budget_exceeded: () => 'Budget reached' };
 const tones = { ready: 'success', blocked: 'attention', failed: 'danger' };
+const handingOff = { landing: 'Landing on a branch', publishing: 'Opening a draft pull request' };
 const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
 
 function checksLine(run) {
@@ -59,7 +60,7 @@ function SqlBlock({ sql }) {
 
 function WorktreeAction({ run, onUpdate }) {
   const { busy, error, perform } = useAction();
-  if (run.kind === 'answer' || !run.baseSha || inPlace(run)) return null;
+  if (run.kind === 'answer' || !run.baseSha || inPlace(run) || run.handingOff) return null;
   if (run.worktreeRemovedAt) return <p className="muted">Worktree removed{run.branchKept ? `; branch ${run.branch} kept because it holds unpushed commits` : ''}.</p>;
   return <div className="verdict-actions"><IconButton label="Remove worktree" icon={FolderX} variant="outline" disabled={busy} onClick={() => perform(async () => onUpdate(await api(`/api/runs/${run.id}/worktree/remove`, {})))}/>{error && <p className="error" role="alert">{error}</p>}</div>;
 }
@@ -98,10 +99,10 @@ function CiRepair({ run, onUpdate }) {
 }
 
 export function Verdict({ run, onUpdate }) {
-  const verdict = verdicts[run.status]?.(run);
+  const verdict = handingOff[run.handingOff] ?? verdicts[run.status]?.(run);
   if (!verdict) return null;
-  const list = warnings(run), base = baseLine(run), changed = run.changedPaths?.length ?? 0;
-  return <section className={`verdict tone-${tones[run.status] ?? 'muted'}`} aria-label="Verdict">
+  const list = warnings(run), base = baseLine(run), changed = run.changedPaths?.length ?? 0, tone = run.handingOff ? 'active' : tones[run.status] ?? 'muted';
+  return <section className={`verdict tone-${tone}`} aria-label="Verdict">
     <h2>{verdict}</h2>
     {!isAnswer(run) && <dl className="verdict-facts">
       <dt>Checks</dt><dd>{checksLine(run)}</dd>

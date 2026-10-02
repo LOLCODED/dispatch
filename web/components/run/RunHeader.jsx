@@ -1,6 +1,6 @@
 import { ArrowLeft, CircleStop, ClipboardCheck } from 'lucide-react';
 import { IconButton, Tooltip } from '@/components/IconButton';
-import { StatusIcon } from '@/components/StatusIcon';
+import { StatusIcon, ToneIcon } from '@/components/StatusIcon';
 import { TicketActions } from '@/components/run/TicketActions';
 import { HandoffActions } from '@/components/run/HandoffActions';
 import { stateLabels } from '@/components/work/StateDot';
@@ -22,8 +22,9 @@ function TileBar({ tiles, available, layout, compact }) {
 function RunState({ run, labels, elapsed }) {
   const { state } = useWorkspace(), entry = runEntry({ runs: state.runs.filter(item => item.mode === 'live'), board: state.board }, run.id);
   const completed = entry?.latest.id === run.id && entry.state === 'completed';
-  const label = run.supersededBy ? 'Continued in a newer run' : completed ? stateLabels.completed : openRemaining(run) ? labels.blocked : labels[run.status] ?? run.status;
-  return <span className={`run-state tone-${completed ? 'completed' : statusTone(run)}`}><StatusIcon run={run} done={completed} size={13}/>{label}{elapsed != null && <span className="run-elapsed">{duration(elapsed)}</span>}</span>;
+  const label = run.supersededBy ? 'Continued in a newer run' : completed ? stateLabels.completed : run.handingOff ? stateLabels.reviewing : openRemaining(run) ? labels.blocked : labels[run.status] ?? run.status;
+  const tone = completed ? 'completed' : run.handingOff ? 'active' : statusTone(run);
+  return <span className={`run-state tone-${tone}`}>{run.handingOff ? <ToneIcon tone={tone} size={13}/> : <StatusIcon run={run} done={completed} size={13}/>}{label}{elapsed != null && <span className="run-elapsed">{duration(elapsed)}</span>}</span>;
 }
 
 export function RunHeader({ run, labels, elapsed, done, tiles, available, layout, compact, drawer, onDrawer, onCancel }) {

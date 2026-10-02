@@ -83,9 +83,13 @@ export class Landings {
     for (const task of tasks) if (!landable(task)) throw new InputError(`"${task.title}" has no tested commit ready to land.`, 409);
     if (new Set(tasks.map(task => task.id)).size !== tasks.length) throw new InputError('Choose each task once.');
     if (new Set(tasks.map(task => task.projectId)).size !== 1) throw new InputError('Land tasks from one repository at a time.');
-    const landing = runs.find(run => run.kind === 'landing' && !terminal.has(run.status) && run.landing.items.some(item => tasks.some(task => task.shadow ? item.runId === task.id : task.workspace === item.workspace)));
+    const landing = tasks.map(task => this.landingOf(task)).find(Boolean);
     if (landing) throw new InputError(`A task is already being landed by "${landing.title}".`, 409);
     return tasks.sort((a, b) => Date.parse(rootOf(a, byId).createdAt) - Date.parse(rootOf(b, byId).createdAt));
+  }
+
+  landingOf(task) {
+    return this.engine.runs.find(run => run.kind === 'landing' && !terminal.has(run.status) && run.landing.items.some(item => task.shadow ? item.runId === task.id : task.workspace === item.workspace)) ?? null;
   }
 
   async linkedLanes(tasks, targets, runId) {

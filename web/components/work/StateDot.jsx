@@ -3,15 +3,16 @@ import { ToneIcon } from '@/components/StatusIcon';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { activeStatuses, folderTree } from '@/lib/board.mjs';
 
-export const stateLabels = { todo: 'Todo', active: 'Active', queued: 'Queued', decision: 'Needs decision', paused: 'Paused', review: 'Ready for review', awaiting: 'Awaiting merge', completed: 'Completed', archived: 'Archived' };
+export const stateLabels = { todo: 'Todo', active: 'Active', reviewing: 'Reviewing', queued: 'Queued', decision: 'Needs decision', paused: 'Paused', review: 'Ready for review', awaiting: 'Awaiting merge', completed: 'Completed', archived: 'Archived' };
 
-const stateMarks = { todo: { tone: 'waiting' }, active: { tone: 'active' }, queued: { tone: 'waiting' }, decision: { tone: 'attention' }, paused: { tone: 'attention', icon: CirclePause }, review: { tone: 'success' }, awaiting: { tone: 'waiting', icon: GitPullRequest }, completed: { tone: 'completed' }, archived: { tone: 'muted' } };
+const stateMarks = { todo: { tone: 'waiting' }, active: { tone: 'active' }, reviewing: { tone: 'active' }, queued: { tone: 'waiting' }, decision: { tone: 'attention' }, paused: { tone: 'attention', icon: CirclePause }, review: { tone: 'success' }, awaiting: { tone: 'waiting', icon: GitPullRequest }, completed: { tone: 'completed' }, archived: { tone: 'muted' } };
 
 export function StateMark({ state }) {
   return <ToneIcon {...stateMarks[state]} size={13}/>;
 }
 
 export function stateActions({ state, item, latest }, key) {
+  if (state === 'reviewing') return [];
   const running = Boolean(latest && activeStatuses.has(latest.status)), stopped = latest && !running;
   const update = data => ({ path: `/api/board/items/${key}`, data });
   return [
