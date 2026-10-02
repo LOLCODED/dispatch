@@ -2,6 +2,8 @@
 
 # <img src="docs/assets/dispatch-logo.svg" alt="" width="32" height="32" align="absmiddle"> dispatch
 
+[![dispatch checks](https://github.com/LOLCODED/dispatch/actions/workflows/ci.yml/badge.svg)](https://github.com/LOLCODED/dispatch/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
 **Bring your own agent. dispatch keeps track of the work, asks you the questions that matter, and hands you a live app to test.**
 
 dispatch is a local task desk for the coding CLIs you already use: Codex, Claude Code, Cursor, OpenCode, pi, or a local model through Ollama. Hand it your tasks, and each one gets its own Git worktree, your real checks, and a place on one board, from Todo to Completed. When the agent needs you, you get a short question with screenshots and the running app, right in dispatch.
