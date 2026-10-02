@@ -4,7 +4,7 @@ import { mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runProcess } from './process.mjs';
-import { localEnvironment } from './local-tools.mjs';
+import { cliProblem, localEnvironment } from './local-tools.mjs';
 import { openToolBridge } from './tool-bridge.mjs';
 import { blockedOutcome, browserPointer, browserTool, runJsonLines } from './cli-stream.mjs';
 
@@ -90,13 +90,14 @@ export class PiAdapter {
   constructor({ execute = runProcess, command = 'pi', bridge = openToolBridge, home = piHome } = {}) { this.execute = execute; this.command = command; this.bridge = bridge; this.home = home; }
   get contract() { return { questions: 'tool', tools: 'mcp', browserTools: 'mcp', sessions: true, modelSwitch: true, streaming: false, readOnlyTurns: true, readOnlyTools: false, writableRoots: false, sandbox: false }; }
   get commandOptions() { return { inheritEnv: false, env: localEnvironment({ PI_CODING_AGENT_DIR: this.home(), PI_OFFLINE: '1' }), timeoutMs: 30000 }; }
-  async version() {
+  async probe() {
     const result = await this.execute(this.command, ['--version'], this.commandOptions);
-    return result.exitCode === 0 ? `pi ${result.output.trim().slice(0, 40)}` : null;
+    return result.exitCode === 0 ? { version: `pi ${result.output.trim().slice(0, 40)}` } : { version: null, problem: cliProblem('pi', this.command, result, 'Install it, then refresh.') };
   }
+  async version() { return (await this.probe()).version; }
   async capabilities() {
-    const version = await this.version();
-    if (!version) return { available: false, authenticated: false, detail: 'Install pi, then refresh.' };
+    const { version, problem } = await this.probe();
+    if (!version) return { available: false, authenticated: false, detail: problem };
     return { available: true, authenticated: true, version, detail: 'Uses the models and logins set up in pi. It has no sandbox, so dispatch runs it only with Full access.' };
   }
   async models() {

@@ -1,3 +1,5 @@
+// First, so an outdated Node.js stops with its version before any later module can fail obscurely.
+import './node-version.mjs';
 import http from 'node:http';
 import { readFileSync, existsSync, mkdirSync, openSync, writeFileSync, closeSync, unlinkSync } from 'node:fs';
 import { join, resolve, extname } from 'node:path';

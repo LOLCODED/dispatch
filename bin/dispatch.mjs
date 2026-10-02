@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import '../src/node-version.mjs';
 import { parseArgs } from 'node:util';
 import { resolve } from 'node:path';
 import { text } from 'node:stream/consumers';

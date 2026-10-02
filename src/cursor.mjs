@@ -1,5 +1,5 @@
 import { runProcess } from './process.mjs';
-import { localEnvironment } from './local-tools.mjs';
+import { cliProblem, localEnvironment } from './local-tools.mjs';
 import { blockedOutcome, runJsonLines } from './cli-stream.mjs';
 
 // Linux caps a single argv string at 128 KiB, and the Cursor CLI takes its prompt only as an argument.
@@ -89,7 +89,7 @@ export class CursorAdapter {
   get options() { return { inheritEnv: false, env: localEnvironment() }; }
   async capabilities() {
     const version = await this.execute(this.command, ['--version'], { ...this.options, timeoutMs: 10000 });
-    if (version.exitCode !== 0) return { available: false, authenticated: false, detail: 'Install the Cursor CLI, then run cursor-agent login.' };
+    if (version.exitCode !== 0) return { available: false, authenticated: false, detail: cliProblem('Cursor CLI', this.command, version, 'Install it, then refresh.') };
     const status = await this.execute(this.command, ['status', '--format', 'json'], { ...this.options, timeoutMs: 15000 });
     let report; try { report = JSON.parse(status.output); } catch { report = null; }
     const authenticated = status.exitCode === 0 && report?.isAuthenticated === true;

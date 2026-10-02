@@ -172,6 +172,12 @@ export async function stopService({ force, runs }) {
   else spawnSync('launchctl', ['bootout', `gui/${process.getuid()}/${launchdLabel}`]);
 }
 
+export function pathHint(link, path) {
+  const folder = dirname(link);
+  if (path.split(':').includes(folder)) return '';
+  return `\n${folder} is not on your PATH, so \`dispatch\` will not be found yet. Add it to your shell profile, then open a new terminal:\n  export PATH="${folder}:$PATH"`;
+}
+
 function linkCommand(layout) {
   const link = join(homedir(), '.local', 'bin', 'dispatch');
   mkdirSync(dirname(link), { recursive: true });
@@ -187,7 +193,7 @@ export function install({ dir, port, ref, source = fileURLToPath(new URL('..', i
   run('git', ['clone', '--no-checkout', source, layout.app]);
   const version = checkout(layout, ref);
   const service = writeService(layout), link = linkCommand(layout);
-  console.log(`\nInstalled ${version} in ${layout.app}\nData: ${layout.data}\nService: ${service}\nCommand: ${link}\nOpen http://127.0.0.1:${layout.port}`);
+  console.log(`\nInstalled ${version} in ${layout.app}\nData: ${layout.data}\nService: ${service}\nCommand: ${link}\nOpen http://127.0.0.1:${layout.port}${pathHint(link, process.env.PATH ?? '')}`);
 }
 
 export async function update({ dir, port, ref, force, runs, queue }) {

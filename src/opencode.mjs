@@ -1,5 +1,5 @@
 import { runProcess } from './process.mjs';
-import { localEnvironment } from './local-tools.mjs';
+import { cliProblem, localEnvironment } from './local-tools.mjs';
 import { openToolBridge } from './tool-bridge.mjs';
 import { blockedOutcome, browserTool, runJsonLines } from './cli-stream.mjs';
 
@@ -73,13 +73,14 @@ export class OpencodeAdapter {
   constructor({ execute = runProcess, command = 'opencode', bridge = openToolBridge } = {}) { this.execute = execute; this.command = command; this.bridge = bridge; }
   get contract() { return { questions: 'tool', tools: 'mcp', browserTools: 'mcp', sessions: true, modelSwitch: true, streaming: false, readOnlyTurns: true, readOnlyTools: true, writableRoots: false, sandbox: false }; }
   get commandOptions() { return { inheritEnv: false, env: localEnvironment(), timeoutMs: 30000 }; }
-  async version() {
+  async probe() {
     const result = await this.execute(this.command, ['--version'], this.commandOptions);
-    return result.exitCode === 0 ? `OpenCode ${result.output.trim().slice(0, 40)}` : null;
+    return result.exitCode === 0 ? { version: `OpenCode ${result.output.trim().slice(0, 40)}` } : { version: null, problem: cliProblem('OpenCode', this.command, result, 'Install it, then refresh.') };
   }
+  async version() { return (await this.probe()).version; }
   async capabilities() {
-    const version = await this.version();
-    if (!version) return { available: false, authenticated: false, detail: 'Install OpenCode (opencode), then refresh.' };
+    const { version, problem } = await this.probe();
+    if (!version) return { available: false, authenticated: false, detail: problem };
     return { available: true, authenticated: true, version, detail: 'Uses the models and logins set up in OpenCode. It has no sandbox, so dispatch runs it only with Full access.' };
   }
   async models() {

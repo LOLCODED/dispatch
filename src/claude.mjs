@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { extname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { runProcess } from './process.mjs';
-import { localEnvironment } from './local-tools.mjs';
+import { cliProblem, localEnvironment } from './local-tools.mjs';
 import { openToolBridge } from './tool-bridge.mjs';
 import { blockedOutcome, browserPointer, browserTool, runJsonLines } from './cli-stream.mjs';
 import { claudeLimits, claudeUsageText } from './provider-limits.mjs';
@@ -105,13 +105,14 @@ export class ClaudeAdapter {
   constructor({ execute = runProcess, command = 'claude', bridge = openToolBridge } = {}) { this.execute = execute; this.command = command; this.bridge = bridge; }
   get contract() { return { questions: 'tool', tools: 'mcp', browserTools: 'mcp', sessions: true, modelSwitch: true, streaming: true, readOnlyTurns: true, readOnlyTools: true, writableRoots: true }; }
   get commandOptions() { return { inheritEnv: false, env: localEnvironment(), timeoutMs: 10000 }; }
-  async version() {
+  async probe() {
     const result = await this.execute(this.command, ['--version'], this.commandOptions);
-    return result.exitCode === 0 ? result.output.trim() : null;
+    return result.exitCode === 0 ? { version: result.output.trim() } : { version: null, problem: cliProblem('Claude Code', this.command, result, 'Install it, then refresh.') };
   }
+  async version() { return (await this.probe()).version; }
   async capabilities() {
-    const version = await this.version();
-    if (!version) return { available: false, authenticated: false, detail: 'Install Claude Code, then run claude and sign in.' };
+    const { version, problem } = await this.probe();
+    if (!version) return { available: false, authenticated: false, detail: problem };
     const auth = await this.execute(this.command, ['auth', 'status'], this.commandOptions);
     return { available: true, authenticated: auth.exitCode === 0, version, detail: auth.exitCode === 0 ? 'Using your local Claude Code login' : 'Run claude auth login in your terminal, then refresh.' };
   }

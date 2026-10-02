@@ -8,6 +8,12 @@ export function commandOnPath(command, { path = process.env.PATH ?? '', platform
   const names = platform === 'win32' ? ['.exe', '.cmd', '.bat', ''].map(extension => command + extension) : [command];
   return path.split(platform === 'win32' ? ';' : ':').some(dir => dir && names.some(name => executable(join(dir, name))));
 }
+export function cliProblem(name, command, result, install) {
+  if (/\bENOENT\b/.test(result.output)) return `${name} (${command}) is not on dispatch's PATH. ${install}`;
+  const outcome = result.timedOut ? 'did not answer in time' : `exited with ${result.exitCode}`;
+  const reason = result.output.trim().split('\n').map(line => line.trim()).filter(Boolean).at(-1)?.slice(0, 300);
+  return `${command} --version ${outcome}${reason ? `: ${reason}` : ''}. Check that ${command} runs in your terminal, then refresh.`;
+}
 export function localEnvironment(extra = {}) {
   const env = {};
   for (const name of ['PATH', 'HOME', 'USER', 'LOGNAME', 'TMPDIR', 'LANG', 'LC_ALL', 'SHELL', 'CODEX_HOME', 'XDG_CONFIG_HOME']) if (process.env[name]) env[name] = process.env[name];

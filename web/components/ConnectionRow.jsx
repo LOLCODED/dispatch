@@ -4,7 +4,8 @@ import { Badge } from '@/components/ui/badge';
 export function connectionStatus(enabled, connection) {
   if (!enabled) return 'Off';
   if (!connection) return 'Checking…';
-  return connection.available && connection.authenticated ? 'Connected' : 'Setup needed';
+  if (!connection.available) return 'Setup needed';
+  return connection.authenticated ? 'Connected' : 'Not signed in';
 }
 
 export function ConnectionRow({ icon: Icon, name, label = name, setup, enabled, checked = enabled, connection, busy, onToggle, children }) {

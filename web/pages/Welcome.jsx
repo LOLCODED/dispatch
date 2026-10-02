@@ -6,7 +6,6 @@ import { IconButton } from '@/components/IconButton';
 import { LayoutPicker } from '@/components/LayoutDemo';
 import { MotionChoice, ThemeChoice } from '@/components/AppearanceChoices';
 import { ConnectorList, ProviderList, agentProviders, useConnections } from '@/components/Connections';
-import { connectionStatus } from '@/components/ConnectionRow';
 import { useAction } from '@/lib/use-action';
 import { usePreferences } from '@/lib/preferences';
 import { api, useWorkspace } from '@/lib/workspace';
@@ -22,10 +21,7 @@ const follow = delay => ({ initial: { opacity: 0, y: 8 }, animate: { opacity: 1,
 
 function useAgentReady(connections) {
   const { state } = useWorkspace();
-  return agentProviders.some(provider => {
-    const enabled = state.providerSettings?.[provider.id] === true;
-    return enabled && connectionStatus(enabled, connections?.[provider.id]) === 'Connected';
-  });
+  return agentProviders.some(provider => state.providerSettings?.[provider.id] === true && connections?.[provider.id]?.available === true);
 }
 
 function StepBody({ step, connections, busy, onProvider, onConnector }) {

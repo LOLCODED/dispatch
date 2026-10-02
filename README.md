@@ -64,23 +64,22 @@ While it works, you can watch the agent's browser live inside the run, step by s
 
 ## Quick start
 
-Requires macOS or Linux, Node.js 24+, Git, and at least one signed-in CLI.
+Requires macOS or Linux, Node.js 24+, Git, and at least one agent CLI you already use (Codex, Claude Code, Cursor, OpenCode or pi). dispatch never asks you to sign in; each CLI keeps its own login.
 
 ```sh
 git clone https://github.com/LOLCODED/dispatch.git
 cd dispatch
 npm ci
 npx playwright install chromium
-codex login            # or: claude auth login
-npm start
+node bin/dispatch.mjs install    # runs the latest release in the background and adds the `dispatch` command
+dispatch                          # print the address
 ```
 
 Open **http://127.0.0.1:4317**, add a repository, pick the checks you trust, and dispatch your first ticket.
 
-To keep dispatch running in the background and separate from development, install a release as a user service (systemd or launchd):
+The install puts a release in `~/.local/share/dispatch`, runs it as a user service (systemd or launchd) on port 4317, and links `dispatch` into `~/.local/bin`; it prints the line to add if that folder is not on your PATH. From then on:
 
 ```sh
-node bin/dispatch.mjs install    # latest vX.Y.Z tag → ~/.local/share/dispatch, port 4317
 dispatch                          # print the address, starting the service if it is stopped
 dispatch kill                     # stop the service (refuses while runs are working unless --force)
 dispatch add "Fix the header spacing"   # save a task from any terminal
@@ -88,7 +87,7 @@ dispatch repo add ~/code/site     # save a repository with the setup page's sugg
 dispatch update                   # after tagging a new release (npm version <x.y.z>)
 ```
 
-`npm run dev` then runs your working copy on port 4327 with its own `.dispatch-dev/` data, rebuilding the frontend and restarting the server after each `web/` edit.
+Working on dispatch itself? `npm start` runs the checkout in the foreground on port 4317 until you press Ctrl+C, and `npm run dev` runs your working copy on port 4327 with its own `.dispatch-dev/` data, rebuilding the frontend and restarting the server after each `web/` edit.
 
 New project? Type a path that doesn't exist yet. dispatch creates the folder, with or without `git init`, and gives it a browser smoke check so the agent's first scaffold is verified too.
 

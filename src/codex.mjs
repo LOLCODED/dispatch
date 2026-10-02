@@ -1,6 +1,6 @@
 import { readModels, readRateLimits } from './codex-models.mjs';
 import { runProcess } from './process.mjs';
-import { commandOnPath, localEnvironment } from './local-tools.mjs';
+import { cliProblem, commandOnPath, localEnvironment } from './local-tools.mjs';
 import { runAppServer } from './codex-app-server.mjs';
 import { blockedOutcome, runJsonLines } from './cli-stream.mjs';
 import { codexMcpArgs, openToolBridge } from './tool-bridge.mjs';
@@ -14,7 +14,7 @@ export class CodexAdapter {
   async capabilities() {
     const options = { inheritEnv: false, env: localEnvironment(), timeoutMs: 10000 };
     const version = await this.execute(this.command, ['--version'], options);
-    if (version.exitCode !== 0) return { available: false, authenticated: false, detail: 'Install Codex CLI, then run codex login.' };
+    if (version.exitCode !== 0) return { available: false, authenticated: false, detail: cliProblem('Codex CLI', this.command, version, 'Install it, then refresh.') };
     const auth = await this.execute(this.command, ['login', 'status'], options);
     return { available: true, authenticated: auth.exitCode === 0, version: version.output.trim(), detail: auth.exitCode === 0 ? 'Using your local Codex login' : 'Run codex login in your terminal, then refresh.' };
   }
