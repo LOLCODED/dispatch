@@ -12,7 +12,7 @@ export class DispatchToolCalls {
   constructor(live) { this.live = live; }
   tools(run, contract, { readOnly = false } = {}) {
     const browser = run.project?.browser?.enabled === true && Boolean(this.live.browserCall);
-    return toolSet({ risk: !readOnly && riskEnabled(run.project), question: contract.questions === 'tool' && !readOnly, memory: run.project?.memory !== false && !readOnly, browser: browser && (!readOnly || contract.readOnlyTools === true), review: !readOnly && run.kind !== 'answer' });
+    return toolSet({ risk: !readOnly && riskEnabled(run.project), question: contract.questions === 'tool' && !readOnly, memory: run.project?.memory !== false && !readOnly, browser: browser && (!readOnly || contract.readOnlyTools === true), review: !readOnly && run.kind !== 'answer', repository: !readOnly && run.kind === 'change' && Boolean(this.live.repositories) });
   }
   async call(run, name, args, { tools, signal, readOnly = false } = {}) {
     const tool = tools.find(item => item.name === name);
@@ -35,6 +35,7 @@ export class DispatchToolCalls {
     if (tool.kind === 'browser-review') return this.review(run, args, options);
     if (tool.kind === 'question') return this.question(run, args, options);
     if (tool.kind === 'risk') return this.live.riskChecks.call(run, args, options);
+    if (tool.kind === 'repository') return this.live.repositories.call(run, args, options);
     if (tool.kind === 'memory') return this.live.memoryTool(run, args);
     if (tool.kind === 'browser') return this.live.browserCall(run, tool.name, args, options);
     throw new InputError('Unknown dispatch tool kind.');

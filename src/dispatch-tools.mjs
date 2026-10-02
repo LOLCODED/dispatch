@@ -19,6 +19,16 @@ export const riskTool = {
   }, required: ['action'], additionalProperties: false },
 };
 
+export const repositoryTool = {
+  name: 'dispatch_repository', kind: 'repository', description: 'Add a folder outside this task to it instead of editing it in place. inspect: whether it is saved and the settings dispatch would give it. add: ask the operator, then save it as a dispatch repository; it joins this task from the next turn with its own workspace and checks. Omitted settings use the inspect defaults; alwaysLink also links it to this repository for future tasks.',
+  inputSchema: { type: 'object', properties: {
+    action: { type: 'string', enum: ['inspect', 'add'] }, path: { type: 'string', maxLength: 1000 }, name: { type: 'string', maxLength: 100 }, baseBranch: { type: 'string', maxLength: 200 },
+    checks: { type: 'array', maxItems: 12, items: { type: 'string', maxLength: 500 }, description: 'Check commands, e.g. npm run test' }, setup: { type: 'array', maxItems: 8, items: { type: 'string', maxLength: 500 } },
+    textOnlyPaths: { type: 'array', maxItems: 20, items: { type: 'string', maxLength: 200 } }, instructions: { type: 'array', maxItems: 20, items: { type: 'string', maxLength: 200 } },
+    browser: { type: 'boolean' }, review: { type: 'boolean' }, alwaysLink: { type: 'boolean' },
+  }, required: ['action', 'path'], additionalProperties: false },
+};
+
 const ref = { type: 'string', pattern: '^(?:f\\d{1,5})?e\\d{1,5}$', description: 'Element ref from the last snapshot' };
 const browser = (name, description, properties = {}, required = []) => ({ name: `dispatch_browser_${name}`, kind: 'browser', description, inputSchema: { type: 'object', properties, required, additionalProperties: false } });
 export const browserTools = [
@@ -48,11 +58,11 @@ export const browserReviewTool = {
   }, required: ['assessment', 'steps', 'screenshots'], additionalProperties: false },
 };
 
-export const dispatchTools = Object.fromEntries([questionTool, memoryTool, riskTool, browserReviewTool, ...browserTools].map(tool => [tool.name, tool]));
+export const dispatchTools = Object.fromEntries([questionTool, memoryTool, riskTool, repositoryTool, browserReviewTool, ...browserTools].map(tool => [tool.name, tool]));
 export const bridgeTools = [questionTool, memoryTool];
 
-export function toolSet({ question = false, memory = false, browser = false, review = false, risk = false } = {}) {
-  return [...(question ? [questionTool] : []), ...(memory ? [memoryTool] : []), ...(browser ? browserTools : []), ...(browser && review ? [browserReviewTool] : []), ...(risk ? [riskTool] : [])];
+export function toolSet({ question = false, memory = false, browser = false, review = false, risk = false, repository = false } = {}) {
+  return [...(question ? [questionTool] : []), ...(memory ? [memoryTool] : []), ...(browser ? browserTools : []), ...(browser && review ? [browserReviewTool] : []), ...(risk ? [riskTool] : []), ...(repository ? [repositoryTool] : [])];
 }
 export const toolNames = tools => tools.map(tool => tool.name);
 export const toolSchemaCharacters = tools => JSON.stringify(tools.map(({ name, description, inputSchema }) => ({ name, description, inputSchema }))).length;

@@ -17,6 +17,14 @@ const usage = `Usage:
       Several repositories (first one primary) give the task a worktree in each; "all" lets the agent decide.
   dispatch tasks [--repo <name|path>]
       List saved tasks and their state.
+  dispatch repo add <folder> [--name <name>] [--base <branch>] [--check <command>]... [--setup <command>]...
+                    [--text-only <glob>]... [--instruction <text>]... [--browser | --no-browser] [--review]
+                    [--link <name|path>]
+      Save a folder as a repository with the settings the setup page suggests; each option overrides one.
+      Checks and setup run as trusted commands. --link also gives every task in that saved repository a
+      worktree in this one. An already saved folder keeps its settings and is only linked.
+  dispatch repo list
+      List saved repositories and what each links.
   dispatch connector add <folder> | remove <id> | list
       Load a tracker connector from a local folder (its package.json "dispatch.connector",
       else index.mjs), remove one, or list them. The connector runs inside dispatch with your
@@ -111,6 +119,33 @@ async function connector({ positionals: [action = 'list', ...rest] }) {
   await connectorCommands[action](rest);
 }
 
+function repositoryRequest(folder, values, projects) {
+  return {
+    repositoryPath: resolve(folder), confirmed: true, name: values.name, baseBranch: values.base, checks: values.check, setup: values.setup,
+    textOnlyPaths: values['text-only'], instructions: values.instruction, browser: values.browser, review: values.review,
+    linkTo: values.link ? chooseProject(projects, { repo: values.link }).id : undefined,
+  };
+}
+
+const repoCommands = {
+  async add([folder], values) {
+    if (!folder) throw new CliError('Give the repository folder: dispatch repo add <folder>.');
+    const { project, created, linkedTo } = await api('/api/projects/add', post(repositoryRequest(folder, values, await api('/api/projects'))));
+    const checks = project.validation.map(step => step.id).join(', ') || 'none';
+    console.log(`${created ? `Saved ${project.name} (${project.repositoryPath}) with checks: ${checks}.` : `${project.name} is already saved; its settings were left as they are.`}${linkedTo ? `\nLinked to ${linkedTo}.` : ''}`);
+  },
+  async list() {
+    const projects = await api('/api/projects'), names = new Map(projects.map(project => [project.id, project.name]));
+    if (!projects.length) { console.log('No saved repositories.'); return; }
+    for (const project of projects) console.log(`${project.name.padEnd(20)} ${project.repositoryPath}${project.linked?.length ? `  (links ${project.linked.map(id => names.get(id) ?? '?').join(', ')})` : ''}`);
+  },
+};
+
+async function repo({ positionals: [action = 'list', ...rest], values }) {
+  if (!repoCommands[action]) throw new CliError('Use dispatch repo add <folder> or list.');
+  await repoCommands[action](rest, values);
+}
+
 const queue = {
   hold: seconds => api('/api/queue/hold', post({ seconds })).catch(error => { if (error instanceof CliError) return null; throw error; }),
   release: () => api('/api/queue/release', post({})).catch(() => {}),
@@ -139,13 +174,17 @@ async function open() {
 }
 
 const commands = {
-  open, add, tasks, connector,
+  open, add, tasks, connector, repo,
   kill: async ({ values }) => { await stopService({ force: values.force, runs: workingRuns }); console.log('dispatch stopped.'); },
   install: ({ values }) => install(values),
   update: updateInstall,
 };
 try {
-  const parsed = parseArgs({ allowPositionals: true, options: { repo: { type: 'string', multiple: true }, answer: { type: 'boolean' }, ref: { type: 'string' }, port: { type: 'string' }, dir: { type: 'string' }, force: { type: 'boolean' }, help: { type: 'boolean', short: 'h' } } });
+  const parsed = parseArgs({ allowPositionals: true, allowNegative: true, options: {
+    repo: { type: 'string', multiple: true }, answer: { type: 'boolean' }, ref: { type: 'string' }, port: { type: 'string' }, dir: { type: 'string' }, force: { type: 'boolean' }, help: { type: 'boolean', short: 'h' },
+    name: { type: 'string' }, base: { type: 'string' }, check: { type: 'string', multiple: true }, setup: { type: 'string', multiple: true }, 'text-only': { type: 'string', multiple: true },
+    instruction: { type: 'string', multiple: true }, browser: { type: 'boolean' }, review: { type: 'boolean' }, link: { type: 'string' },
+  } });
   const [command = 'open', ...positionals] = parsed.positionals;
   if (parsed.values.help || !commands[command]) { console.log(usage); process.exitCode = parsed.values.help ? 0 : 1; }
   else await commands[command]({ values: parsed.values, positionals });

@@ -84,6 +84,7 @@ node bin/dispatch.mjs install    # latest vX.Y.Z tag → ~/.local/share/dispatch
 dispatch                          # print the address, starting the service if it is stopped
 dispatch kill                     # stop the service (refuses while runs are working unless --force)
 dispatch add "Fix the header spacing"   # save a task from any terminal
+dispatch repo add ~/code/site     # save a repository with the setup page's suggested checks
 dispatch update                   # after tagging a new release (npm version <x.y.z>)
 ```
 

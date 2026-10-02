@@ -13,7 +13,7 @@ Read README.md and docs/ARCHITECTURE.md before changing orchestration.
 - Run `npm run check`, `npm run build`, `npm run test:unit`, and `npm run e2e` for changes affecting the run lifecycle (`npm run e2e:run|setup|tasks|ui|smoke` runs one browser lane while iterating).
 - Keep the docs honest about implemented versus planned behavior.
 
-Verification status: Codex Auto runs (worktree, checks, local commit, repair, follow-up, questions) and Codex independent review are live-verified. Claude Code is behind explicit per-provider consent; its Auto runs through dispatch are live-verified, while its questions and review over MCP are tested with doubles only. The dispatch browser and dispatch MCP tools are live-verified on both providers. Local models run through Claude Code, OpenCode or pi against a saved endpoint; Auto runs on all three are live-verified on the Ollama CLI, while Docker, remote and non-Ollama endpoints, and OpenCode and pi with their own hosted models, are tested with doubles only. The GitHub connector, ticket connectors (intake, comment writeback, state moves), run-event notifications, repository memory, and editing checks from a blocked run are tested with doubles only.
+Verification status: Codex Auto runs (worktree, checks, local commit, repair, follow-up, questions) and Codex independent review are live-verified. Claude Code is behind explicit per-provider consent; its Auto runs through dispatch are live-verified, while its questions and review over MCP are tested with doubles only. The dispatch browser and dispatch MCP tools are live-verified on both providers. Local models run through Claude Code, OpenCode or pi against a saved endpoint; Auto runs on all three are live-verified on the Ollama CLI, while Docker, remote and non-Ollama endpoints, and OpenCode and pi with their own hosted models, are tested with doubles only. The GitHub connector, ticket connectors (intake, comment writeback, state moves), run-event notifications, repository memory, editing checks from a blocked run, and agents adding a repository to a task (`dispatch_repository`, with automatic continuation) are tested with doubles only.
 
 ## Working rules
 
@@ -29,7 +29,7 @@ Verification status: Codex Auto runs (worktree, checks, local commit, repair, fo
 - A custom agent loop or LLM API layer, including building on pi-ai/pi-agent-core unless a research spike finds a concrete, measured win.
 - Manager/CEO agents, role hierarchies, or model calls for routing or scheduling.
 - Game development and 3D workflows.
-- A full CLI front end. `bin/dispatch.mjs` only saves and lists tasks and manages connectors through the running server's HTTP API. Keep `src/` free of HTTP and React so more can be added later without a rewrite.
+- A full CLI front end. `bin/dispatch.mjs` only saves and lists tasks, saves and lists repositories, and manages connectors through the running server's HTTP API. Keep `src/` free of HTTP and React so more can be added later without a rewrite.
 - Splitting repositories or packages, a plugin runtime, vector databases, or SQLite unless durable claims demand it. The one exception: connectors (tickets, delivery, run events) loaded from folders, the built-in ones under `src/connectors/<name>/` and any the user adds explicitly (docs/INTEGRATIONS.md).
 - Hosted or multi-user operation.
 - Further UI polish passes before the golden path works end to end on real tickets.

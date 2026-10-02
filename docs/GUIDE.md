@@ -20,7 +20,7 @@ Paste a ticket or describe the change and press **dispatch** (or **Ctrl/⌘ + En
 - **Questions only:** a ticket that just asks something gets an answer without edits, checks or a commit. A follow-up in the same session can then make the change.
 - **Interrupt:** send new instructions while the agent works; the turn stops and continues in the same session.
 
-**From a terminal.** `dispatch add "instructions"` saves a task to **Todo** in a running dispatch (text from arguments or stdin; `--answer` for a question, `--repo <name|path>` to choose the repository, `--repo api,web` for several with the first as primary, `--repo all` to let the agent decide; otherwise the one containing the current folder or the one the text names). `dispatch tasks` lists saved tasks. `npm link` in the checkout puts `dispatch` on your PATH; `DISPATCH_URL` points it at another port. Nothing starts until you press Start.
+**From a terminal.** `dispatch add "instructions"` saves a task to **Todo** in a running dispatch (text from arguments or stdin; `--answer` for a question, `--repo <name|path>` to choose the repository, `--repo api,web` for several with the first as primary, `--repo all` to let the agent decide; otherwise the one containing the current folder or the one the text names). `dispatch tasks` lists saved tasks. `dispatch repo add <folder>` saves a repository with the settings the connect form suggests; `--name`, `--base`, `--check`, `--setup`, `--text-only`, `--instruction`, `--browser`/`--no-browser` and `--review` override them, and `--link <repo>` links it to a saved repository. An already saved folder keeps its settings and is only linked. `dispatch repo list` shows saved repositories and their links. `npm link` in the checkout puts `dispatch` on your PATH; `DISPATCH_URL` points it at another port. Nothing starts until you press Start.
 
 The home **Tasks** list groups conversations as Needs decision, Active, Todo and Completed. The state dot starts, pauses, stops, archives and files tasks into folders.
 
@@ -57,7 +57,9 @@ Turning a provider on is consent for dispatch to check its CLI and list its mode
 
 **Settings → General → Agent access** decides what owner turns may write: **Home folder** (default) keeps the OS sandbox with network off; **Full access** removes it. Review turns stay read-only either way.
 
-dispatch's own tools (`dispatch_question`, `dispatch_memory`, `dispatch_browser_*`) are one registry served to both CLIs by a per-turn local MCP server. The MCP server name `dispatch` is reserved.
+dispatch's own tools (`dispatch_question`, `dispatch_memory`, `dispatch_repository`, `dispatch_browser_*`) are one registry served to both CLIs by a per-turn local MCP server. The MCP server name `dispatch` is reserved.
+
+**Adding a repository mid-task.** When a ticket needs a folder outside the task, the agent can use `dispatch_repository` to inspect the folder and ask to add it, instead of editing it in place. You see the settings and commands dispatch would save and answer **Add it** or **Not now**. Once you approve, the folder is saved (or, if already saved, used as it is). When the turn ends, dispatch continues the ticket in the same session with the new repository in its own worktree, with its own checks and commit. Agents set name, base branch, checks, setup, text-only paths, instructions, browser and review; `alwaysLink` also links it to the task's repository for future tasks. Tested with doubles only.
 
 ## Brain and memory
 

@@ -71,7 +71,7 @@ export class Engine {
     const controller = new AbortController();
     const promise = this.work(run, controller.signal).catch(error => {
       if (!terminal.has(run.status)) this.transition(run, 'failed', `Runner error: ${error.message}`);
-    }).finally(() => { this.active.delete(run.id); this.pump(); });
+    }).finally(async () => { this.active.delete(run.id); await this.live?.finished?.(run); this.pump(); });
     this.active.set(run.id, { controller, promise, landing: run.kind === 'landing' && run.projectId });
   }
   startNow(id) {

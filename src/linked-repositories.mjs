@@ -91,8 +91,14 @@ export class LinkedRepositories {
     return structuredClone(previous.linked ?? []).map(member => ({ ...member, delivery: null }));
   }
 
+  // Repositories the operator approved adding during a turn join the task when it continues.
+  joining(previous) {
+    const present = new Set([previous.projectId, ...(previous.linked ?? []).map(member => member.projectId)]);
+    return [...new Set(previous.linkRequests ?? [])].filter(id => !present.has(id)).map(id => this.live.projects.find(item => item.id === id)).filter(Boolean);
+  }
+
   async create(run, signal) {
-    for (const member of run.linked ?? []) await (member.shadow ? this.snapshotMember(run, member, signal) : this.createMember(run, member, signal));
+    for (const member of (run.linked ?? []).filter(item => !item.baseSha)) await (member.shadow ? this.snapshotMember(run, member, signal) : this.createMember(run, member, signal));
     this.engine.store.save();
   }
 

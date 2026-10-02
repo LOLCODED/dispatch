@@ -203,6 +203,12 @@ export function createServer(engine, { assetRoot = root, devFraming = false } = 
         if (!req.headers['content-type']?.startsWith('application/json')) throw new InputError('Use application/json', 415);
         return json(res, 200, await live.inspect((await body(req)).repositoryPath));
       }
+      if (req.method === 'POST' && path === '/api/projects/add') {
+        const input = await jsonBody(req);
+        if (input.confirmed !== true) throw new InputError('Confirm the repository and trusted commands before enabling live execution.');
+        const added = await live.repositories.add(input);
+        return json(res, added.created ? 201 : 200, added);
+      }
       if (req.method === 'POST' && path === '/api/projects/create') {
         if (!req.headers['content-type']?.startsWith('application/json')) throw new InputError('Use application/json', 415);
         return json(res, 201, await live.createRepository(await body(req)));

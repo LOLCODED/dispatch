@@ -2,12 +2,11 @@ import { longRunningScript, npmScript } from './recipe-roles.mjs';
 import { commandLine, confirmLongRunning, parseRecipeText } from './recipe-text.mjs';
 import { riskSettings } from './risk-policy.mjs';
 import { projectScopes } from './check-scope.mjs';
+import { suggestedRecipe } from '../../src/repository-setup.mjs';
 
+export { installStep, scriptCheck, suggestedTextOnlyPaths } from '../../src/repository-setup.mjs';
 export const smokeStep = step => step.kind === 'browser-smoke';
-export const installStep = () => ({ id: 'install', command: 'npm', args: ['ci'] });
 export const isInstall = step => step.command === 'npm' && step.args.join(' ') === 'ci';
-export const scriptCheck = script => ({ id: script, command: 'npm', args: ['run', script] });
-export const suggestedTextOnlyPaths = ['*.md', 'docs/**'];
 
 const lines = values => values.map(value => value.trim()).filter(Boolean);
 
@@ -26,9 +25,8 @@ export function blankForm(path = '') {
 }
 
 export function formFromInspect(info) {
-  const validation = info.suggestedChecks.map(scriptCheck);
-  return { ...blankForm(info.repositoryPath), name: info.name, base: info.baseBranch ?? '', git: info.git !== false, validation, setup: info.suggestInstall ? [installStep()] : [], browser: info.suggestBrowser === true,
-    scopes: [{ id: 'text-only', paths: suggestedTextOnlyPaths, checks: validation.some(step => step.id === 'check') ? ['check'] : [] }] };
+  const { validation, setup, browser, checkScopes } = suggestedRecipe(info);
+  return { ...blankForm(info.repositoryPath), name: info.name, base: info.baseBranch ?? '', git: info.git !== false, validation, setup, browser, scopes: checkScopes };
 }
 
 export const checkIds = form => [...form.validation.map(step => step.id), ...(form.smoke ? [form.smoke.id] : [])];
