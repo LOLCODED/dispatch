@@ -1,6 +1,6 @@
 import { longRunningScript, npmScript } from './recipe-roles.mjs';
 import { commandLine, confirmLongRunning, parseRecipeText } from './recipe-text.mjs';
-import { riskSettings } from './risk-policy.mjs';
+import { landingChecks, riskSettings } from './risk-policy.mjs';
 import { projectScopes } from './check-scope.mjs';
 import { suggestedRecipe } from '../../src/repository-setup.mjs';
 
@@ -61,10 +61,12 @@ export function newCommands(form, saved) {
 
 export const formChanged = (form, saved) => !saved || JSON.stringify(form) !== JSON.stringify(saved);
 
+const landingRisk = form => form.risk.landingChecks ? { ...form.risk, landingChecks: landingChecks(form.risk, checkIds(form)) } : form.risk;
+
 export function projectPayload(form, repositoryPath) {
   const scopes = form.scopes.map(scope => ({ ...scope, paths: lines(scope.paths) })).filter(scope => scope.paths.length), git = form.git !== false;
   return { repositoryPath, name: form.name, baseBranch: git ? form.base : null, confirmed: true,
-    validation: [...form.validation, ...(form.smoke ? [form.smoke] : [])], setup: form.setup, checkScopes: scopes, risk: form.risk,
+    validation: [...form.validation, ...(form.smoke ? [form.smoke] : [])], setup: form.setup, checkScopes: scopes, risk: landingRisk(form),
     instructions: lines(form.instructions), protectedPaths: lines(form.protectedPaths), linked: form.linked, linkedEnv: Object.fromEntries(Object.entries(form.linkedEnv).map(([id, name]) => [id, name.trim()]).filter(([id, name]) => name && form.linked.includes(id))), trackRemote: git && form.trackRemote,
     connectors: form.connectors,
     browser: { enabled: form.browser, headed: form.browser && form.headed }, review: form.review, memory: form.memory, dispatchCoAuthor: git && form.dispatchCoAuthor, allowSensitiveFiles: form.allowSensitiveFiles };

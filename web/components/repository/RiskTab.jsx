@@ -3,7 +3,7 @@ import { Checkbox } from '@/components/Checkbox';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { checkIds } from '@/lib/project-form.mjs';
-import { optionalChecks, riskLevel, riskLevels } from '@/lib/risk-policy.mjs';
+import { landingChecks, optionalChecks, riskLevel, riskLevels } from '@/lib/risk-policy.mjs';
 
 export function NoChoiceWarning({ form }) {
   const ids = checkIds(form);
@@ -14,6 +14,8 @@ export function NoChoiceWarning({ form }) {
 export function RiskTab({ form, update }) {
   const policy = form.risk, ids = checkIds(form);
   const change = patch => update({ risk: { ...policy, ...patch } });
+  const landing = landingChecks(policy, ids);
+  const toggleLanding = (id, on) => change({ landingChecks: on ? ids.filter(item => item === id || landing.includes(item)) : landing.filter(item => item !== id) });
   const toggle = (level, id, on) => change({ minimumChecks: { ...policy.minimumChecks, [level]: on ? [...policy.minimumChecks[level], id] : policy.minimumChecks[level].filter(item => item !== id) } });
   return <section className="tab-section">
     <div className="field"><Label htmlFor="risk-mode">Who chooses the tests?</Label><Select id="risk-mode" value={policy.mode} onChange={event => change({ mode: event.target.value })}>
@@ -27,6 +29,9 @@ export function RiskTab({ form, update }) {
       <table className="risk-matrix"><caption>Likelihood × impact</caption><thead><tr><th scope="col">Likelihood</th>{riskLevels.map(level => <th scope="col" key={level}>{level} impact</th>)}</tr></thead><tbody>{riskLevels.map(likelihood => <tr key={likelihood}><th scope="row">{likelihood}</th>{riskLevels.map(impact => <td key={impact}>{riskLevel(likelihood, impact)}</td>)}</tr>)}</tbody></table>
       <h3>Required checks by risk</h3><p className="muted">These minimums cannot be skipped by the agent or an approval. Higher levels also include the minimums below them. The agent can add any other enabled check.</p>
       {riskLevels.map(level => <fieldset key={level} className="field"><legend>{level} risk and above</legend><div className="chip-toggles">{ids.map(id => <Checkbox key={id} checked={policy.minimumChecks[level].includes(id)} onChange={on => toggle(level, id, on)}>{id}</Checkbox>)}</div></fieldset>)}
+      <h3>Checks when landing</h3><p className="muted">Landing runs these checks on the combined result before the base branch moves, without asking. They are independent of the task checks above.</p>
+      <fieldset className="field"><legend>Landing checks</legend><div className="chip-toggles">{ids.map(id => <Checkbox key={id} checked={landing.includes(id)} onChange={on => toggleLanding(id, on)}>{id}</Checkbox>)}</div></fieldset>
+      {!landing.length && <p className="risk-warning" role="status">Landing runs no checks for this repository.</p>}
       <div className="field"><Label htmlFor="risk-guidance">Workflow and coverage guidance</Label><Textarea id="risk-guidance" rows={5} maxLength={2000} value={policy.guidance} onChange={event => change({ guidance: event.target.value })} placeholder="Registration uses shared authentication helpers. Use registration tests for form changes and the full auth suite for shared helpers."/></div>
       <p className="muted">The agent can request your review of a live workflow or report its browser observations when the repository browser is enabled. Those observations are shown separately from automated passes. Decisions appear in Results and Brain → Testing decisions.</p>
     </>}

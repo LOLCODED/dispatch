@@ -1013,9 +1013,9 @@ export class LiveService {
   }
   recordSkippedChecks(run, scope) {
     const at = new Date().toISOString(), required = scope.steps.map(step => step.id), scopes = scope.matched.map(item => `${item.id} (${item.paths.join(', ')})`).join('; ');
-    const reason = scope.reason ? `Skipped by risk assessment: ${scope.reason}` : `Skipped: every changed file matches the check scope${scope.matched.length === 1 ? '' : 's'} ${scopes}, which require${scope.matched.length === 1 ? 's' : ''} ${required.length ? required.join(', ') : 'no checks'}.`;
+    const reason = scope.skipReason ?? (scope.reason ? `Skipped by risk assessment: ${scope.reason}` : `Skipped: every changed file matches the check scope${scope.matched.length === 1 ? '' : 's'} ${scopes}, which require${scope.matched.length === 1 ? 's' : ''} ${required.length ? required.join(', ') : 'no checks'}.`);
     for (const step of scope.skipped) run.checks.push({ name: step.id, command: [step.command, ...step.args], attempt: run.attempt, revision: run.revision, recipeDigest: run.protectedDigest, status: 'skipped', startedAt: at, finishedAt: at, durationMs: 0, output: reason });
-    if (scope.skipped.length) { this.log(run, 'check', `Skipped by ${scope.reason ? 'risk assessment' : 'check scope'}: ${scope.skipped.map(step => step.id).join(', ')}.`); this.engine.store.saveSoon(); }
+    if (scope.skipped.length) { this.log(run, 'check', `Skipped by ${scope.skippedBy ?? (scope.reason ? 'risk assessment' : 'check scope')}: ${scope.skipped.map(step => step.id).join(', ')}.`); this.engine.store.saveSoon(); }
   }
   async review(run, adapter, signal) {
     const e = this.engine, name = providerName(run.execution?.provider ?? 'codex');

@@ -17,8 +17,12 @@ export function riskSettings(value, validation) {
   }));
   const guidance = value.guidance ?? '';
   if (typeof guidance !== 'string' || guidance.length > 2000) throw new Error('Risk guidance must be text under 2,000 characters.');
-  return { mode: value.mode, minimumChecks, guidance: guidance.trim() };
+  const landing = value.landingChecks ?? null;
+  if (landing !== null && (!Array.isArray(landing) || landing.some(id => typeof id !== 'string' || !ids.has(id)))) throw new Error('Landing checks must name configured checks. Remove them from landing before removing a check.');
+  return { mode: value.mode, minimumChecks, guidance: guidance.trim(), ...(landing ? { landingChecks: [...new Set(landing)] } : {}) };
 }
+
+export const landingChecks = (policy, ids) => policy?.landingChecks?.filter(id => ids.includes(id)) ?? ids;
 
 export function minimumChecks(policy, level) {
   return [...new Set(riskLevels.slice(0, riskLevels.indexOf(level) + 1).flatMap(item => policy.minimumChecks?.[item] ?? []))];

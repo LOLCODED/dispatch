@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { riskLevel, riskSettings, minimumChecks, optionalChecks } from '../src/risk-policy.mjs';
+import { riskLevel, riskSettings, minimumChecks, optionalChecks, landingChecks } from '../src/risk-policy.mjs';
 import { formFromProject, blankForm, projectPayload } from '../web/lib/project-form.mjs';
 import { liveFixture, settle, until, unitCheck } from './live-double.mjs';
 import { DispatchToolCalls } from '../src/tool-calls.mjs';
@@ -34,6 +34,11 @@ test('risk matrix, minimums, settings validation and form round trips', () => {
   assert.throws(() => riskSettings({ ...policy(), guidance: 'x'.repeat(2001) }, [lint, unitCheck]), /2,000/);
   const project = { repositoryPath: '/repo', validation: [lint, unitCheck], setup: [], risk: policy('ask') };
   assert.deepEqual(projectPayload(formFromProject(project), '/repo').risk, policy('ask'));
+  assert.deepEqual(landingChecks(policy(), ['lint', 'unit']), ['lint', 'unit']);
+  assert.deepEqual(riskSettings({ ...policy(), landingChecks: ['unit', 'unit'] }, [lint, unitCheck]).landingChecks, ['unit']);
+  assert.throws(() => riskSettings({ ...policy(), landingChecks: ['missing'] }, [lint, unitCheck]), /Landing checks/);
+  const landed = formFromProject({ ...project, risk: { ...policy(), landingChecks: ['lint', 'unit'] } });
+  assert.deepEqual(projectPayload({ ...landed, validation: [lint] }, '/repo').risk.landingChecks, ['lint']);
 });
 
 test('risk tools are absent when disabled or read-only', () => {
@@ -254,38 +259,18 @@ test('always-ask also requires approval for a missing assessment fallback', asyn
   }
 });
 
-test('a rejected landing testing plan cannot move the target branch', async t => {
+test('a landing runs the repository landing checks without asking, even in always-ask mode', async t => {
   const { live, engine, project, repo } = await fixture(t, async options => {
     writeFileSync(join(options.workspace, 'value.txt'), 'changed'); await assess(options); return completed;
   });
   const task = await live.create({ projectId: project.id, input: 'Change value' }); await settle(engine, task);
   assert.equal(task.status, 'ready');
-  const before = await git(repo, ['rev-parse', 'main']); project.risk.mode = 'ask';
+  Object.assign(project.risk, { mode: 'ask', landingChecks: ['unit'] });
   const landing = await live.landings.create({ runIds: [task.id] });
-  await until(() => live.interactions.pending.has(landing.id));
-  live.interactions.answer(landing.id, { requestId: landing.interactions.at(-1).id, answers: { risk: 'Revise the plan' } });
-  await settle(engine, landing); assert.equal(landing.status, 'blocked');
-  assert.equal(await git(repo, ['rev-parse', 'main']), before);
-});
-
-test('a typed answer to a landing fallback stops it and the task can land again', async t => {
-  const { live, engine, project, repo } = await fixture(t, options => {
-    writeFileSync(join(options.workspace, 'value.txt'), 'changed'); return completed;
-  });
-  const task = await live.create({ projectId: project.id, input: 'Change value' }); await settle(engine, task);
-  assert.equal(task.status, 'ready'); project.risk.mode = 'ask';
-  const before = await git(repo, ['rev-parse', 'main']);
-  const landing = await live.landings.create({ runIds: [task.id] });
-  await until(() => live.interactions.pending.has(landing.id));
-  const request = landing.interactions.at(-1);
-  assert.deepEqual(request.questions[0].options.map(option => option.label), ['Run all configured checks (Recommended)', 'Stop the landing']);
-  live.interactions.answer(landing.id, { requestId: request.id, answers: { risk: 'Yes, go ahead' } });
-  await settle(engine, landing); assert.equal(landing.status, 'blocked');
-  assert.match(landing.events.at(-1).message, /Land the task again/);
-  assert.equal(await git(repo, ['rev-parse', 'main']), before);
-  const retry = await live.landings.create({ runIds: [task.id] });
-  await until(() => live.interactions.pending.has(retry.id));
-  live.interactions.answer(retry.id, { requestId: retry.interactions.at(-1).id, answers: { risk: 'Run all configured checks (Recommended)' } });
-  await settle(engine, retry); assert.equal(retry.status, 'ready', JSON.stringify(retry.events));
-  assert.notEqual(await git(repo, ['rev-parse', 'main']), before);
+  await settle(engine, landing);
+  assert.equal(landing.status, 'ready', JSON.stringify(landing.events.map(event => event.message)));
+  assert.equal(live.interactions.pending.has(landing.id), false); assert.deepEqual(landing.interactions ?? [], []);
+  assert.deepEqual(landing.checks.map(check => [check.name, check.status]), [['lint', 'skipped'], ['unit', 'passed']]);
+  assert.equal(await git(repo, ['rev-parse', 'main']), landing.headSha);
+  assert.ok(landing.events.some(event => event.message === 'Skipped by landing checks: lint.'), JSON.stringify(landing.events.map(event => event.message)));
 });

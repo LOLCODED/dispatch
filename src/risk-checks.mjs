@@ -3,7 +3,7 @@ import { digest } from './local-tools.mjs';
 import { workspaceGit } from './plain-folder.mjs';
 import { checkScope } from './check-scope.mjs';
 import { changeFlags } from './flags.mjs';
-import { riskEnabled, riskLevel, minimumChecks } from './risk-policy.mjs';
+import { riskEnabled, riskLevel, minimumChecks, landingChecks } from './risk-policy.mjs';
 
 const approved = new Set(['agent', 'operator', 'all-checks']);
 const text = (value, name, limit = 2000) => {
@@ -108,6 +108,7 @@ export class RiskChecks {
   }
   async selection(run, signal) {
     if (!riskEnabled(run.project)) return null;
+    if (run.kind === 'landing') return this.landingSelection(run);
     await this.decided(run, signal);
     const record = run.riskAssessments?.at(-1);
     const current = record && record.attempt === run.attempt && record.revision === run.revision && record.recipeDigest === this.live.protectedRecipe(run) && record.policyDigest === policyDigest(run);
@@ -129,20 +130,24 @@ export class RiskChecks {
     run.riskSelection = { assessmentId: record.id, revision: run.revision, attempt: run.attempt, status: record.status, reason, checks: [...checks] };
     return { scoped: true, matched: [], steps: run.project.validation.filter(step => checks.has(step.id)), skipped: run.project.validation.filter(step => !checks.has(step.id)), reason };
   }
-  // A landing has no agent session to submit a revised assessment, so its only way forward is landing again.
+  // A landing has no agent session to assess risk, so it runs the repository's landing checks without asking.
+  landingSelection(run) {
+    const checks = new Set(landingChecks(run.project.risk, run.project.validation.map(step => step.id)));
+    const reason = `Landing runs the repository's landing checks: ${[...checks].join(', ') || 'none'}.`;
+    return { scoped: true, matched: [], steps: run.project.validation.filter(step => checks.has(step.id)), skipped: run.project.validation.filter(step => !checks.has(step.id)), reason, skipReason: 'Skipped: not one of the repository\'s landing checks.', skippedBy: 'landing checks' };
+  }
   async approveFallback(run, record, fallback, signal) {
-    const label = record?.manualReview ? 'Review passed; run all checks (Recommended)' : 'Run all configured checks (Recommended)', landing = run.kind === 'landing';
-    const retry = landing ? 'Nothing landed. Land the task again to run its checks.' : 'Submit a new assessment.';
+    const label = record?.manualReview ? 'Review passed; run all checks (Recommended)' : 'Run all configured checks (Recommended)';
     fallback.approval = 'pending';
     try {
       const result = await this.live.interactions.request(run, { kind: 'question', source: 'risk', riskAssessmentId: fallback.id, questions: [{ id: 'risk', header: 'Testing fallback',
-        question: `${fallback.reason}\nChecks: ${fallback.checks.join(', ')}.\n${record?.manualReview ? `Repeat this review on the current revision before approving: ${record.manualReview}${previewUrl(run) ? `\nLive preview: ${previewUrl(run)}` : ''}` : landing ? 'Approve the full check list for the combined result, or stop the landing.' : 'Approve the full check list for this revision or ask for a revised plan.'}`,
+        question: `${fallback.reason}\nChecks: ${fallback.checks.join(', ')}.\n${record?.manualReview ? `Repeat this review on the current revision before approving: ${record.manualReview}${previewUrl(run) ? `\nLive preview: ${previewUrl(run)}` : ''}` : 'Approve the full check list for this revision or ask for a revised plan.'}`,
         options: [{ label, description: `Approve all checks. ${this.estimate(run, fallback.checks)}` },
-          landing ? { label: 'Stop the landing', description: 'Nothing lands. You can land the task again later.' } : { label: 'Revise the plan', description: 'Request a revised assessment. Estimated time depends on the requested changes.' }] }] }, signal);
+          { label: 'Revise the plan', description: 'Request a revised assessment. Estimated time depends on the requested changes.' }] }] }, signal);
       const answer = run.interactions?.findLast(item => item.riskAssessmentId === fallback.id)?.answers?.risk ?? result.answers?.risk?.answers?.[0];
       fallback.answer = String(answer ?? '').slice(0, 4000);
-      if (answer !== label) { fallback.approval = 'rejected'; return { blocked: true, reason: `The fallback testing plan was not approved. ${retry}` }; }
-      if (await this.live.tree(run, signal) !== run.revision) { fallback.approval = 'stale'; return { blocked: true, reason: `The worktree changed during approval. ${retry}` }; }
+      if (answer !== label) { fallback.approval = 'rejected'; return { blocked: true, reason: 'The fallback testing plan was not approved. Submit a new assessment.' }; }
+      if (await this.live.tree(run, signal) !== run.revision) { fallback.approval = 'stale'; return { blocked: true, reason: 'The worktree changed during approval. Submit a new assessment.' }; }
       fallback.approval = 'operator';
       if (record?.manualReview) { fallback.manualReview = record.manualReview; fallback.manualReviewPassed = true; }
       return null;
