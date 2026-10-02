@@ -1,0 +1,30 @@
+import { test, expect } from '@playwright/test';
+
+test('first run walks through setup once and docks into home', { tag: '@setup' }, async ({ page, request }) => {
+  await request.post('/api/providers', { data: { id: 'codex', enabled: true } });
+  let completed = false;
+  page.on('request', sent => { if (sent.url().endsWith('/api/setup/complete')) completed = true; });
+  await page.route('**/api/workspace', async route => { const response = await route.fetch(); await route.fulfill({ response, json: { ...(await response.json()), setupNeeded: !completed } }); });
+  await page.goto('/');
+  await expect(page).toHaveURL(/\/welcome$/);
+  await expect(page.getByRole('heading', { name: 'Which agents should dispatch use?' })).toBeVisible();
+  await expect(page.locator('.masthead')).toHaveCount(0);
+  await expect(page.getByRole('switch', { name: 'Codex' })).toBeChecked();
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await expect(page.getByRole('heading', { name: 'How should a run look?' })).toBeVisible();
+  await page.getByRole('button', { name: /^Vibe/ }).click();
+  await expect(page.getByRole('button', { name: /^Vibe/ })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByText('Pick what fills the run page').click();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('heading', { name: 'Where do your tickets live?' })).toBeVisible();
+  await expect(page.getByRole('switch', { name: 'Example Forge' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Skip setup' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'dispatch', exact: true }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.locator('.reveal')).toHaveCount(0);
+  await expect(page.locator('.masthead .brand')).toBeVisible();
+  expect(completed).toBe(true);
+  expect(await page.evaluate(() => localStorage.getItem('dispatch-run-layout'))).toBe('vibe');
+  await page.reload();
+  await expect(page).toHaveURL(/\/$/);
+});

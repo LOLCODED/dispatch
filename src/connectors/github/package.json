@@ -1,0 +1,7 @@
+{
+  "name": "dispatch-connector-github",
+  "private": true,
+  "description": "Pushes task branches, opens pull requests and reads their checks and reviews through the GitHub CLI.",
+  "type": "module",
+  "dispatch": { "connector": "./index.mjs" }
+}
