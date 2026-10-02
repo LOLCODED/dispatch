@@ -267,3 +267,25 @@ test('a rejected landing testing plan cannot move the target branch', async t =>
   await settle(engine, landing); assert.equal(landing.status, 'blocked');
   assert.equal(await git(repo, ['rev-parse', 'main']), before);
 });
+
+test('a typed answer to a landing fallback stops it and the task can land again', async t => {
+  const { live, engine, project, repo } = await fixture(t, options => {
+    writeFileSync(join(options.workspace, 'value.txt'), 'changed'); return completed;
+  });
+  const task = await live.create({ projectId: project.id, input: 'Change value' }); await settle(engine, task);
+  assert.equal(task.status, 'ready'); project.risk.mode = 'ask';
+  const before = await git(repo, ['rev-parse', 'main']);
+  const landing = await live.landings.create({ runIds: [task.id] });
+  await until(() => live.interactions.pending.has(landing.id));
+  const request = landing.interactions.at(-1);
+  assert.deepEqual(request.questions[0].options.map(option => option.label), ['Run all configured checks (Recommended)', 'Stop the landing']);
+  live.interactions.answer(landing.id, { requestId: request.id, answers: { risk: 'Yes, go ahead' } });
+  await settle(engine, landing); assert.equal(landing.status, 'blocked');
+  assert.match(landing.events.at(-1).message, /Land the task again/);
+  assert.equal(await git(repo, ['rev-parse', 'main']), before);
+  const retry = await live.landings.create({ runIds: [task.id] });
+  await until(() => live.interactions.pending.has(retry.id));
+  live.interactions.answer(retry.id, { requestId: retry.interactions.at(-1).id, answers: { risk: 'Run all configured checks (Recommended)' } });
+  await settle(engine, retry); assert.equal(retry.status, 'ready', JSON.stringify(retry.events));
+  assert.notEqual(await git(repo, ['rev-parse', 'main']), before);
+});
