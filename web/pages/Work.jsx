@@ -89,7 +89,7 @@ export function Work() {
     <AnimatePresence>{!showHistory && !historyLeaving && (runs.length > 0 || savedTasks.length > 0) && <HistoryCue total={total} active={view.active.length} decisions={view.decision.length} onOpen={openHistory}/>}</AnimatePresence>
     {/* The composer recenters only after the list has left, so it never measures a layout that still contains the list. */}
     <AnimatePresence onExitComplete={() => setHistoryLeaving(false)}>{showHistory && <motion.section ref={historyRef} id="tasks" key="history" className="activity" onAnimationComplete={() => { if (showHistory) { historySettled.current = true; scrollToHistory(); } }} initial={{ opacity: 0, y: 48 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 24, transition: { duration: 0.2, ease: 'easeIn' } }}>
-      <TaskBoard runs={runs} tasks={savedTasks} board={state.board} projects={state.projects} onEdit={setEditing}/>
+      <TaskBoard runs={runs} tasks={savedTasks} board={state.board} onEdit={setEditing}/>
     </motion.section>}</AnimatePresence>
   </main>;
 }

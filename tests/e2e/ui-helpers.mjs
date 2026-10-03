@@ -28,20 +28,16 @@ export async function openTimeline(page) {
   return timeline;
 }
 
+// The composer has no repository picker: naming a repository in the ticket text is how a task targets it.
 export async function answerRepository(page, name) {
-  const question = page.getByLabel('Repository question'), picker = page.getByLabel('Repository', { exact: true });
-  await expect(question.or(picker).first()).toBeVisible();
-  if (await question.count()) await question.getByRole('button', { name, exact: true }).click();
-  else if (!(await picker.textContent()).includes(name)) { await selectChoice(page, 'Repository', { label: name }); await page.keyboard.press('Escape'); }
-  await expect(picker).toContainText(name);
+  const task = page.getByLabel('Ticket or instructions'), text = await task.inputValue();
+  if (!text.includes(name)) await task.fill(`${text} (${name})`);
 }
 
-export async function tickRepositories(page, names) {
-  const picker = page.getByLabel('Repository', { exact: true });
-  await picker.click();
-  for (const name of names) await page.getByRole('option', { name, exact: true }).click();
-  await page.keyboard.press('Escape');
-  for (const name of names) await expect(picker).toContainText(name);
+export async function answerRepositoryQuestion(page, name) {
+  const question = page.getByLabel('Repository question');
+  await question.getByRole('button', { name, exact: true }).click();
+  await expect(question).toHaveCount(0);
 }
 
 export const exportRun = async (request, id) => (await (await request.get(`/api/runs/${id}/export`)).json()).run;

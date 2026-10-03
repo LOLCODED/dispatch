@@ -4,7 +4,7 @@ import { parseArgs } from 'node:util';
 import { resolve } from 'node:path';
 import { text } from 'node:stream/consumers';
 import { setTimeout as delay } from 'node:timers/promises';
-import { taskProject, taskProjects } from '../src/repository.mjs';
+import { projectForPath, taskProject, taskProjects } from '../src/repository.mjs';
 import { InstallError, install, startService, stopService, update } from './install.mjs';
 
 const usage = `Usage:
@@ -14,7 +14,8 @@ const usage = `Usage:
       Stop the installed service. Refuses while runs are working unless --force; queued runs stay queued.
   dispatch add [--repo <name|path>[,<name|path>...] | --repo all] [--answer] [instructions...]
       Save a task to dispatch's Todo list. Reads instructions from stdin when none are given.
-      The repository is --repo, else the one containing the current folder, else the one the text names.
+      The repository is --repo, else the one containing the current folder, else the one the text
+      names, else dispatch home, where the agent asks before adding a repository.
       Several repositories (first one primary) give the task a worktree in each; "all" lets the agent decide.
   dispatch tasks [--repo <name|path>]
       List saved tasks and their state.
@@ -32,11 +33,13 @@ const usage = `Usage:
       permissions; repositories still read its tickets only after you enable it for them.
   dispatch install [--ref <tag>] [--port 4317] [--dir ~/.local/share/dispatch]
       From a dispatch checkout: clone it at the latest vX.Y.Z tag, build it, run it as a user service
-      (systemd or launchd) with its own data directory, and link this command into ~/.local/bin.
+      (systemd or launchd) with its data in ~/.dispatch (under --dir when given), and link this
+      command into ~/.local/bin.
   dispatch update [--ref <tag>] [--force]
       Fetch the newest tag from the checkout it was installed from, rebuild and restart.
       While runs are working it holds the queue, waits for them to finish, then updates;
       queued runs continue after the restart. --force updates now and interrupts working runs.
+      Data still in the old <dir>/data moves to ~/.dispatch once, with its worktrees re-linked.
 
 Talks to a running dispatch at DISPATCH_URL (default http://127.0.0.1:\${PORT:-4317}).`;
 
@@ -67,15 +70,16 @@ function chooseProjects(projects, selection) {
   return choice;
 }
 
-const repositoryBody = choice => choice.all ? { projectIds: 'all' } : choice.projects.length > 1 ? { projectId: choice.projects[0].id, projectIds: choice.projects.map(project => project.id) } : { projectId: choice.projects[0].id };
-const repositoryLabel = choice => choice.all ? 'Saved (agent decides)' : `Saved to ${choice.projects.map(project => project.name).join(', ')}`;
+const repositoryBody = choice => choice.auto ? {} : choice.all ? { projectIds: 'all' } : choice.projects.length > 1 ? { projectId: choice.projects[0].id, projectIds: choice.projects.map(project => project.id) } : { projectId: choice.projects[0].id };
+const repositoryLabel = (choice, task, projects) => choice.auto ? `Saved to ${projects.find(project => project.id === task.projectId)?.name ?? 'dispatch home'}` : choice.all ? 'Saved (agent decides)' : `Saved to ${choice.projects.map(project => project.name).join(', ')}`;
 
 async function add({ values, positionals }) {
   const input = (positionals.length ? positionals.join(' ') : process.stdin.isTTY ? '' : await text(process.stdin)).trim();
   if (!input) throw new CliError('Give the task instructions as arguments or on stdin.');
-  const choice = chooseProjects(await api('/api/projects'), { repo: values.repo, cwd: resolve('.'), input });
+  const projects = await api('/api/projects'), cwd = resolve('.');
+  const choice = values.repo || projectForPath(cwd, projects) ? chooseProjects(projects, { repo: values.repo, cwd, input }) : { auto: true };
   const task = await api('/api/tasks', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...repositoryBody(choice), input, kind: values.answer ? 'answer' : 'change' }) });
-  console.log(`${repositoryLabel(choice)}: ${task.title}\n${base}/  (task ${task.id})`);
+  console.log(`${repositoryLabel(choice, task, projects)}: ${task.title}\n${base}/  (task ${task.id})`);
 }
 
 async function tasks({ values }) {

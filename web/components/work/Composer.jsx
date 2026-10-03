@@ -1,18 +1,16 @@
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowUpRight, FolderPlus, GitBranch, Plus, X } from 'lucide-react';
+import { ArrowUpRight, FolderPlus, GitBranch, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { CommandTextarea } from '@/components/CommandTextarea';
 import { IconButton } from '@/components/IconButton';
 import { ModelPicker } from '@/components/ModelPicker';
 import { RepositoryQuestion } from '@/components/work/RepositoryQuestion';
-import { FolderPicker, RepositoryPicker, useFolderTarget, withLinked } from '@/components/work/ComposerTargets';
-import { blankSelection } from '@/components/work/RepositoryMultiSelect';
+import { FolderPicker, useFolderTarget, withLinked } from '@/components/work/ComposerTargets';
 import { ForgetCard } from '@/components/brain/ForgetCard';
 import { ConnectorQuestion } from '@/components/work/ConnectorQuestion';
 import { parseCommand } from '@/lib/commands.mjs';
-import { agentCanDecide, agentPrimary, resolveRepository } from '@/lib/repository.mjs';
 import { canAddProvider } from '@/lib/providers.mjs';
 import { useAction } from '@/lib/use-action';
 import { api, useWorkspace, preference, savePreference, navigate } from '@/lib/workspace';
@@ -58,6 +56,8 @@ function Feedback({ notice, error, question, offer, forget, projects, busy, onCh
   </div>;
 }
 
+const blankSelection = { mode: 'auto', ids: [] };
+
 async function fileInto(key, folderId) {
   if (!folderId) return;
   try { await api(`/api/board/items/${key}`, { folderId }); } catch { /* Filing is best-effort; the work already exists and can be moved from the list. */ }
@@ -71,13 +71,8 @@ export function Composer({ taskRef, hints }) {
   const [notice, setNotice] = useState(''), [announcement, setAnnouncement] = useState(''), [selection, setSelection] = useState(blankSelection), [offer, setOffer] = useState(null), [forget, setForget] = useState(null);
   const attachments = useAttachments('home', setError), reading = attachments.documents.reading;
   const command = parseCommand(input), asksRepository = !command || command.name === 'todo';
-  const typed = selection.mode === 'manual' && !selection.ids.length ? resolveRepository(input, state.projects, 'auto') : null;
-  const linkInput = /^https?:\/\/\S+$/i.test(input.trim()) || /^\s*(?:[A-Z][A-Z0-9]*[-#])?\d{1,9}\s*$/i.test(input);
-  const agentDecides = selection.mode === 'agent' || Boolean(typed?.question && !linkInput && agentCanDecide(state.projects));
-  const effective = agentDecides ? { mode: 'agent', ids: [agentPrimary(input, state.projects).project?.id].filter(Boolean) } : selection.ids.length ? selection : { mode: 'manual', ids: typed?.project ? withLinked(typed.project.id, state.projects) : [] };
-  const selected = effective.ids[0], folder = useFolderTarget(state, input);
-  const repositoryQuestion = question ?? (typed?.question && !agentDecides && input.trim() && state.projects.length ? { text: typed.question, candidates: typed.candidates ?? state.projects } : null);
-  const canDispatch = command?.name === 'todo' ? Boolean(selected && command.text) : Boolean(command || state.projects.length && !question && (selected || !effective.ids.length && effective.mode === 'manual' && linkInput));
+  const selected = selection.ids[0], folder = useFolderTarget(state, input);
+  const canDispatch = command?.name === 'todo' ? Boolean(command.text) : Boolean(command || !question);
   const changeDraft = (visible, attachments) => {
     if (composerText(visible, attachments).length > ticketTextLimit) { setError('Ticket text including attachments must be at most 12,000 characters.'); return; }
     draft.save(visible, attachments); setQuestion(null); setOffer(null); setError(''); setNotice(''); setAnnouncement('');
@@ -94,8 +89,7 @@ export function Composer({ taskRef, hints }) {
     changeDraft(next.visible, next.attachments);
   };
   const chooseProject = id => { setSelection(id === 'all' ? { mode: 'agent', ids: [] } : { mode: 'manual', ids: withLinked(id, state.projects) }); setQuestion(null); setOffer(null); setError(''); };
-  const pickRepositories = next => { setSelection(next.mode === 'manual' && (!effective.ids.length || selection.mode !== 'agent' && agentDecides) && next.ids.length === 1 ? { mode: 'manual', ids: withLinked(next.ids[0], state.projects) } : next); setQuestion(null); };
-  const request = { projectId: selected ?? 'auto', ...(effective.mode === 'agent' ? { projectIds: 'all' } : effective.ids.length ? { projectIds: effective.ids } : {}), input, execution: settings.choice ?? 'auto' };
+  const request = { projectId: selected ?? 'auto', ...(selection.mode === 'agent' ? { projectIds: 'all' } : selection.ids.length ? { projectIds: selection.ids } : {}), input, execution: settings.choice ?? 'auto' };
   const runCommand = () => perform(async () => {
     if (!command.text) { navigate('/brain'); return; }
     const result = await api('/api/brain/forget', { text: command.text, ...(selected ? { projectId: selected } : {}) });
@@ -114,13 +108,12 @@ export function Composer({ taskRef, hints }) {
     const enable = () => choice === 'global' ? api('/api/brain', { kind: 'connector', scope: 'global', key: `connector.${question.tracker}` }) : api(`/api/projects/${question.projectId}/connectors`, { [question.tracker]: { enabled: true } });
     perform(async () => { await enable(); window.dispatchEvent(new Event('dispatch-refresh')); setQuestion(null); chooseProject(question.projectId); await dispatch({ projectId: question.projectId, projectIds: withLinked(question.projectId, state.projects) }); });
   };
-  const saveTask = (text = input) => perform(async () => { const task = await api('/api/tasks', { ...request, input: text, projectId: selected, ...savedTaskImages(attachments) }); await fileInto(task.id, folder.folderId); updateInput(''); attachments.clear(); setNotice('Task saved to Todo.'); window.dispatchEvent(new Event('dispatch-refresh')); });
+  const saveTask = (text = input) => perform(async () => { const task = await api('/api/tasks', { ...request, input: text, ...savedTaskImages(attachments) }); await fileInto(task.id, folder.folderId); updateInput(''); attachments.clear(); setNotice('Task saved to Todo.'); window.dispatchEvent(new Event('dispatch-refresh')); });
   const openRepositoryPath = async (path, select = chooseProject) => {
     let info; try { info = await api('/api/projects/inspect', { repositoryPath: path }); } catch (failure) { if (/does not exist/.test(failure.message)) { setOffer({ path, access: true }); return; } throw failure; }
     const saved = state.projects.find(project => project.repositoryPath === info.repositoryPath); if (saved) select(saved.id); else navigate(`/admin/projects/new?path=${encodeURIComponent(info.repositoryPath)}`);
   };
   const chooseRepositoryPath = path => perform(() => openRepositoryPath(path));
-  const pickRepositoryFolder = () => perform(async () => { const { path } = await api('/api/folders/pick', {}); if (path) await openRepositoryPath(path); });
   const createRepository = git => perform(async () => { const project = await api('/api/projects/create', { repositoryPath: offer.path, confirmed: true, access: offer.access ? 'full' : 'inherit', git }); window.dispatchEvent(new Event('dispatch-refresh')); chooseProject(project.id); setNotice(`Created ${project.name}${git ? '' : ' as a plain folder'}; the browser smoke check is its only check until you add more.`); });
   const readsTracker = ticketReader(state.connectors, state.projects.find(project => project.id === selected)?.connectors);
   const placeholder = readsTracker ? `Paste a ${readsTracker.name} link, or describe the change…` : 'Describe a change or ask a question… (/todo saves it for later, /forget edits memory)';
@@ -137,10 +130,10 @@ export function Composer({ taskRef, hints }) {
         <div className="composer-pickers">
           <ModelPicker value={settings.choice} models={state.modelCatalog?.models ?? []} disabled={busy} addProvider={canAddProvider(state.modelCatalog, state.providerSettings)} onChange={settings.chooseModel}/>
         </div>
-        <div className="composer-actions">{state.projects.length ? <>
+        <div className="composer-actions">
           <AttachButton attachments={attachments} disabled={busy}/>
           <Button type="submit" disabled={busy || reading || !canDispatch}>{busy ? 'dispatching…' : command?.name === 'todo' ? 'Save task' : command ? 'Forget' : 'dispatch'}<ArrowUpRight aria-hidden="true"/></Button>
-        </> : <IconButton label="Connect repository" icon={Plus} variant="default" href="/admin/projects/new"/>}</div>
+        </div>
       </div>
     </form>
     {editingText !== null && <AttachmentDialog editor title={`Edit pasted text ${editingText + 1}`} onClose={() => setEditingText(null)}>
@@ -149,12 +142,11 @@ export function Composer({ taskRef, hints }) {
     </AttachmentDialog>}
     <motion.div layout="position" className="composer-note">
       {asksRepository && <div className="composer-pickers composer-targets">
-        {state.projects.length > 0 && <RepositoryPicker projects={state.projects} value={effective} disabled={busy} onChange={pickRepositories} onChooseFolder={pickRepositoryFolder} onUsePath={chooseRepositoryPath}/>}
         <FolderPicker target={folder} disabled={busy}/>
       </div>}
       {hints}
     </motion.div>
     <p className="sr-only" role="status">{announcement}</p>
-    <Feedback notice={notice} error={error} question={asksRepository ? repositoryQuestion : null} offer={offer} forget={forget} projects={state.projects} busy={busy} onChoose={chooseProject} onUsePath={chooseRepositoryPath} onOfferChange={setOffer} onCreate={createRepository} onForgetDone={() => { setForget(null); updateInput(''); }} onConnector={chooseConnector}/>
+    <Feedback notice={notice} error={error} question={asksRepository ? question : null} offer={offer} forget={forget} projects={state.projects} busy={busy} onChoose={chooseProject} onUsePath={chooseRepositoryPath} onOfferChange={setOffer} onCreate={createRepository} onForgetDone={() => { setForget(null); updateInput(''); }} onConnector={chooseConnector}/>
   </>;
 }

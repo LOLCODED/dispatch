@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react';
-import { RepositoryMultiSelect } from '@/components/work/RepositoryMultiSelect';
 import { FolderDropdown } from '@/components/work/FolderBar';
 import { boardView, folderTree } from '@/lib/board.mjs';
 import { suggestFolder } from '@/lib/folder-suggestion.mjs';
@@ -31,10 +30,6 @@ export function useFolderTarget(state, input) {
 export function withLinked(id, projects) {
   const project = projects.find(item => item.id === id);
   return [id, ...(project?.linked ?? []).filter(linked => linked !== id && projects.some(item => item.id === linked))];
-}
-
-export function RepositoryPicker({ projects, value, disabled, onChange, onChooseFolder, onUsePath }) {
-  return <><label className="sr-only" htmlFor="composer-repository">Repository</label><RepositoryMultiSelect projects={projects} value={value} disabled={disabled} onChange={onChange} onChooseFolder={onChooseFolder} onUsePath={onUsePath}/></>;
 }
 
 export function FolderPicker({ target, disabled }) {

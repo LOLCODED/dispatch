@@ -1,4 +1,4 @@
-import { answerRepository, exportRun, readyRun, selectChoice, view } from './ui-helpers.mjs';
+import { answerRepository, answerRepositoryQuestion, exportRun, readyRun, selectChoice, view } from './ui-helpers.mjs';
 import { test, expect } from '@playwright/test';
 
 test('central composer drives a real worktree, streams checks, shows diff and continues the session', { tag: '@run' }, async ({ page }, testInfo) => {
@@ -255,24 +255,25 @@ test('the worker decides a question needs no change: the task ends as an answer 
 test('pasting a tracker link offers to enable the connector, and a ready run with a PR offers to move the work item', { tag: '@run' }, async ({ page, request }) => {
   const projects = await (await request.get('/api/projects')).json();
   const browser = projects.find(project => project.name === 'Browser test repository'), tracker = projects.find(project => project.name === 'Tracker repository');
+  await request.post(`/api/projects/${tracker.id}/connectors`, { data: { example: { enabled: false } } });
+  const dispatchTo = async name => { await page.getByRole('button', { name: 'dispatch', exact: true }).click(); await answerRepositoryQuestion(page, name); await page.getByRole('button', { name: 'dispatch', exact: true }).click(); };
   await page.goto('/');
   await page.getByLabel('Ticket or instructions').fill('https://tracker.example/demo/issues/31');
-  await answerRepository(page, 'Browser test repository');
-  await page.getByRole('button', { name: 'dispatch', exact: true }).click();
+  await dispatchTo('Browser test repository');
   const card = page.getByLabel('Connector question');
   await expect(card).toContainText('does not read Example Tracker for Browser test repository');
   await card.getByRole('button', { name: 'Paste the ticket text instead' }).click();
   await expect(card).toBeHidden(); await expect(page.getByLabel('Ticket or instructions')).toHaveValue('');
   expect((await (await request.get('/api/projects')).json()).find(project => project.id === browser.id).connectors.example?.enabled).not.toBe(true);
   await page.getByLabel('Ticket or instructions').fill('https://tracker.example/demo/issues/32');
-  await answerRepository(page, 'Browser test repository');
-  await page.getByRole('button', { name: 'dispatch', exact: true }).click();
+  await dispatchTo('Browser test repository');
   await page.getByLabel('Connector question').getByRole('button', { name: 'Read Example Tracker tickets for Browser test repository' }).click();
   await expect(page).toHaveURL(/\/runs\//);
   const started = await exportRun(request, page.url().split('/runs/')[1]);
   expect(started.ticketId).toBe('EXAMPLE-32'); expect(started.ticket.tracker).toBe('example'); expect(started.project.connectors.example.enabled).toBe(true);
   expect((await (await request.get('/api/projects')).json()).find(project => project.id === browser.id).connectors.example.enabled).toBe(true);
   await request.post(`/api/projects/${browser.id}/connectors`, { data: { example: { enabled: false } } });
+  await request.post(`/api/projects/${tracker.id}/connectors`, { data: { example: { enabled: true } } });
   const run = await (await request.post('/api/runs', { data: { mode: 'live', projectId: tracker.id, input: 'https://tracker.example/demo/issues/400' } })).json();
   await expect.poll(async () => (await exportRun(request, run.id)).status, { timeout: 20000 }).toBe('ready');
   await page.goto(`/runs/${run.id}`);

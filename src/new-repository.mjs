@@ -25,6 +25,10 @@ export function newRepositoryTarget(value, root) {
 export async function createRepository(value, { root = homedir() } = {}) {
   const target = newRepositoryTarget(value, root);
   if (await insideRepository(dirname(target))) throw new InputError('That folder is inside an existing Git repository. Choose a folder outside it.');
+  return initRepository(target);
+}
+
+export async function initRepository(target) {
   const created = !existsSync(target);
   mkdirSync(target, { recursive: true });
   try {

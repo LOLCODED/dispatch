@@ -21,7 +21,7 @@ test('composer keeps only essential pickers and keyboard shortcuts preserve typi
   await page.goto('/');
   const task = page.getByLabel('Ticket or instructions');
   await expect(page.getByLabel('Model', { exact: true })).toBeVisible();
-  await expect(page.getByLabel('Repository', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('Repository', { exact: true })).toHaveCount(0);
   await expect(page.getByLabel('Execution mode', { exact: true })).toHaveCount(0);
   await expect(page.getByLabel('Repository options', { exact: true })).toHaveCount(0);
   await expect(page.getByLabel('Parallel workers', { exact: true })).toHaveCount(0);

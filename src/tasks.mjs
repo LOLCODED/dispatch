@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { modelChoice } from './execution.mjs';
 import { InputError } from './engine.mjs';
-import { agentPrimary } from './repository.mjs';
 import { taskRepositories } from './repository-selection.mjs';
+import { agentPrimary } from './repository.mjs';
+import { autoRepository, homeAndSaved } from './home-repository.mjs';
 import { latestRun } from './conversations.mjs';
 import { openRemaining, remainingTaskInput } from './remaining.mjs';
 import { TaskImages, decodeTaskImages } from './task-images.mjs';
@@ -35,11 +36,11 @@ export class Tasks {
     if (execution === null) throw new InputError('Choose Auto or a model.');
     return execution;
   }
-  // A saved task always knows its repositories: the agent-decides primary is fixed at save time from the text.
+  // A saved task always knows its repositories: an automatic or agent-decides primary is fixed at save time from the text.
   repositories(input, text) {
     const choice = taskRepositories(input, this.live.projects);
-    if (choice.mode === 'auto') throw new InputError('Choose a saved repository.');
-    const primary = choice.mode === 'agent' ? agentPrimary(text, this.live.projects).project : this.live.projects.find(project => project.id === choice.ids[0]);
+    const projects = this.live.projects, { home, saved } = homeAndSaved(projects, this.live.homePath);
+    const primary = choice.mode === 'manual' ? projects.find(project => project.id === choice.ids[0]) : choice.mode === 'agent' ? agentPrimary(text, saved).project : home && autoRepository(text, projects, home).project;
     if (!primary) throw new InputError('Choose a saved repository.');
     return { projectId: primary.id, projectIds: choice.mode === 'agent' ? 'all' : choice.inherit ? undefined : choice.ids };
   }

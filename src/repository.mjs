@@ -4,14 +4,28 @@ const escape = value => value.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&
 
 // Match whole names/paths only. Ambiguous mentions must never select a target.
 function mentionIndex(text, project) {
-  const indexes = [project.repositoryPath, project.repositoryPath?.split('/').at(-1), project.name].filter(Boolean)
-    .map(value => text.search(new RegExp(`(^|[^\\p{L}\\p{N}_/.-])${escape(value)}(?=$|[^\\p{L}\\p{N}_/.-])`, 'u'))).filter(index => index >= 0);
-  return indexes.length ? Math.min(...indexes) : -1;
+  const spans = mentionSpans(text, project);
+  return spans.length ? Math.min(...spans.map(span => span.start)) : -1;
 }
 
 export function mentionedProjects(input, projects) {
   const text = input.toLowerCase();
   return projects.filter(project => mentionIndex(text, project) >= 0);
+}
+
+function mentionSpans(text, project) {
+  return [project.repositoryPath, project.repositoryPath?.split('/').at(-1), project.name].filter(Boolean)
+    .flatMap(value => [...text.matchAll(new RegExp(`(^|[^\\p{L}\\p{N}_/.-])${escape(value)}(?=$|[^\\p{L}\\p{N}_/.-])`, 'gu'))].map(match => {
+      const start = match.index + match[1].length;
+      return { start, end: start + value.length };
+    }));
+}
+
+// Like mentionedProjects, but a mention lying inside a longer mention of another repository does not count: "Second repository" names that repository, not one whose folder is "repository".
+export function namedProjects(input, projects) {
+  const text = input.toLowerCase(), found = projects.map(project => ({ project, spans: mentionSpans(text, project) })).filter(item => item.spans.length);
+  const inside = (span, other) => other.start <= span.start && span.end <= other.end && other.end - other.start > span.end - span.start;
+  return found.filter(item => !item.spans.every(span => found.some(other => other !== item && other.spans.some(wider => inside(span, wider))))).map(item => item.project);
 }
 
 export function mentionOrder(input, projects) {

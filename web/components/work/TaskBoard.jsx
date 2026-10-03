@@ -121,11 +121,11 @@ function useScope(folders) {
   return [folders.some(folder => folder.id === scope) ? scope : null, choose];
 }
 
-export function TaskBoard({ runs, tasks, board, projects, onEdit }) {
+export function TaskBoard({ runs, tasks, board, onEdit }) {
   const folders = board?.folders ?? [], [scope, setScope] = useScope(folders), controls = useListControls(taskSorts);
   const view = Object.fromEntries(Object.entries(boardView({ runs, tasks, board, folderId: scope })).map(([group, entries]) => [group, filterSort(entries, { query: controls.query, matches: entryMatches, compare: controls.compare })]));
   const resetKey = `${scope}|${controls.query}|${controls.sort}`, empty = !runs.length && !tasks.length;
-  if (empty) return <div className="empty"><ArrowUpRight aria-hidden="true"/><p>No work yet. {projects.length ? 'Drop a ticket above and give it a direction.' : <Link href="/admin/projects/new">Connect your first repository to get moving.</Link>}</p></div>;
+  if (empty) return <div className="empty"><ArrowUpRight aria-hidden="true"/><p>No work yet. Drop a ticket above and give it a direction.</p></div>;
   return <div className="task-board" role="region" aria-label="Tasks">
     <div className="board-toolbar"><FolderBar folders={folders} scope={scope} onScope={setScope}/><ListControls controls={controls} sorts={taskSorts} searchLabel="Search tasks" placeholder="Search tasks…"/></div>
     {controls.query.trim() && !Object.values(view).some(entries => entries.length) && <p className="muted">Nothing matches the search.</p>}

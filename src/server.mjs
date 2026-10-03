@@ -150,7 +150,8 @@ export function createServer(engine, { assetRoot = root, devFraming = false } = 
       if (req.method === 'GET' && path === '/api/tasks') return json(res, 200, tasks.list());
       if (req.method === 'POST' && path === '/api/tasks') {
         if (!req.headers['content-type']?.startsWith('application/json')) throw new InputError('Use application/json', 415);
-        return json(res, 201, tasks.save(await body(req, runBodyLimit)));
+        const input = await body(req, runBodyLimit); await live.prepareRepositories(input);
+        return json(res, 201, tasks.save(input));
       }
       const remainingPath = path.match(/^\/api\/runs\/([a-f0-9-]+)\/remaining$/);
       if (req.method === 'POST' && remainingPath) {

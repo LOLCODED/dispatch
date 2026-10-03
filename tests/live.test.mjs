@@ -270,15 +270,13 @@ test('questions pause the owner session and cancellation clears the pending resp
   }
 });
 
-test('Auto asks for an ambiguous repository before creating a run and accepts an explicit answer', async t => {
-  const { live, engine, project, turns } = await fixture(t);
+test('Auto starts an unnamed repository in dispatch home rather than guessing, and an explicit choice still wins', async t => {
+  const { live, engine, project } = await fixture(t);
   live.projects.push({ ...project, id: 'other', name: 'Other', repositoryPath: '/some/other' });
-  await assert.rejects(live.create({ projectId: 'auto', input: 'Change the value' }), error => {
-    assert.equal(error.status, 409); assert.equal(error.question.kind, 'repository'); assert.equal(error.question.candidates.length, 2); return true;
-  });
-  assert.equal(turns(), 0); assert.equal(engine.runs.length, 0); assert.equal(live.pending.size, 0);
-  const run = await live.create({ projectId: project.id, input: 'Change the value' }); await settle(engine, run);
-  assert.equal(run.status, 'ready'); assert.equal(run.repositorySelection.mode, 'manual');
+  const auto = await live.create({ projectId: 'auto', input: 'Change the value' }); await settle(engine, auto);
+  assert.equal(live.projects.find(item => item.id === auto.projectId).name, 'dispatch home'); assert.match(auto.repositorySelection.reason, /No repository named/);
+  const run = await live.create({ projectId: project.id, input: 'Change the value again' }); await settle(engine, run);
+  assert.equal(run.status, 'ready'); assert.equal(run.repositorySelection.mode, 'manual'); assert.equal(run.projectId, project.id);
 });
 
 test('Auto resolves tracker ticket text after read-only intake rather than guessing from its URL', async t => {

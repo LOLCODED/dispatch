@@ -1,19 +1,21 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { activeStatuses } from '../src/board-state.mjs';
+import { migrateData, serviceEnv } from './migrate-data.mjs';
 
 export const serviceName = 'dispatch';
 export const launchdLabel = 'dev.dispatch.server';
 
 export class InstallError extends Error {}
 
-export function installLayout({ dir = join(homedir(), '.local', 'share', 'dispatch'), port = 4317 } = {}) {
-  const root = resolve(dir);
-  return { root, app: join(root, 'app'), data: join(root, 'data'), log: join(root, 'server.log'), port: Number(port) };
+// Data defaults to ~/.dispatch so deleting that one folder resets dispatch; an explicit --dir keeps everything under it.
+export function installLayout({ dir, port = 4317 } = {}) {
+  const root = resolve(dir ?? join(homedir(), '.local', 'share', 'dispatch'));
+  return { root, app: join(root, 'app'), data: dir ? join(root, 'data') : join(homedir(), '.dispatch'), log: join(root, 'server.log'), port: Number(port) };
 }
 
 export function latestTag(tags) {
@@ -126,8 +128,8 @@ function serviceFile() {
   return join(homedir(), 'Library', 'LaunchAgents', `${launchdLabel}.plist`);
 }
 
-function writeService(layout) {
-  const spec = { layout, node: process.execPath, path: servicePath(process.env.PATH ?? '') };
+function writeService(layout, path = process.env.PATH ?? '') {
+  const spec = { layout, node: process.execPath, path: servicePath(path) };
   const file = serviceFile();
   mkdirSync(dirname(file), { recursive: true });
   if (servicePlatform() === 'systemd') {
@@ -205,6 +207,28 @@ export async function update({ dir, port, ref, force, runs, queue }) {
   let version;
   try { version = checkout(layout, ref); }
   catch (error) { if (held) await queue.release(); throw error; }
-  restartService();
-  console.log(`\nUpdated to ${version}. dispatch restarted on http://127.0.0.1:${layout.port}`);
+  const moved = dir ? null : moveData(layout);
+  if (!moved) restartService();
+  console.log(`\nUpdated to ${version}. dispatch restarted on http://127.0.0.1:${moved?.port ?? layout.port}`);
+}
+
+function haltService() {
+  if (servicePlatform() === 'systemd') output('systemctl', ['--user', 'stop', serviceName]);
+  else spawnSync('launchctl', ['bootout', `gui/${process.getuid()}/${launchdLabel}`]);
+}
+
+// An install made before data moved to ~/.dispatch is moved there once, while the update has the queue idle; the service keeps its port and PATH.
+function moveData(layout) {
+  const env = serviceEnv(readFileSync(installedServiceFile(), 'utf8')), from = env.DISPATCH_DATA_DIR;
+  if (!from || resolve(from) === layout.data || !existsSync(from)) return null;
+  if (existsSync(layout.data)) { console.log(`${layout.data} already exists, so data stays in ${from}. Move or remove one of them, then update again to switch.`); return null; }
+  const target = { ...layout, port: Number(env.PORT ?? layout.port) };
+  haltService();
+  let result;
+  try { result = migrateData(resolve(from), layout.data); }
+  catch (error) { startService(); throw new InstallError(`Data was not moved: ${error.message}`); }
+  writeService(target, env.PATH ?? process.env.PATH ?? '');
+  console.log(`Moved data from ${from} to ${layout.data}.`);
+  for (const line of result.failed) console.log(`Could not re-link worktree ${line}`);
+  return target;
 }

@@ -1,4 +1,4 @@
-import { answerRepository, exportRun, readyRun } from './ui-helpers.mjs';
+import { exportRun, readyRun } from './ui-helpers.mjs';
 import { test, expect } from '@playwright/test';
 
 test('live cancellation stays cancelled and does not produce handoff', { tag: '@tasks' }, async ({ page, request }) => {
@@ -13,7 +13,6 @@ test('saves a request without running it, survives reload, and starts it once fr
   const before = await (await request.get('/api/state')).json();
   await page.goto('/');
   await page.getByLabel('Ticket or instructions').fill('/todo Build a site <script>not executable</script>');
-  await answerRepository(page, before.projects[0].name);
   await page.getByRole('button', { name: 'Save task', exact: true }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Task saved' })).toBeVisible();
   expect((await (await request.get('/api/state')).json()).runs.length).toBe(before.runs.length);

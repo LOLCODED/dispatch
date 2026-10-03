@@ -17,19 +17,12 @@ test('the harness-owned browser smoke check starts the app, keeps a screenshot, 
   expect(record.checks.map(check => check.status)).toEqual(['failed', 'failed']); expect(record.checks[0].output).toMatch(/Page error: fixture page error/); expect(record.handoff).toBeNull();
 });
 
-test('the composer creates a new repository from a missing path, and its first run scaffolds and smoke-tests the app', { tag: '@smoke' }, async ({ page, request }) => {
+test('a repository created at a missing path starts with the smoke check, and a run naming it scaffolds and smoke-tests the app', { tag: '@smoke' }, async ({ page, request }) => {
   const state = await (await request.get('/api/state')).json(), path = state.projects[0].repositoryPath.replace(/repository$/, `created-${Date.now()}`);
-  await page.goto('/');
-  await page.getByLabel('Ticket or instructions').fill('Scaffold a small app somewhere new');
-  await page.getByLabel('Repository', { exact: true }).click(); await page.getByRole('option', { name: 'Type a path…', exact: true }).click();
-  await page.getByLabel('Repository path', { exact: true }).fill(path); await page.getByLabel('Repository path', { exact: true }).press('Enter');
-  const offer = page.getByRole('region', { name: 'New repository' }); await expect(offer).toContainText(path);
-  await expect(offer.getByRole('checkbox')).toBeChecked();
-  await offer.getByRole('button', { name: 'Create repository', exact: true }).click();
-  await expect(page.getByRole('status').filter({ hasText: /Created created-/ })).toBeVisible();
-  const project = (await (await request.get('/api/projects')).json()).find(item => item.repositoryPath === path);
+  const project = await (await request.post('/api/projects/create', { data: { repositoryPath: path, confirmed: true, access: 'full', git: true } })).json();
   expect(project.access).toBe('full'); expect(project.validation.map(step => step.kind)).toEqual(['browser-smoke']);
-  await expect(page.getByRole('button', { name: 'dispatch', exact: true })).toBeEnabled();
+  await page.goto('/');
+  await page.getByLabel('Ticket or instructions').fill(`Scaffold a small app somewhere new in ${project.name}`);
   const [created] = await Promise.all([page.waitForResponse(response => response.url().endsWith('/api/runs') && response.status() === 201), page.getByRole('button', { name: 'dispatch', exact: true }).click()]);
   const run = await created.json(); expect(run.access).toBe('full');
   await expect(page.locator('.run-state')).toContainText('Ready for review', { timeout: 30000 });

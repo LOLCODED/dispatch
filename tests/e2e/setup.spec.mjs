@@ -1,4 +1,4 @@
-import { answerRepository, ensureSecondRepository, readyRun, reveal, selectChoice, view } from './ui-helpers.mjs';
+import { answerRepository, ensureSecondRepository, exportRun, readyRun, reveal, selectChoice, view } from './ui-helpers.mjs';
 import { test, expect } from '@playwright/test';
 
 test('registers a repository once with explicitly approved check commands', { tag: '@setup' }, async ({ page, request }) => {
@@ -20,7 +20,6 @@ test('registers a repository once with explicitly approved check commands', { ta
   await page.getByRole('button', { name: 'node', exact: true }).click(); await expect(page.getByRole('button', { name: 'node', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: 'Save repository', exact: true }).click();
   await expect(page.getByLabel('Ticket or instructions')).toHaveValue('Preserve this draft during setup');
-  await expect(page.getByLabel('Repository question')).toContainText('Second repository');
   await page.reload(); await expect(page.getByLabel('Ticket or instructions')).toHaveValue('Preserve this draft during setup');
   const saved = (await (await request.get('/api/projects')).json()).find(project => project.name === 'Second repository');
   expect(saved.validation.map(step => step.id)).toEqual(['node']); expect(saved.validation[0].args).toEqual(['-e', 'process.exit(0)']); expect(saved.checkScopes).toEqual([{ id: 'text-only', paths: ['*.md', 'docs/**'], checks: ['node'] }]);
@@ -36,12 +35,11 @@ test('admin shows accurate token totals and history without changing user view',
   await page.getByRole('link', { name: 'All work', exact: true }).click(); await expect(page.getByLabel('Ticket or instructions')).toBeVisible();
 });
 
-test('selects repositories from local folders, typed paths and instructions without starting a run', { tag: '@setup' }, async ({ page, request }) => {
+test('browses local folders for a new repository, and the composer never asks for one before dispatch', { tag: '@setup' }, async ({ page, request }) => {
   await ensureSecondRepository(request);
   const state = await (await request.get('/api/state')).json(), project = state.projects[0];
   await page.goto('/');
   await page.getByLabel('Ticket or instructions').fill(`Update ${project.repositoryPath}`);
-  await expect(page.getByLabel('Repository', { exact: true })).toHaveAttribute('data-value', project.id);
   await page.goto('/admin/projects/new');
   await expect(page).toHaveURL(/\/admin\/projects\/new$/);
   await page.getByRole('button', { name: 'Browse folders', exact: true }).click();
@@ -58,8 +56,7 @@ test('selects repositories from local folders, typed paths and instructions with
   await page.goto('/');
   await expect(page.getByLabel('Ticket or instructions')).toHaveValue(`Update ${project.repositoryPath}`);
   await page.getByLabel('Ticket or instructions').fill('Update Browser test repository and Second repository');
-  await expect(page.getByRole('button', { name: 'dispatch', exact: true })).toBeDisabled();
-  await answerRepository(page, project.name);
+  await expect(page.getByLabel('Repository', { exact: true })).toHaveCount(0); await expect(page.getByLabel('Repository question')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'dispatch', exact: true })).toBeEnabled();
   expect((await (await request.get('/api/state')).json()).runs.length).toBe(state.runs.length);
 });
@@ -120,25 +117,18 @@ test('setup discovers models and the composer keeps an explicit model choice wit
   await expect(page.getByRole('slider', { name: 'Model reasoning' })).toHaveAttribute('data-value', 'low');
 });
 
-test('the composer asks which repository to use and the answer applies to that ticket only', { tag: '@setup' }, async ({ page, request }) => {
+test('a request naming no repository starts in dispatch home, and one naming a repository goes there', { tag: '@setup' }, async ({ page, request }) => {
   await ensureSecondRepository(request);
-  const before = await (await request.get('/api/state')).json();
-  await page.goto('/');
-  await page.getByLabel('Ticket or instructions').fill('Fix an unspecified screen');
-  await expect(page.getByLabel('Repository question')).toContainText('Which repository');
-  await expect(page.getByRole('button', { name: 'dispatch', exact: true })).toBeDisabled();
-  await page.getByRole('button', { name: 'Second repository', exact: true }).click();
-  await expect(page.getByLabel('Repository question')).toHaveCount(0);
-  await expect(page.getByLabel('Repository', { exact: true })).toContainText('Second repository');
-  await expect(page.getByRole('button', { name: 'dispatch', exact: true })).toBeEnabled();
-  await page.getByLabel('Ticket or instructions').pressSequentially(' quickly');
-  await expect(page.getByLabel('Repository question')).toHaveCount(0);
-  await expect(page.getByLabel('Repository', { exact: true })).toContainText('Second repository');
-  await page.getByLabel('Ticket or instructions').fill('');
-  await page.getByLabel('Ticket or instructions').fill('Fix another unspecified screen');
-  await expect(page.getByLabel('Repository question')).toContainText('Which repository');
-  await page.reload(); await expect(page.getByLabel('Repository question')).toContainText('Which repository');
-  expect((await (await request.get('/api/state')).json()).runs.length).toBe(before.runs.length);
+  const dispatched = async text => {
+    await page.goto('/'); await page.getByLabel('Ticket or instructions').fill(text);
+    const [response] = await Promise.all([page.waitForResponse(item => item.url().endsWith('/api/runs') && item.status() === 201), page.getByRole('button', { name: 'dispatch', exact: true }).click()]);
+    await expect(page.locator('.run-state')).toContainText('Ready for review');
+    return exportRun(request, (await response.json()).id);
+  };
+  const vague = await dispatched('Fix an unspecified screen');
+  expect(vague.project.name).toBe('dispatch home'); expect(vague.repositorySelection.reason).toMatch(/No repository named/);
+  const named = await dispatched('Fix the Second repository screen');
+  expect(named.project.name).toBe('Second repository');
 });
 
 test('turning on another provider checks it, lists its models and routes a dispatch to it', { tag: '@setup' }, async ({ page, request }) => {
