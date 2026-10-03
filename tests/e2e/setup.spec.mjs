@@ -45,6 +45,7 @@ test('selects repositories from local folders, typed paths and instructions with
   await page.goto('/admin/projects/new');
   await expect(page).toHaveURL(/\/admin\/projects\/new$/);
   await page.getByRole('button', { name: 'Browse folders', exact: true }).click();
+  await expect(page.getByLabel('Folder location')).not.toHaveValue('~');
   await page.getByLabel('Folder location').fill(project.repositoryPath);
   await page.getByRole('button', { name: 'Go', exact: true }).click();
   await expect(page.getByLabel('Local folders')).toContainText(project.repositoryPath);
