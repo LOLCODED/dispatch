@@ -62,7 +62,7 @@ export const hasPendingDecision = (run, request, question) => Boolean(request) |
 export function PendingDecision({ run, request, question, onUpdate, onOpenArtifact, answerRef, showQuestion = false }) {
   const agent = agentName(run);
   const answered = next => { onUpdate(next); if (next.id !== run.id) navigate(`/runs/${next.id}`); };
-  if (request) return <Decision key={request.id} runId={run.id} request={request} agent={agent} onAnswered={onUpdate} screenshot={run.artifacts?.find(artifact => artifact.id === request.screenshotId) ?? null} artifacts={run.artifacts ?? []} appUrl={runningAppUrl(run)} onOpenArtifact={onOpenArtifact} answerRef={answerRef}/>;
+  if (request) return <Decision key={request.id} runId={run.id} request={request} agent={agent} onAnswered={onUpdate} screenshot={run.artifacts?.find(artifact => artifact.id === request.screenshotId) ?? null} artifacts={run.artifacts ?? []} appUrl={request.source === 'risk' ? null : runningAppUrl(run)} onOpenArtifact={onOpenArtifact} answerRef={answerRef}/>;
   if (!asksQuestion(run, request, question)) return null;
   return <>
     {showQuestion && <div className="question-bar-text"><Markdown>{question.question}</Markdown></div>}

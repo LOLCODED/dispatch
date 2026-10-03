@@ -27,3 +27,14 @@ test('a question carries the latest browser screenshot to the operator', async (
   controller.abort();
   await assert.rejects(pending);
 });
+
+test('a testing plan question leaves the browser screenshot out', async () => {
+  const steps = [], run = { id: 'run', status: 'running', attempt: 1, artifacts: [shot('preview', '2026-09-30T10:00:00.000Z')] };
+  const live = { engine: { event() {}, store: { saveSoon() {} } }, steps: { append: (_, step) => steps.push(step) } };
+  const interactions = new Interactions(live), controller = new AbortController();
+  const pending = interactions.request(run, { kind: 'question', source: 'risk', questions: [{ id: 'risk', question: 'Testing plan' }] }, controller.signal);
+  assert.equal(run.interactions[0].screenshotId, undefined);
+  assert.equal(steps[0].screenshotId, undefined);
+  controller.abort();
+  await assert.rejects(pending);
+});

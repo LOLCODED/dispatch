@@ -16,7 +16,7 @@ export class Interactions {
     if (this.pending.has(run.id)) throw new InputError('Answer the current request first.', 409);
     run.interactions ??= [];
     if (run.interactions.length >= 50) throw new InputError('Decision limit reached for this run.');
-    const screenshotIds = details.review?.screenshots.map(item => item.id) ?? [latestScreenshot(run)?.id].filter(Boolean);
+    const screenshotIds = details.review?.screenshots.map(item => item.id) ?? (details.source === 'risk' ? [] : [latestScreenshot(run)?.id].filter(Boolean));
     const screenshotId = screenshotIds.at(-1);
     const request = { ...details, ...(screenshotId && { screenshotId }), id: randomUUID(), status: 'pending', createdAt: new Date().toISOString() };
     run.interactions.push(request); this.engine.event(run, 'question', `${providerName(run.provider)} has a question.`);
