@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { Settings2 } from 'lucide-react';
 import { Logo } from '@/components/Logo';
 import { IconButton, Tooltip } from '@/components/IconButton';
-import { StateMark } from '@/components/work/StateDot';
+import { showsLanding, StateMark } from '@/components/work/StateDot';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { attentionOf, trayOf } from '@/lib/attention.mjs';
 import { Link, useWorkspace } from '@/lib/workspace';
@@ -13,7 +13,7 @@ function TraySection({ section }) {
   return <>
     <p className="menu-label">{section.label} · {section.total}</p>
     {section.entries.map(entry => <DropdownMenuItem key={entry.key} asChild>
-      <Link href={`/runs/${entry.latest.id}`} className="tray-item"><StateMark state={entry.state}/><span>{entry.title}</span></Link>
+      <Link href={`/runs/${entry.latest.id}`} className="tray-item"><StateMark state={entry.state} landing={showsLanding(entry)}/><span>{entry.title}</span></Link>
     </DropdownMenuItem>)}
   </>;
 }

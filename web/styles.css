@@ -77,6 +77,8 @@ kbd { font-family:var(--mono); font-size:10px; padding:1px 5px; border:1px solid
 .tone-waiting, .tone-muted, .tone-continued, .tone-saved { --tone:var(--muted-foreground); }
 .status-icon.tone-active, .status-icon.tone-success, .status-icon.tone-completed, .status-icon.tone-danger, .status-icon.tone-attention { color:var(--tone); }
 .status-icon.tone-active svg, .check-running .check-icon { animation:spin 1.1s linear infinite; }
+.status-icon > svg { grid-area:1/1; }
+.status-icon.tone-active svg.landing-glyph { animation:none; }
 .status-icon.tone-completed circle { fill:var(--tone); }
 .status-icon.tone-completed path { stroke:var(--card); }
 @keyframes spin { to { transform:rotate(360deg); } }
@@ -260,6 +262,7 @@ kbd { font-family:var(--mono); font-size:10px; padding:1px 5px; border:1px solid
 .board-row.is-arrived, .history-cue.is-arrived { border-radius:5px; animation:arrive 1.2s ease-out; }
 @keyframes arrive { from { background:color-mix(in srgb, var(--primary) 28%, transparent); } to { background:transparent; } }
 .board-row-edit, .board-row-time { margin-left:auto; flex:none; opacity:0; transition:opacity .15s; }
+.board-row-phase { flex:none; color:var(--muted-foreground); font-size:12px; white-space:nowrap; }
 .board-row-time { color:var(--muted-foreground); font-size:12px; white-space:nowrap; font-variant-numeric:tabular-nums; }
 .board-row-edit + .board-row-time { margin-left:0; }
 .board-row:hover :is(.board-row-edit, .board-row-time), .board-row-edit:focus-visible { opacity:1; }
@@ -530,6 +533,9 @@ a.board-title:hover { text-decoration:underline; text-underline-offset:4px; text
 .handoff .question-eyebrow { color:var(--success); margin-bottom:10px; }
 .handoff .muted, .handoff .error { margin:0; font-size:12px; }
 .handoff-outcome svg { width:14px; height:14px; color:var(--muted-foreground); }
+.landing-turn { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-block:12px; font-size:13px; color:var(--muted-foreground); }
+.landing-turn > span:nth-child(2) { color:var(--foreground); }
+.landing-turn a { color:var(--foreground); text-decoration:underline; text-underline-offset:3px; }
 .handoff-reveal { display:grid; gap:8px; padding:4px 10px 12px 44px; border-bottom:1px solid var(--border); background:color-mix(in srgb, var(--primary) 7%, transparent); }
 .handoff-outcome { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-block:12px; font-size:13px; color:var(--muted-foreground); }
 .handoff-outcome a { color:var(--foreground); text-decoration:underline; text-underline-offset:3px; }

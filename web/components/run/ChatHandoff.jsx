@@ -2,9 +2,25 @@ import { useState } from 'react';
 import { GitMerge, GitPullRequest } from 'lucide-react';
 import { LandForm } from '@/components/LandDialog';
 import { PullRequestForm } from '@/components/PullRequestDialog';
-import { Link } from '@/lib/workspace';
+import { StatusIcon } from '@/components/StatusIcon';
+import { runEntry } from '@/lib/board.mjs';
+import { Link, useWorkspace } from '@/lib/workspace';
 
 export const offersHandoff = run => !run.supersededBy && Boolean(run.landable || run.publishable);
+
+export function useTaskEntry(runId) {
+  const { state } = useWorkspace();
+  return runEntry({ runs: state.runs.filter(item => item.mode === 'live'), board: state.board }, runId);
+}
+
+export function LandingTurn({ landing }) {
+  return <p className="landing-turn" role="status">
+    <StatusIcon run={landing} landing size={14}/>
+    <span>{landing.title}</span>
+    {landing.reason && <span>{landing.reason}</span>}
+    <Link href={`/runs/${landing.id}`}>Details</Link>
+  </p>;
+}
 
 export function HandoffOutcome({ run }) {
   const pr = run.delivery?.pr;

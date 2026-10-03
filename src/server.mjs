@@ -66,7 +66,7 @@ function runSummary(run, live) {
     ticketId: run.ticketId, taskId: run.taskId, createdAt: run.createdAt, startedAt: run.startedAt, finishedAt: run.finishedAt, previousRunId: run.previousRunId, supersededBy: run.supersededBy,
     resumable: Boolean(run.sessionId), question: cap(run.question, 2000), plan: run.plan === true, remaining: run.remaining && { items: run.remaining.items.slice(0, 12), resolution: run.remaining.resolution ?? null }, pendingRequest: pendingRequest(run),
     reason: cap(run.events?.findLast(event => event.kind === run.status)?.message, 240), insights: runInsights(run), ...handoffView(run, live), worktreeRemovedAt: run.worktreeRemovedAt, delivery: deliveryView(run.delivery),
-    repositories: repositoriesView(run), landedRunIds: run.landing?.items.map(item => item.runId),
+    repositories: repositoriesView(run), landedRunIds: run.landing?.items.map(item => item.runId), resolvesConflicts: Boolean(run.mergeIn),
   };
 }
 // The primary first, then every linked repository with a tested commit: what a landing or pull request will touch.

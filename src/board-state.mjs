@@ -60,15 +60,29 @@ export function folderDepth(folders, id) {
 }
 
 export const isLanding = entry => entry.latest?.kind === 'landing';
-// A landing is plumbing, not a task: it shows while it runs or needs you, and its landed tasks carry the record afterwards.
-const settledLanding = entry => isLanding(entry) && ['review', 'completed', 'archived'].includes(entry.state);
 export const activityAt = entry => Date.parse(entry.latest?.finishedAt ?? entry.latest?.createdAt) || 0;
+export const resolvesConflicts = run => Boolean(run?.resolvesConflicts) && activeStatuses.has(run.status) && run.status !== 'queued';
+
+const runningLanding = run => run.kind === 'landing' && activeStatuses.has(run.status);
+
+// Each task an unfinished landing holds, keyed by conversation, so the task row carries the landing instead of a second row.
+function landingsByTask(runs, byId) {
+  const held = new Map();
+  for (const landing of runs.filter(runningLanding)) for (const id of landing.landedRunIds ?? []) if (byId.has(id)) held.set(conversationKey(rootOf(byId.get(id), byId)), landing);
+  return held;
+}
+
+// A landing is plumbing, not a task: its tasks show it while it runs, it shows itself only when it needs you, and its landed tasks carry the record afterwards.
+const hiddenLanding = (entry, byId) => isLanding(entry) && (['review', 'completed', 'archived'].includes(entry.state) || runningLanding(entry.latest) && (entry.latest.landedRunIds ?? []).some(id => byId.has(id)));
+
+function startedEntry(chain, runs, items, landing) {
+  const key = conversationKey(chain[0]), latest = latestRun(runs, chain[0]), item = items[key] ?? {}, state = taskState({ latest, item });
+  return { key, title: latest.summary || chain[0].title, request: chain[0].request ?? null, createdAt: chain[0].createdAt, startedAt: chain.find(run => run.startedAt)?.startedAt ?? null, latest, turns: chain.length, item, landing: landing ?? null, state };
+}
 
 function entries({ runs, tasks, items }) {
-  const started = conversationTree(runs).map(chain => {
-    const key = conversationKey(chain[0]), latest = latestRun(runs, chain[0]), item = items[key] ?? {};
-    return { key, title: latest.summary || chain[0].title, request: chain[0].request ?? null, createdAt: chain[0].createdAt, startedAt: chain.find(run => run.startedAt)?.startedAt ?? null, latest, turns: chain.length, item, state: taskState({ latest, item }) };
-  }).filter(entry => !settledLanding(entry));
+  const byId = new Map(runs.map(run => [run.id, run])), landings = landingsByTask(runs, byId);
+  const started = conversationTree(runs).map(chain => startedEntry(chain, runs, items, landings.get(conversationKey(chain[0])))).filter(entry => !hiddenLanding(entry, byId));
   const saved = tasks.map(task => { const item = items[task.id] ?? {}; return { key: task.id, title: task.title, request: task.request ?? null, sourceRunId: task.sourceRunId ?? null, images: task.images?.length ?? 0, createdAt: task.createdAt, latest: null, turns: 0, item, state: taskState({ latest: null, item }) }; });
   return [...saved, ...started];
 }

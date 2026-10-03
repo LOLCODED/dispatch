@@ -1,5 +1,5 @@
 import { defineConfig } from '@playwright/test';
-const port = Number(process.env.DISPATCH_E2E_PORT ?? 4318);
+import { e2ePort as port } from './scripts/e2e-port.mjs';
 export default defineConfig({
   testDir: './tests/e2e', fullyParallel: false, workers: 1, retries: 0,
   timeout: 90000, expect: { timeout: 15000 }, reporter: [['list']],

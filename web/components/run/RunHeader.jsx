@@ -3,10 +3,11 @@ import { IconButton, Tooltip } from '@/components/IconButton';
 import { StatusIcon, ToneIcon } from '@/components/StatusIcon';
 import { TicketActions } from '@/components/run/TicketActions';
 import { HandoffActions } from '@/components/run/HandoffActions';
-import { stateLabels } from '@/components/work/StateDot';
-import { runEntry } from '@/lib/board.mjs';
+import { entryLabel, showsLanding, stateLabels } from '@/components/work/StateDot';
+import { useTaskEntry } from '@/components/run/ChatHandoff';
+import { resolvesConflicts } from '@/lib/board.mjs';
 import { openRemaining } from '../../../src/remaining.mjs';
-import { Link, duration, useWorkspace } from '@/lib/workspace';
+import { Link, duration } from '@/lib/workspace';
 import { statusTone } from '@/lib/status.mjs';
 import { shortcutLabel, usePreferences } from '@/lib/preferences';
 
@@ -20,21 +21,22 @@ function TileBar({ tiles, available, layout, compact }) {
 }
 
 function RunState({ run, labels, elapsed }) {
-  const { state } = useWorkspace(), entry = runEntry({ runs: state.runs.filter(item => item.mode === 'live'), board: state.board }, run.id);
-  const completed = entry?.latest.id === run.id && entry.state === 'completed';
-  const label = run.supersededBy ? 'Continued in a newer run' : completed ? stateLabels.completed : run.handingOff ? stateLabels.reviewing : openRemaining(run) ? labels.blocked : labels[run.status] ?? run.status;
-  const tone = completed ? 'completed' : run.handingOff ? 'active' : statusTone(run);
-  return <span className={`run-state tone-${tone}`}>{run.handingOff ? <ToneIcon tone={tone} size={13}/> : <StatusIcon run={run} done={completed} size={13}/>}{label}{elapsed != null && <span className="run-elapsed">{duration(elapsed)}</span>}</span>;
+  const entry = useTaskEntry(run.id), own = entry?.latest.id === run.id, completed = own && entry.state === 'completed';
+  const landing = own && showsLanding(entry), resolving = own && resolvesConflicts(entry.latest);
+  const label = run.supersededBy ? 'Continued in a newer run' : completed ? stateLabels.completed : resolving ? entryLabel(entry) : run.handingOff ? stateLabels.reviewing : openRemaining(run) ? labels.blocked : labels[run.status] ?? run.status;
+  const tone = completed ? 'completed' : landing || run.handingOff ? 'active' : statusTone(run);
+  return <span className={`run-state tone-${tone}`}>{run.handingOff && !landing ? <ToneIcon tone={tone} size={13}/> : <StatusIcon run={run} done={completed} landing={landing} size={13}/>}{label}{elapsed != null && <span className="run-elapsed">{duration(elapsed)}</span>}</span>;
 }
 
 export function RunHeader({ run, labels, elapsed, done, tiles, available, layout, compact, drawer, onDrawer, onCancel }) {
+  const landing = useTaskEntry(run.id)?.landing;
   return <header className="run-heading">
     <Link href="/" className="back-link" aria-label="All work"><ArrowLeft size={15} aria-hidden="true"/></Link>
     <Tooltip label={run.title}><h1 tabIndex={0}>{run.title}</h1></Tooltip>
     <RunState run={run} labels={labels} elapsed={elapsed}/>
     <div className="run-actions">
       {available.length > 1 && <TileBar tiles={tiles} available={available} layout={layout} compact={compact}/>}
-      {done && !run.supersededBy && <HandoffActions run={run}/>}
+      {done && !run.supersededBy && !landing && <HandoffActions run={run}/>}
       <IconButton label="Result" icon={ClipboardCheck} className={done ? `result-button tone-${statusTone(run)}` : undefined} aria-pressed={Boolean(drawer)} onClick={() => onDrawer(drawer ? null : 'manual')}/>
       {!done && <IconButton label="Cancel run" icon={CircleStop} onClick={onCancel}/>}
       <TicketActions runId={run.id}/>

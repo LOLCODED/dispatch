@@ -13,9 +13,9 @@ import { useSmoothText } from '@/lib/smooth-text';
 import { prefersReducedMotion } from '@/lib/motion';
 import { agentName } from '@/lib/providers.mjs';
 import { Markdown } from '@/components/Markdown';
-import { ChatHandoff, HandoffOutcome, offersHandoff } from '@/components/run/ChatHandoff';
+import { ChatHandoff, HandoffOutcome, LandingTurn, offersHandoff, useTaskEntry } from '@/components/run/ChatHandoff';
 
-const activityText = (run, event) => ({ queued: run.previousRunId ? 'Continuing your ticket.' : 'Your ticket is queued.', preparing: 'Getting the repository ready.', implementing: `${agentName(run)} is working on your ticket.`, repairing: `${agentName(run)} is addressing check or review findings.`, reviewing: `An independent ${agentName(run)} session is reviewing the checked changes.`, validating: 'Testing the changes.', publishing: 'Saving the tested result.', ready: 'The result is ready for your review.' }[event.kind] ?? event.message);
+const activityText = (run, event) => ({ queued: run.previousRunId ? 'Continuing your ticket.' : 'Your ticket is queued.', preparing: 'Getting the repository ready.', implementing: run.mergeIn ? `${agentName(run)} is resolving conflicts.` : `${agentName(run)} is working on your ticket.`, repairing: `${agentName(run)} is addressing check or review findings.`, reviewing: `An independent ${agentName(run)} session is reviewing the checked changes.`, validating: 'Testing the changes.', publishing: 'Saving the tested result.', ready: 'The result is ready for your review.' }[event.kind] ?? event.message);
 
 function currentActivity(run, labels) {
   if (run.waitingForRecipe) return 'Waiting for another ticket’s check command to finish.';
@@ -74,7 +74,7 @@ export function ChatTile({ run, history, labels, request, question, draft, setDr
   const done = terminal.has(run.status), working = !done && run.status !== 'queued', agent = agentName(run);
   const asking = asksQuestion(run, request, question);
   const showComposer = !run.supersededBy && !request && !asking && Boolean(!done || run.sessionId || draft.trim());
-  const scroll = useFollowScroll(), handoff = done && !request && offersHandoff(run);
+  const landing = useTaskEntry(run.id)?.landing, scroll = useFollowScroll(), handoff = done && !request && !landing && offersHandoff(run);
   useScrollShadow(scroll.ref);
   return <div className="chat-tile">
     <section ref={scroll.ref} tabIndex={0} onScroll={scroll.onScroll} className="conversation" aria-label="Task conversation">
@@ -82,6 +82,7 @@ export function ChatTile({ run, history, labels, request, question, draft, setDr
       {run.streamingMessage && <StreamingMessage agent={agent} text={run.streamingMessage}/>}
       {!decisionElsewhere && <PendingDecision run={run} request={request} question={question} onUpdate={onUpdate} onOpenArtifact={onOpenArtifact} answerRef={answerRef}/>}
       {done && <HandoffOutcome run={run}/>}
+      {landing && <LandingTurn landing={landing}/>}
       {handoff && <ChatHandoff run={run} onFollowUp={showComposer ? () => composerRef.current?.focus() : null}/>}
       {working && !request && <AgentPulse agent={agent} activity={activity ? currentActivity(run, labels) : null}/>}
     </section>

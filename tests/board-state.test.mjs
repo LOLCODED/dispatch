@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { boardView, conversationKey, folderScope, folderTree, runEntry, taskState } from '../src/board-state.mjs';
+import { boardView, conversationKey, folderScope, folderTree, resolvesConflicts, runEntry, taskState } from '../src/board-state.mjs';
 import { askOf } from '../web/lib/board.mjs';
 
 const run = (id, status, extra = {}) => ({ id, status, title: id, createdAt: extra.createdAt ?? '2026-09-30T10:00:00Z', ...extra });
@@ -100,11 +100,29 @@ test('a landing shows while it runs or needs you and leaves the board once it la
   }
 });
 
-test('a landing shows in the folders of the tasks it lands', () => {
-  const runs = [run('l', 'landing', { kind: 'landing', landedRunIds: ['t2'] }), run('t1', 'ready', { taskId: 'a' }), run('t2', 'ready', { taskId: 'a', previousRunId: 't1' }), run('u', 'ready')];
+test('a landing that needs you shows in the folders of the tasks it lands', () => {
+  const runs = [run('l', 'failed', { kind: 'landing', landedRunIds: ['t2'] }), run('t1', 'ready', { taskId: 'a' }), run('t2', 'ready', { taskId: 'a', previousRunId: 't1' }), run('u', 'ready')];
   const board = { folders: [{ id: 'f', parentId: null }, { id: 'g', parentId: 'f' }, { id: 'h', parentId: null }], items: { a: { folderId: 'g' } } };
-  assert.deepEqual(boardView({ runs, board, folderId: 'f' }).active.map(entry => entry.key), ['l']);
-  assert.deepEqual(boardView({ runs, board, folderId: 'h' }).active, []);
+  assert.deepEqual(boardView({ runs, board, folderId: 'f' }).decision.map(entry => entry.key), ['l']);
+  assert.deepEqual(boardView({ runs, board, folderId: 'h' }).decision, []);
+});
+
+test('a running landing folds into the tasks it lands instead of showing its own row', () => {
+  for (const status of ['queued', 'landing', 'validating']) {
+    const landing = run('l', status, { kind: 'landing', landedRunIds: ['t2'] });
+    const view = boardView({ runs: [landing, run('t1', 'ready', { taskId: 'a', supersededBy: 't2' }), run('t2', 'ready', { taskId: 'a', previousRunId: 't1', handingOff: 'landing' }), run('u', 'ready')] });
+    assert.deepEqual(view.reviewing.map(entry => [entry.key, entry.state, entry.landing.id]), [['a', 'reviewing', 'l']], status);
+    assert.deepEqual(view.review.map(entry => entry.key), ['u'], status);
+    assert.equal(view.active.length + view.queued.length, 0, status);
+  }
+});
+
+test('a task resolving landing conflicts stays tied to its landing', () => {
+  const runs = [run('l', 'landing', { kind: 'landing', landedRunIds: ['t1'] }), run('t1', 'ready', { supersededBy: 't2' }), run('t2', 'implementing', { previousRunId: 't1', resolvesConflicts: true, createdAt: '2026-09-30T11:00:00Z' })];
+  const [entry] = boardView({ runs }).active;
+  assert.deepEqual([entry.key, entry.state, entry.landing.id, resolvesConflicts(entry.latest)], ['t1', 'active', 'l', true]);
+  assert.equal(resolvesConflicts(run('r', 'queued', { resolvesConflicts: true })), false);
+  assert.equal(resolvesConflicts(run('r', 'ready', { resolvesConflicts: true })), false);
 });
 
 test('a stopped task whose worktree was removed is completed, whatever it ended as', () => {

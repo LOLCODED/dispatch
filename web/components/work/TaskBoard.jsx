@@ -4,12 +4,12 @@ import { IconButton } from '@/components/IconButton';
 import { DecisionGroup } from '@/components/work/DecisionGroup';
 import { FolderBar } from '@/components/work/FolderBar';
 import { LandingMark } from '@/components/work/LandingMark';
-import { StateDot, stateLabels } from '@/components/work/StateDot';
+import { entryLabel, StateDot, stateLabels } from '@/components/work/StateDot';
 import { LandDialog } from '@/components/LandDialog';
 import { PullRequestDialog } from '@/components/PullRequestDialog';
 import { AttachmentDialog } from '@/components/work/AttachmentDialog';
 import { ListControls, Pager, useListControls, usePage } from '@/components/ListControls';
-import { activityAt, boardView, editTarget } from '@/lib/board.mjs';
+import { activityAt, boardView, editTarget, resolvesConflicts } from '@/lib/board.mjs';
 import { ascending, byText, filterSort, textMatches } from '@/lib/list-view.mjs';
 import { boardScopeKey, useBoardAction } from '@/lib/board-actions';
 import { relativeTime } from '@/lib/status.mjs';
@@ -28,6 +28,7 @@ function RunningTime({ since }) {
 
 function EntryTime({ entry }) {
   const { state, latest } = entry;
+  if (state === 'reviewing' && entry.landing) return <RunningTime since={entry.landing.startedAt ?? entry.landing.createdAt}/>;
   if (state === 'active') return <RunningTime since={entry.startedAt ?? latest.startedAt ?? latest.createdAt}/>;
   if (state === 'queued' || state === 'todo') return <RowTime at={latest?.createdAt ?? entry.createdAt} label="Sent"/>;
   return <RowTime at={latest?.finishedAt} label="Last reply"/>;
@@ -53,6 +54,7 @@ function TaskRow({ entry, folders, onEdit, selection }) {
     <LandingMark entry={entry}/>
     {entry.latest ? <Link href={`/runs/${entry.latest.id}`} className="board-title">{entry.title}</Link> : <span className="board-title">{entry.title}</span>}
     <SavedImages entry={entry}/>
+    {resolvesConflicts(entry.latest) && <span className="board-row-phase">{entryLabel(entry)}</span>}
     {!entry.latest && entry.sourceRunId && <IconButton label="Open the run this task came from" icon={CornerUpLeft} href={`/runs/${entry.sourceRunId}`}/>}
     {edit && <IconButton label="Edit" icon={Pencil} size="icon-xs" className="board-row-edit" disabled={busy} onClick={() => onEdit(edit)}/>}
     <EntryTime entry={entry}/>

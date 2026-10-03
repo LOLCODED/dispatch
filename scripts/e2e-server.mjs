@@ -9,6 +9,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { createServer } from '../src/server.mjs';
 import { forgeDouble } from '../tests/forge-double.mjs';
 import { exampleTracker } from '../tests/tracker-double.mjs';
+import { e2ePort } from './e2e-port.mjs';
 const dataDir = mkdtempSync(join(tmpdir(), 'dispatch-e2e-'));
 const engine = new Engine({ dataDir });
 const serveScript = throwing => `import { createServer } from 'node:http';
@@ -131,6 +132,6 @@ for (const name of ['smoke', 'smoke-broken']) {
   await live.saveProject({ name: 'Plain folder', repositoryPath: folder, baseBranch: null, confirmed: true, validation: [{ id: 'unit', command: process.execPath, args: ['-e', 'if(require("fs").readFileSync("value.txt","utf8")!=="changed")process.exit(1)'] }] });
 }
 const server = createServer(engine);
-const port = Number(process.env.DISPATCH_E2E_PORT ?? 4318);
+const port = e2ePort;
 server.listen(port, '127.0.0.1', () => console.log(`dispatch e2e server ready on ${port}`));
 process.on('SIGTERM', async () => { server.close(); await engine.shutdown(); rmSync(dataDir, { recursive: true, force: true }); });
