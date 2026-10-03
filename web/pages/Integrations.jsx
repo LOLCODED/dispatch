@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import { ArrowDown, ArrowUp, Cpu, Plug, Plus, RefreshCw, Trash2, Unplug } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronDown, Cpu, Plug, Plus, RefreshCw, Trash2, Unplug } from 'lucide-react';
 import { SettingsLayout } from '@/components/SettingsLayout';
 import { SettingsTabs } from '@/components/SettingsTabs';
 import { LocalModels } from '@/components/LocalModels';
 import { ConnectorFolders, ConnectorList, ProviderList, useConnections } from '@/components/Connections';
 import { IconButton } from '@/components/IconButton';
 import { ModelPicker } from '@/components/ModelPicker';
+import { Pager, SearchInput, usePage } from '@/components/ListControls';
+import { filterSort, textMatches } from '@/lib/list-view.mjs';
 import { SwitchRow } from '@/components/Switch';
 import { useAction } from '@/lib/use-action';
 import { api, useWorkspace } from '@/lib/workspace';
@@ -13,7 +15,7 @@ import { useStored } from '@/lib/preferences';
 import { executionKey, readExecution } from '@/lib/execution';
 import { modelKey, providerName } from '@/lib/providers.mjs';
 
-const refreshWorkspace = () => window.dispatchEvent(new Event('dispatch-refresh'));
+const refreshWorkspace =() => window.dispatchEvent(new Event('dispatch-refresh'));
 
 function Providers({ connections, busy, onCheck, onToggle }) {
   return <section className="panel" id="providers"><div className="section-heading"><h2>Providers</h2><IconButton label="Check connections" icon={RefreshCw} disabled={busy} onClick={onCheck}/></div>
@@ -65,18 +67,36 @@ function AutoTiers({ models, busy, perform }) {
   </div>;
 }
 
+const modelPageSize = 20;
+const modelMatches = (model, query) => textMatches([model.displayName, model.model], query);
+
+function ModelGroup({ provider, models, on, busy, onToggle }) {
+  const [open, setOpen] = useState(false), [query, setQuery] = useState(''), name = providerName(provider);
+  const shown = filterSort(models, { query, matches: modelMatches });
+  const paged = usePage(shown, modelPageSize, query);
+  const count = models.filter(model => on.has(modelKey(model))).length;
+  return <div className="model-group" data-open={open || undefined}>
+    <button type="button" className="model-group-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
+      <ChevronDown size={13} aria-hidden="true"/><span>{name}</span><span className="model-count">{count} of {models.length} on</span>
+    </button>
+    {open && <div className="model-group-body">
+      {models.length > modelPageSize && <SearchInput value={query} onChange={setQuery} label={`Search ${name} models`} placeholder={`Search ${models.length} models…`}/>}
+      <ul className="row-list" aria-label={`${name} models`}>{paged.items.map(model => <li key={modelKey(model)}>
+        <SwitchRow label={model.displayName ?? model.model} checked={on.has(modelKey(model))} disabled={busy} onChange={enabled => onToggle(model, enabled)}/>
+      </li>)}</ul>
+      {!shown.length && <p className="muted">Nothing matches the search.</p>}
+      <Pager paged={paged} label={`${name} model pages`}/>
+    </div>}
+  </div>;
+}
+
 function ModelList({ models, busy, onToggle }) {
   const all = models?.allModels ?? [], on = new Set((models?.models ?? []).map(modelKey));
   const groups = [...new Set(all.map(model => model.provider))];
   if (!all.length) return null;
   return <div className="model-list">
     <div className="setting-row"><span>Available models</span><span className="model-count">{on.size} of {all.length} on</span></div>
-    {groups.map(provider => <ul key={provider} className="row-list" aria-label={`${providerName(provider)} models`}>
-      {groups.length > 1 && <li className="model-group">{providerName(provider)}</li>}
-      {all.filter(model => model.provider === provider).map(model => <li key={modelKey(model)}>
-        <SwitchRow label={model.displayName ?? model.model} checked={on.has(modelKey(model))} disabled={busy} onChange={enabled => onToggle(model, enabled)}/>
-      </li>)}
-    </ul>)}
+    {groups.map(provider => <ModelGroup key={provider} provider={provider} models={all.filter(model => model.provider === provider)} on={on} busy={busy} onToggle={onToggle}/>)}
     <p className="muted">Models you turn off leave the model pickers and Auto tiers. They stay off when you refresh.</p>
   </div>;
 }
@@ -99,8 +119,8 @@ export function Integrations() {
   const tabs = [
     { value: 'providers', label: 'Providers', icon: Plug, content: <Providers connections={connections} busy={busy} onCheck={check} onToggle={toggle}/> },
     { value: 'models', label: 'Models', icon: Cpu, content: <>
-      <Models models={catalog ?? state.modelCatalog} busy={busy} perform={perform} onRefresh={refresh} onToggle={toggleModel}/>
       <LocalModels connection={connections?.['local-models']} busy={busy} onCheck={check} onToggle={enabled => toggle('local-models', enabled)} onSave={saveEndpoints} onAgent={chooseLocalAgent}/>
+      <Models models={catalog ?? state.modelCatalog} busy={busy} perform={perform} onRefresh={refresh} onToggle={toggleModel}/>
     </> },
     { value: 'connectors', label: 'Connectors', icon: Unplug, content: <Connectors connections={connections} busy={busy} perform={perform} onCheck={check} onReload={reload} onToggle={toggleConnector} onAction={setConnectorAction}/> },
   ];
