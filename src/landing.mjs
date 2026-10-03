@@ -16,6 +16,8 @@ const short = sha => sha.slice(0, 12);
 
 export const landable = run => run.mode === 'live' && run.kind === 'change' && run.status === 'ready' && (Boolean(run.headSha) || (run.linked ?? []).some(committedMember)) && !run.answered && !run.landed && !run.supersededBy && !run.worktreeRemovedAt;
 
+export const checkFailurePrompt = (target, check, merged, repository = null) => `${repository ? `In the linked repository ${repository.name} (worktree ${repository.workspace}): ` : ''}dispatch is landing this task on ${target}, and check ${check.name} failed on the combined result.${merged ? ` dispatch merged ${target} (at ${short(merged)}) into this branch without committing so you can fix it on top of the latest ${target}; keep the changes already on ${target}, and do not commit, abort the merge or run other Git commands that change history.` : ''} Fix the cause without changing the validation recipe, and make sure ${check.name} runs on your result.\n${JSON.stringify(check.command)}\n${String(check.output ?? '').slice(-16000)}`;
+
 export const conflictPrompt = (target, sha, files, repository = null) => `${repository ? `In the linked repository ${repository.name} (worktree ${repository.workspace}): ` : ''}dispatch is landing this task on ${target} and merged ${target} (at ${short(sha)}) into this branch without committing. ${files.length ? `These files conflict: ${files.join(', ')}.` : 'Git could not apply this task on top of it.'} Resolve every conflict so both this task's change and the changes already on ${target} are kept, and remove all conflict markers. Do not commit, abort the merge or run other Git commands that change history; dispatch commits the merge after the checks pass.`;
 
 export async function checkoutOf(root, branch, signal) {
@@ -143,7 +145,7 @@ export class Landings {
     run.startedAt = new Date().toISOString();
     try {
       if (!await this.prepare(run, signal)) return;
-      for (const item of run.landing.items) if (!await this.landItem(run, item, signal)) return;
+      if (!await this.combine(run, signal)) return;
       if (!await this.check(run, signal)) return;
       await this.advance(run, signal);
     } catch (error) { if (!signal.aborted) this.engine.transition(run, 'failed', `${error.message.split('\n')[0]} Nothing landed.`); }
@@ -172,6 +174,11 @@ export class Landings {
     const tasks = run.landing.items.map(item => this.engine.get(item.runId));
     const heads = tasks.map(task => lane.lane ? this.memberOf(task, lane.lane)?.headSha : task.headSha).filter(Boolean);
     return new Set((await Promise.all(heads.map(head => changedPaths(lane.root, [`${lane.target}...${head}`], signal)))).flat());
+  }
+
+  async combine(run, signal) {
+    for (const item of run.landing.items) if (!await this.landItem(run, item, signal)) return false;
+    return true;
   }
 
   async landItem(run, item, signal) {
@@ -216,19 +223,24 @@ export class Landings {
     const target = lane?.baseBranch ?? run.landing.target, head = await git(lane?.workspace ?? run.workspace, ['rev-parse', 'HEAD'], { signal });
     const conflicts = (lane ? item.linked[lane.projectId] : item).conflicts, task = this.engine.get(item.runId);
     this.live.log(run, 'landing', `${item.ticketId} conflicts with ${target}${lane ? ` in ${lane.name}` : ''}${conflicts.length ? ` in ${conflicts.join(', ')}` : ''}. Its agent resolves them in its own session.`);
+    return this.handBack(run, item, lane, { input: conflictPrompt(target, head, conflicts, lane && this.memberOf(task, lane)), mergeIn: head, purpose: 'conflict resolution', record: 'resolutionRunId' }, signal);
+  }
+
+  // The task's own session gets the work back; the landing waits for it and continues only from a ready, committed result.
+  async handBack(run, item, lane, { input, mergeIn, purpose, record }, signal) {
     let next = null;
     try {
-      next = await this.live.followup(item.runId, { input: conflictPrompt(target, head, conflicts, lane && this.memberOf(task, lane)) }, { mergeIn: head, mergeInto: lane?.projectId });
+      next = await this.live.followup(item.runId, { input }, { mergeIn, mergeInto: mergeIn ? lane?.projectId : undefined, byLanding: true });
       this.engine.startNow(next.id);
     } catch (error) {
-      if (next && !terminal.has(next.status)) this.engine.cancel(next.id, 'Landing could not start the conflict resolution.');
-      this.engine.transition(run, 'blocked', `${item.ticketId} conflicts with ${target} and could not go back to its agent: ${error.message} Nothing landed.`); return null;
+      if (next && !terminal.has(next.status)) this.engine.cancel(next.id, `Landing could not start the ${purpose}.`);
+      this.engine.transition(run, 'blocked', `${item.ticketId} could not go back to its agent for the ${purpose}: ${error.message} Nothing landed.`); return null;
     }
-    item.resolutionRunId = next.id; this.engine.store.save();
+    item[record] = next.id; this.engine.store.save();
     await this.settle(next, signal);
     if (signal.aborted) return null;
     if (next.status === 'ready' && next.headSha && (!lane || this.memberOf(next, lane))) return next;
-    this.engine.transition(run, 'blocked', `${item.ticketId}: the conflict resolution ended as ${labels[next.status] ?? next.status}. Open it to continue, then land again. Nothing landed.`);
+    this.engine.transition(run, 'blocked', `${item.ticketId}: the ${purpose} ended as ${labels[next.status] ?? next.status}. Open it to continue, then land again. Nothing landed.`);
     return null;
   }
 
@@ -238,19 +250,53 @@ export class Landings {
     try { await this.engine.active.get(next.id)?.promise; } finally { signal.removeEventListener('abort', abort); }
   }
 
+  // A single task whose combined result fails a check goes back to its own session once; with several tasks dispatch cannot tell which one broke it.
   async check(run, signal) {
-    run.attempt = 1;
-    return await this.checkOwn(run, signal) && await this.checkLinked(run, signal);
+    for (run.attempt = 1; ; run.attempt++) {
+      const failure = await this.failure(run, signal);
+      if (!failure) return failure === null;
+      if (run.attempt > 1 || run.landing.items.length > 1) { this.fail(run, failure); return false; }
+      if (!await this.repair(run, failure, signal) || !await this.restart(run, signal)) return false;
+    }
+  }
+
+  // Resolves to null when every check passed, false when the landing stopped, or the failed check.
+  async failure(run, signal) {
+    const own = await this.checkOwn(run, signal);
+    return own === null ? this.checkLinked(run, signal) : own;
+  }
+
+  async repair(run, failure, signal) {
+    const [item] = run.landing.items, task = this.engine.get(item.runId);
+    const lane = failure.linked ? run.linked.find(entry => entry.projectId === failure.linked) : null, target = lane?.baseBranch ?? run.landing.target;
+    const base = lane?.baseSha ?? run.baseSha, head = lane ? this.memberOf(task, lane).headSha : task.headSha;
+    const mergeIn = await succeeds(git(lane?.workspace ?? run.workspace, ['merge-base', '--is-ancestor', base, head], { signal })) ? null : base;
+    this.engine.transition(run, 'landing', `Check ${failure.name} failed on the combined result. ${item.ticketId} goes back to its agent to fix it in its own session.`);
+    const input = checkFailurePrompt(target, failure, mergeIn, lane && this.memberOf(task, lane));
+    const next = await this.handBack(run, item, lane, { input, mergeIn, purpose: 'check repair', record: 'repairRunId' }, signal);
+    if (next) item.runId = next.id;
+    return Boolean(next);
+  }
+
+  async restart(run, signal) {
+    for (const lane of lanes(run)) await restore(lane.workspace, lane.baseSha, signal);
+    this.engine.transition(run, 'landing', 'Applying the repaired task again and rechecking the combined result.');
+    return this.combine(run, signal);
+  }
+
+  fail(run, failure) {
+    const several = run.landing.items.length > 1;
+    this.engine.transition(run, 'failed', `Check ${failure.name} failed on the combined result${several ? '' : ' after its agent repaired it'}, so ${run.linked?.length ? 'no branch moved' : `${run.landing.target} did not move`}. ${several ? 'Land the tasks one at a time so a failure goes back to the task that caused it.' : 'Open the task to continue, then land again.'}`);
   }
 
   async checkOwn(run, signal) {
-    if (!run.landing.target) return true;
+    if (!run.landing.target) return null;
     if (!await this.live.setup(run, signal)) return false;
     const head = await git(run.workspace, ['rev-parse', 'HEAD^{tree}'], { signal });
     run.revision = await this.live.tree(run, signal);
     if (run.revision !== head) { this.engine.transition(run, 'failed', 'Repository setup changed tracked files in the landing worktree, so the combined result could not be checked. Nothing landed.'); return false; }
     run.changedPaths = (await git(run.workspace, ['diff', '--name-only', '-z', run.baseSha, run.revision], { signal })).split('\0').filter(Boolean);
-    if (!run.changedPaths.length) return true;
+    if (!run.changedPaths.length) return null;
     run.protectedDigest = this.live.protectedRecipe(run);
     const files = this.live.steps.append(run, { kind: 'files', paths: run.changedPaths, revision: run.revision });
     await this.live.savePatch(run, files.id, signal);
@@ -258,7 +304,7 @@ export class Landings {
   }
 
   async checkLinked(run, signal) {
-    if (!run.linked?.length) return true;
+    if (!run.linked?.length) return null;
     if (!await this.live.linked.setup(run, signal)) return false;
     for (const lane of run.linked) {
       const head = await git(lane.workspace, ['rev-parse', 'HEAD^{tree}'], { signal });
@@ -272,9 +318,7 @@ export class Landings {
 
   verdict(run, failure, signal) {
     if (signal.aborted || run.status === 'blocked') return false;
-    if (!failure) return true;
-    this.engine.transition(run, 'failed', `Check ${failure.name} failed on the combined result, so ${run.linked?.length ? 'no branch moved' : `${run.landing.target} did not move`}. Land fewer tasks or follow up on the one that broke it.`);
-    return false;
+    return failure ?? null;
   }
 
   async advance(run, signal) {

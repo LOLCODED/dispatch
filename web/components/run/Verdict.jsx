@@ -110,7 +110,7 @@ export function Verdict({ run, onUpdate }) {
       {base && <><dt>Base</dt><dd className="break-all">{base}</dd></>}
       <dt>Files</dt><dd>{changed ? plural(changed, 'file') + ' changed' : 'no changes'}</dd>
       {run.landed && <><dt>Landed</dt><dd>{run.landed.target ? <>on {run.landed.target} at <Link href={`/runs/${run.landed.runId}`}>{run.landed.commit.slice(0, 12)}</Link></> : <Link href={`/runs/${run.landed.runId}`}>{(run.landed.linked ?? []).map(lane => `${lane.name} on ${lane.target}`).join(', ') || 'see landing'}</Link>}</dd></>}
-      {run.landing && <><dt>Tasks</dt><dd><ul className="landing-items">{run.landing.items.map(item => <li key={item.runId}><Link href={`/runs/${item.runId}`}>{item.title}</Link> · {item.landedAs ?? run.landing.strategy}{item.resolutionRunId ? ', conflict resolved by its agent' : ''}</li>)}</ul></dd></>}
+      {run.landing && <><dt>Tasks</dt><dd><ul className="landing-items">{run.landing.items.map(item => <li key={item.runId}><Link href={`/runs/${item.runId}`}>{item.title}</Link> · {item.landedAs ?? run.landing.strategy}{item.resolutionRunId ? ', conflict resolved by its agent' : ''}{item.repairRunId ? ', check repaired by its agent' : ''}</li>)}</ul></dd></>}
       {run.delivery?.pr?.url && <><dt>Pull request</dt><dd><a href={run.delivery.pr.url} target="_blank" rel="noopener">#{run.delivery.pr.number ?? '?'}</a></dd></>}
       <LinkedFacts run={run}/>
     </dl>}

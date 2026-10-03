@@ -585,10 +585,10 @@ export class LiveService {
     if (scripts === null && run.scriptsAtBase && run.baselineScripts) scripts = run.baselineScripts;
     return digest({ setup: project.setup, checks: project.validation, scripts });
   }
-  async followup(id, input, { project, mergeIn, mergeInto, attachments = decodeAttachments(input) } = {}) {
+  async followup(id, input, { project, mergeIn, mergeInto, byLanding = false, attachments = decodeAttachments(input) } = {}) {
     const previous = this.engine.get(id);
     if (previous.mode !== 'live' || !terminal.has(previous.status)) throw new InputError('Wait for the live run to stop before continuing.', 409);
-    if (!mergeIn && previous.status === 'ready' && (this.openingPullRequests.has(previous.id) || this.landings.landingOf(previous))) throw new InputError('This task is being landed or opened as a pull request. Continue it after that finishes.', 409);
+    if (!byLanding && previous.status === 'ready' && (this.openingPullRequests.has(previous.id) || this.landings.landingOf(previous))) throw new InputError('This task is being landed or opened as a pull request. Continue it after that finishes.', 409);
     if (typeof input.input !== 'string' || !input.input.trim() || input.input.length > 12000) throw new InputError('Enter follow-up instructions (up to 12,000 characters).');
     if (!previous.sessionId || !existsSync(previous.workspace)) throw new InputError('No resumable session is available. dispatch a new ticket.');
     if (alive(previous.workerPid)) throw new InputError('The previous worker process is still alive. Stop it before continuing.', 409);

@@ -94,6 +94,22 @@ test('a check that fails on the combined result moves nothing and keeps the task
   for (const task of tasks) { assert.equal(task.status, 'ready'); assert.ok(existsSync(task.workspace)); }
 });
 
+test('a single task whose combined result fails a check goes back to its own session, then lands', async t => {
+  const prompts = [];
+  const repairs = options => { prompts.push(options.prompt); rmSync(join(options.workspace, 'b.txt')); writeFileSync(join(options.workspace, 'c.txt'), 'C'); return { outcome: 'completed', sessionId: 'session-1', summary: 'Done' }; };
+  const { live, engine, project, repo } = await liveFixture(t, { behavior: byTicket({ 'check pair failed': repairs, 'Add B': writes({ 'value.txt': 'changed', 'b.txt': 'B' }) }), project: { validation: [unitCheck, pairCheck] } });
+  const [task] = await readyTasks(live, engine, project, ['Add B']);
+  writeFileSync(join(repo, 'a.txt'), 'A'); await git(repo, ['add', 'a.txt']); await git(repo, ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-m', 'Add A on main']);
+  const landing = await land(live, engine, [task]);
+  assert.equal(landing.status, 'ready', JSON.stringify(landing.events.map(event => event.message)));
+  const repair = engine.get(landing.landing.items[0].repairRunId);
+  assert.equal(repair.previousRunId, task.id); assert.equal(repair.sessionId, task.sessionId); assert.ok(repair.mergeIn);
+  assert.match(prompts[0], /check pair failed on the combined result/); assert.match(prompts[0], /merged main/);
+  assert.deepEqual(landing.checks.map(check => [check.name, check.status, check.attempt]), [['unit', 'passed', 1], ['pair', 'failed', 1], ['unit', 'passed', 2], ['pair', 'passed', 2]]);
+  assert.equal(readFileSync(join(repo, 'c.txt'), 'utf8'), 'C'); assert.equal(existsSync(join(repo, 'b.txt')), false);
+  assert.equal(taskState({ latest: repair }), 'completed');
+});
+
 test('uncommitted changes in the target checkout block the landing before anything is applied', async t => {
   const { live, engine, project, repo } = await liveFixture(t, { behavior: writes({ 'value.txt': 'changed' }) });
   const [task] = await readyTasks(live, engine, project, ['Change the value']);

@@ -155,7 +155,8 @@ test('a failing linked check on the combined result moves no branch', async t =>
   await live.saveProject({ repositoryPath: api, name: 'api', baseBranch: 'main', confirmed: true, validation: [{ id: 'fails', command: process.execPath, args: ['-e', 'process.exit(1)'] }] }, linked.id);
   const apiMain = await git(api, ['rev-parse', 'main']), repoMain = await git(repo, ['rev-parse', 'main']);
   const landing = await live.landings.create({ runIds: [task.id] }); await settle(engine, landing);
-  assert.equal(landing.status, 'failed'); assert.match(landing.events.at(-1).message, /Check api: fails failed on the combined result, so no branch moved\./);
+  assert.equal(landing.status, 'failed'); assert.match(landing.events.at(-1).message, /Check api: fails failed on the combined result after its agent repaired it, so no branch moved\./);
+  assert.equal(engine.get(landing.landing.items[0].repairRunId).previousRunId, task.id);
   assert.equal(await git(api, ['rev-parse', 'main']), apiMain); assert.equal(await git(repo, ['rev-parse', 'main']), repoMain);
 });
 
