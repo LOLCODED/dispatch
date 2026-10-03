@@ -748,3 +748,27 @@ test('connector settings saved by an older version are cleaned at startup so the
   assert.deepEqual(project.connectors, { example: { enabled: false, actions: {}, settings: {} } });
   assert.deepEqual((await live.saveProject({ ...project, confirmed: true }, project.id)).connectors, project.connectors);
 });
+async function scriptsFixture(t) {
+  const fixed = await fixture(t, async options => {
+    writeFileSync(join(options.workspace, 'value.txt'), 'changed'); writeFileSync(join(options.workspace, 'package.json'), JSON.stringify({ scripts: { test: 'node -e 0', postversion: 'git push --follow-tags' } }));
+    return { outcome: 'completed', sessionId: 'session-1' };
+  });
+  writeFileSync(join(fixed.repo, 'package.json'), JSON.stringify({ scripts: { test: 'node -e 0' } }));
+  await git(fixed.repo, ['add', '.']); await git(fixed.repo, ['-c', 'user.name=Test', '-c', 'user.email=test@localhost', 'commit', '-m', 'Scripts']);
+  return fixed;
+}
+test('a script change blocks once and continuing the run accepts the new scripts', async t => {
+  const { live, engine, project } = await scriptsFixture(t);
+  const run = await live.create({ projectId: project.id, input: 'Push tags after npm version' }); await settle(engine, run);
+  assert.equal(run.status, 'blocked'); assert.match(run.events.at(-1).message, /Validation scripts changed.*continue the run/);
+  const next = await live.followup(run.id, { input: 'Go ahead' }); await settle(engine, next);
+  assert.equal(next.status, 'ready', JSON.stringify(next.events)); assert.ok(next.events.some(event => /you continued the run, so they are now the protected baseline/.test(event.message)));
+  const again = await live.followup(next.id, { input: 'Check again' }); await settle(engine, again);
+  assert.equal(again.status, 'ready', JSON.stringify(again.events));
+});
+test('a repository that allows sensitive writes accepts script changes without blocking', async t => {
+  const { live, engine, project } = await scriptsFixture(t);
+  await live.saveProject({ ...project, confirmed: true, allowSensitiveFiles: true }, project.id);
+  const run = await live.create({ projectId: project.id, input: 'Push tags after npm version' }); await settle(engine, run);
+  assert.equal(run.status, 'ready', JSON.stringify(run.events)); assert.ok(run.events.some(event => /allows writing sensitive files, so they are now the protected baseline/.test(event.message)));
+});

@@ -105,7 +105,7 @@ A connector can react to a run becoming ready, blocked, failed or cancelled, for
 
 - One live worker at a time. One implementation owner per ticket, in its own worktree and branch from the base commit (a freshly fetched `origin/<base>` when the remote exists). No automatic merge. A plain folder is edited in place instead, one conversation at a time, with its checks bound to a snapshot of the folder.
 - One automatic repair, shared by check failures and review findings.
-- Setup and check recipes are saved outside the worktree and snapshotted per run. Package-script changes block automatic checks. Commands run as your local user: use trusted repositories.
+- Setup and check recipes are saved outside the worktree and snapshotted per run. Package-script changes block automatic checks once; continue the run to accept them, or turn on "Write sensitive files without asking" for the repository to accept them without blocking. Commands run as your local user: use trusted repositories.
 - Every check assigned to the change must pass on the same candidate tree before a matching local commit is marked ready. Follow-ups rerun them.
 - Cancellation stops process groups. Restart marks working runs interrupted; nothing is replayed. Queued runs had not started, so they stay queued.
 - Usage is provider-reported per turn. Missing values stay unknown.

@@ -137,13 +137,25 @@ export class LinkedRepositories {
   }
 
   async observeMember(run, member, signal) {
-    if (memberRecipe(member) !== member.protectedDigest) { this.engine.transition(run, 'blocked', `Validation scripts changed in linked repository ${member.name}. Review its recipe before dispatching a new run.`); return false; }
+    if (memberRecipe(member) !== member.protectedDigest) {
+      if (!member.project.allowSensitiveFiles) { member.scriptsChanged = true; this.engine.transition(run, 'blocked', `Validation scripts changed in linked repository ${member.name}. Review its package.json, then continue the run to accept the new scripts.`); return false; }
+      this.acceptScripts(run, member, 'it allows writing sensitive files');
+    }
     const git = workspaceGit(run, member.workspace);
     if (!member.shadow && await git(['branch', '--show-current'], { signal }) !== member.branch) throw new Error(`Worker changed the branch of linked repository ${member.name}.`);
     if (!member.shadow) await git(['merge-base', '--is-ancestor', member.baseSha, 'HEAD'], { signal });
     member.revision = await this.live.tree(run, signal, member.workspace);
     member.changedPaths = (await git(['diff', '--no-ext-diff', '--no-textconv', '--name-only', '-z', member.baseSha, member.revision, '--'], { signal })).split('\0').filter(Boolean);
     return true;
+  }
+
+  acceptScripts(run, member, reason) {
+    member.protectedDigest = memberRecipe(member); delete member.scriptsChanged;
+    this.live.log(run, 'check', `Package scripts changed in linked repository ${member.name} and ${reason}, so they are now its protected baseline for this run and its follow-ups.`);
+  }
+
+  acceptContinued(run) {
+    for (const member of (run.linked ?? []).filter(item => item.scriptsChanged)) this.acceptScripts(run, member, 'you continued the run');
   }
 
   async observe(run, signal) {

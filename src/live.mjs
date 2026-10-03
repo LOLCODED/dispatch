@@ -607,8 +607,8 @@ export class LiveService {
     Object.assign(project, changes); this.engine.store.save(); return run;
   }
   async committedRecipeDigest(run, project) {
-    let scripts = null;
-    try { scripts = JSON.parse(await workspaceGit(run)(['show', `${run.baseSha}:package.json`])).scripts ?? {}; } catch { scripts = null; }
+    let scripts = run.scriptsAccepted ? run.baselineScripts : null;
+    if (!run.scriptsAccepted) try { scripts = JSON.parse(await workspaceGit(run)(['show', `${run.baseSha}:package.json`])).scripts ?? {}; } catch { scripts = null; }
     if (scripts === null && run.scriptsAtBase && run.baselineScripts) scripts = run.baselineScripts;
     return digest({ setup: project.setup, checks: project.validation, scripts });
   }
@@ -627,11 +627,13 @@ export class LiveService {
     const joining = this.linked.joining(previous);
     this.exclude(previous.ticket.key, [...repositoriesOf(previous), ...joining.map(item => item.id)], [...workspacesOf(previous), ...inPlaceFolders(previous.project, joining)]);
     const run = this.newRun(project ?? previous.project, previous.ticket, input.input.trim());
-    Object.assign(run, { kind: previous.kind ?? 'change', provider: previous.execution?.provider ?? 'codex', execution: structuredClone(previous.execution ?? { provider: 'codex', model: null, effort: null, mode: 'auto', reason: 'Continuing the original CLI defaults.' }), repositorySelection: structuredClone(previous.repositorySelection ?? { mode: 'manual', reason: 'Continuing in the original repository.' }), previousRunId: previous.id, workspace: previous.workspace, shadow: previous.shadow ?? null, branch: previous.branch, baseSha: previous.baseSha, baseSource: previous.baseSource, baseFetchedAt: previous.baseFetchedAt, sessionId: previous.sessionId, commitSubject: previous.commitSubject ?? null, protectedDigest: previous.protectedDigest, setupComplete: previous.setupComplete, scriptsAtBase: previous.scriptsAtBase, baselineScripts: previous.baselineScripts, linked: [...this.linked.continued(previous), ...this.linked.snapshot(previous.project, run.id, joining.map(item => item.id))] });
+    Object.assign(run, { kind: previous.kind ?? 'change', provider: previous.execution?.provider ?? 'codex', execution: structuredClone(previous.execution ?? { provider: 'codex', model: null, effort: null, mode: 'auto', reason: 'Continuing the original CLI defaults.' }), repositorySelection: structuredClone(previous.repositorySelection ?? { mode: 'manual', reason: 'Continuing in the original repository.' }), previousRunId: previous.id, workspace: previous.workspace, shadow: previous.shadow ?? null, branch: previous.branch, baseSha: previous.baseSha, baseSource: previous.baseSource, baseFetchedAt: previous.baseFetchedAt, sessionId: previous.sessionId, commitSubject: previous.commitSubject ?? null, protectedDigest: previous.protectedDigest, setupComplete: previous.setupComplete, scriptsAtBase: previous.scriptsAtBase, baselineScripts: previous.baselineScripts, scriptsAccepted: previous.scriptsAccepted, linked: [...this.linked.continued(previous), ...this.linked.snapshot(previous.project, run.id, joining.map(item => item.id))] });
     run.usageCumulative = structuredClone(previous.usageCumulative ?? {});
     const current = this.projects.find(item => item.id === previous.projectId);
     if (current) run.project.instructions = structuredClone(current.instructions ?? []);
     if (project) Object.assign(run, { recipeReplaced: true, protectedDigest: replacedDigest, setupComplete: run.setupComplete && digest(project.setup) === digest(previous.project.setup) });
+    if (previous.scriptsChanged) this.acceptScripts(run, 'you continued the run');
+    this.linked.acceptContinued(run);
     if (previous.nextExecution) { this.applyExecution(run, previous.nextExecution, 'switch'); delete previous.nextExecution; }
     if (mergeIn) Object.assign(run, { mergeIn, ...(mergeInto ? { mergeInto } : {}) });
     this.browserEvidence.attach(run, attachments, { check: 'Follow-up' });
@@ -700,6 +702,10 @@ export class LiveService {
   protectedRecipe(run) {
     // Package scripts are an executable part of npm-based validation, not ticket data.
     return digest({ setup: run.project.setup, checks: run.project.validation, scripts: this.packageScripts(run) });
+  }
+  acceptScripts(run, reason) {
+    Object.assign(run, { baselineScripts: this.packageScripts(run), scriptsAccepted: true, protectedDigest: this.protectedRecipe(run) });
+    this.log(run, 'check', `Package scripts changed and ${reason}, so they are now the protected baseline for this run and its follow-ups.`);
   }
   acquireRecipe(run, signal) {
     if (signal.aborted) return Promise.reject(new Error('Recipe wait cancelled.'));
@@ -883,7 +889,10 @@ export class LiveService {
     if (result.outcome !== 'completed') { if (result.outcome === 'blocked') run.question = run.summary?.match(/^DISPATCH_BLOCKED:\s*([\s\S]*)/m)?.[1]?.trim() ?? run.summary; e.transition(run, result.outcome === 'blocked' ? 'blocked' : 'failed', run.summary || `${name} did not complete.`); return false; }
     run.packageScripts = this.packageScripts(run);
     if (!run.scriptsAtBase && run.attempt === 1 && run.packageScripts !== null) { run.baselineScripts = run.packageScripts; run.scriptsAtBase = true; run.protectedDigest = this.protectedRecipe(run); this.log(run, 'check', 'package.json was created in this turn; its scripts are now the protected baseline for this run and its follow-ups.'); }
-    if (this.protectedRecipe(run) !== run.protectedDigest) { e.transition(run, 'blocked', 'Validation scripts changed. Review the recipe before dispatching a new run.'); return false; }
+    if (this.protectedRecipe(run) !== run.protectedDigest) {
+      if (!run.project.allowSensitiveFiles) { run.scriptsChanged = true; e.transition(run, 'blocked', 'Validation scripts changed. Review package.json, then continue the run to accept the new scripts.'); return false; }
+      this.acceptScripts(run, 'this repository allows writing sensitive files');
+    }
     const git = workspaceGit(run);
     if (!run.shadow && await git(['branch', '--show-current'], { signal }) !== run.branch) throw new Error('Worker changed the workspace branch.');
     if (!run.shadow) await git(['merge-base', '--is-ancestor', run.baseSha, 'HEAD'], { signal });

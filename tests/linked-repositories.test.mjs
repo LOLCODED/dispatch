@@ -247,3 +247,15 @@ test('a landing lands each repository on the target chosen for it', async t => {
   assert.equal(await git(repos.api, ['show', 'staging:value.txt']), 'changed'); assert.equal(await git(repos.api, ['rev-parse', 'main']), apiMain);
   assert.deepEqual(task.landed.linked.map(lane => [lane.name, lane.target]), [['api', 'staging']]);
 });
+test('a script change in a linked repository blocks once, and continuing or allowing sensitive writes accepts it', async t => {
+  const both = options => { writeFileSync(join(options.workspace, 'value.txt'), 'changed'); const member = memberPath(options.prompt); writeFileSync(join(member, 'value.txt'), 'changed'); writeFileSync(join(member, 'package.json'), JSON.stringify({ scripts: { postversion: 'git push --follow-tags' } })); return completed; };
+  const { live, engine, project, linked } = await linkedFixture(t, both);
+  const run = await live.create({ projectId: project.id, input: 'Change both repositories' }); await settle(engine, run);
+  assert.equal(run.status, 'blocked'); assert.match(run.events.at(-1).message, /Validation scripts changed in linked repository api.*continue the run/);
+  const next = await live.followup(run.id, { input: 'Go ahead' }); await settle(engine, next);
+  assert.equal(next.status, 'ready', JSON.stringify(next.events.map(event => event.message))); assert.equal(next.linked[0].scriptsChanged, undefined);
+  await live.saveProject({ ...linked, confirmed: true, allowSensitiveFiles: true }, linked.id);
+  const allowed = await live.create({ projectId: project.id, input: 'Change both repositories again' }); await settle(engine, allowed);
+  assert.equal(allowed.status, 'ready', JSON.stringify(allowed.events.map(event => event.message)));
+  assert.ok(allowed.events.some(event => /linked repository api and it allows writing sensitive files/.test(event.message)));
+});
