@@ -138,7 +138,13 @@ function scriptInfo(root) {
   return { scripts, suggestedChecks: Object.keys(scripts).filter(x => /^(check|test|test:unit|test:e2e)$/.test(x) && !longRunningScript(x)), longRunningScripts: Object.keys(scripts).filter(longRunningScript), suggestInstall: existsSync(join(root, 'package-lock.json')), suggestBrowser: startScripts.some(name => typeof scripts[name] === 'string') };
 }
 function plainFolderInput(input) {
-  if (input.trackRemote === true || (input.baseBranch !== undefined && input.baseBranch !== null)) throw new InputError('A plain folder has no Git: base branch and origin tracking do not apply.');
+  if (input.trackRemote === true || (input.baseBranch !== undefined && input.baseBranch !== null) || input.targetBranches?.length) throw new InputError('A plain folder has no Git: branches and origin tracking do not apply.');
+}
+const maxTargetBranches = 20;
+function targetBranchSettings(input, inherited, branches, baseBranch) {
+  if (input === undefined || input === null) return (inherited ?? []).filter(branch => branches.includes(branch) && branch !== baseBranch);
+  if (!Array.isArray(input) || input.length > maxTargetBranches || input.some(branch => typeof branch !== 'string' || !branches.includes(branch))) throw new InputError(`Choose at most ${maxTargetBranches} existing local branches as other target branches.`);
+  return [...new Set(input)].filter(branch => branch !== baseBranch);
 }
 function protectedPathSettings(value) {
   if (value === undefined || value === null) return [];
@@ -241,7 +247,9 @@ export class LiveService {
       const baseBranch = await git(root, ['branch', '--show-current']);
       const branches = (await git(root, ['for-each-ref', '--format=%(refname:short)', 'refs/heads/'])).split('\n').filter(Boolean);
       if (!branches.length) throw new Error('Repository needs an initial commit.');
-      return { repositoryPath: root, name: root.split('/').at(-1), baseBranch: baseBranch || branches[0], branches, ...scriptInfo(root) };
+      const owned = new Set(this.engine.runs.flatMap(run => [run, ...(run.linked ?? [])]).filter(item => item.project?.repositoryPath === root).map(item => item.branch));
+      const taskBranches = branches.filter(branch => owned.has(branch));
+      return { repositoryPath: root, name: root.split('/').at(-1), baseBranch: baseBranch || branches[0], branches, taskBranches, ...scriptInfo(root) };
     } catch (error) { throw new InputError(error.message); }
   }
   async saveProject(input, id) {
@@ -264,7 +272,7 @@ export class LiveService {
     if (input.trackRemote !== undefined && typeof input.trackRemote !== 'boolean') throw new InputError('Track remote must be a boolean.');
     const browser = browserSettings(input.browser ?? old?.browser), linked = linkedSettings(input.linked ?? old?.linked, this.projects, id), linkedEnv = linkedEnvSettings(input.linkedEnv ?? old?.linkedEnv, linked);
     let risk; try { risk = riskSettings(input.risk ?? old?.risk, validation); } catch (error) { throw new InputError(error.message); }
-    const project = { risk, browser, review: input.review ?? old?.review ?? false, memory: input.memory ?? old?.memory ?? true, dispatchCoAuthor: !plain && (input.dispatchCoAuthor ?? old?.dispatchCoAuthor ?? true), allowSensitiveFiles: input.allowSensitiveFiles ?? old?.allowSensitiveFiles ?? false, access, connectors: integrations, id: id ?? randomUUID(), name: String(input.name || info.name).slice(0, 100), repositoryPath: info.repositoryPath, baseBranch: plain ? null : input.baseBranch, validation, setup, checkScopes, instructions, protectedPaths, linked, linkedEnv, trackRemote: !plain && (input.trackRemote ?? old?.trackRemote ?? true), provider: 'codex', maxRepairs: 1, ...(plain ? { git: false } : {}) };
+    const project = { risk, browser, review: input.review ?? old?.review ?? false, memory: input.memory ?? old?.memory ?? true, dispatchCoAuthor: !plain && (input.dispatchCoAuthor ?? old?.dispatchCoAuthor ?? true), allowSensitiveFiles: input.allowSensitiveFiles ?? old?.allowSensitiveFiles ?? false, access, connectors: integrations, id: id ?? randomUUID(), name: String(input.name || info.name).slice(0, 100), repositoryPath: info.repositoryPath, baseBranch: plain ? null : input.baseBranch, targetBranches: plain ? [] : targetBranchSettings(input.targetBranches, old?.targetBranches, info.branches, input.baseBranch), validation, setup, checkScopes, instructions, protectedPaths, linked, linkedEnv, trackRemote: !plain && (input.trackRemote ?? old?.trackRemote ?? true), provider: 'codex', maxRepairs: 1, ...(plain ? { git: false } : {}) };
     if (old) { delete old.textOnly; delete old.git; Object.assign(old, project); } else this.projects.push(project);
     const saved = old ?? project;
     if (input.instructions !== undefined || !old) this.brain.replaceRules(saved, instructions);

@@ -6,7 +6,7 @@ import { SettingsLayout } from '@/components/SettingsLayout';
 import { SettingsTabs } from '@/components/SettingsTabs';
 import { FolderBrowser } from '@/components/FolderBrowser';
 import { IconButton } from '@/components/IconButton';
-import { Select } from '@/components/Select';
+import { SearchSelect } from '@/components/SearchSelect';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/Checkbox';
@@ -18,7 +18,7 @@ import { ExtrasTab, extrasOn } from '@/components/repository/ExtrasTab';
 import { NotesTab } from '@/components/repository/NotesTab';
 import { LinkedTab } from '@/components/repository/LinkedTab';
 import { useProjectForm } from '@/components/repository/use-project-form';
-import { checkIds, formChanged, newCommands } from '@/lib/project-form.mjs';
+import { branchChoices, checkIds, formChanged, newCommands } from '@/lib/project-form.mjs';
 import { api, Link, navigate, useWorkspace } from '@/lib/workspace';
 import { usedConnectors } from '@/lib/connectors.mjs';
 
@@ -58,6 +58,13 @@ function NewRepositoryRow({ path }) {
   </section>;
 }
 
+function TargetBranches({ form, update, branches }) {
+  return <div className="field"><Label htmlFor="target-branches">Other target branches</Label>
+    <SearchSelect id="target-branches" icon={GitBranch} multiple limit={5} placeholder="None" searchLabel="Search branches" value={form.targets} onChange={event => update({ targets: event.target.value })}>{branches.filter(branch => branch !== form.base).map(branch => <option key={branch}>{branch}</option>)}</SearchSelect>
+    <small className="muted">Offered after the base branch when landing or opening pull requests. Worktrees always start from the base branch.</small>
+  </div>;
+}
+
 function Basics({ state }) {
   const [browse, setBrowse] = useState(false), { form, update, info, busy, inspect, changePath, error } = state;
   return <section className="basics">
@@ -69,7 +76,8 @@ function Basics({ state }) {
     {info && <div className="form-columns">
       <div className="field"><Label htmlFor="repo-name">Name</Label><Input id="repo-name" value={form.name} onChange={event => update({ name: event.target.value })} required/></div>
       {info.git === false ? <p className="field muted">Plain folder: the agent works in place; dispatch snapshots it for checks. No branches, commits, landing or pull requests.</p>
-        : <div className="field"><Label htmlFor="base-branch">Base branch</Label><Select id="base-branch" value={form.base} onChange={event => update({ base: event.target.value })}>{info.branches.map(branch => <option key={branch}>{branch}</option>)}</Select></div>}
+        : <div className="field"><Label htmlFor="base-branch">Base branch</Label><SearchSelect id="base-branch" icon={GitBranch} limit={5} searchLabel="Search branches" value={form.base} onChange={event => update({ base: event.target.value, targets: form.targets.filter(branch => branch !== event.target.value) })}>{branchChoices(info, form).map(branch => <option key={branch}>{branch}</option>)}</SearchSelect></div>}
+      {info.git !== false && <TargetBranches form={form} update={update} branches={branchChoices(info, form)}/>}
     </div>}
   </section>;
 }

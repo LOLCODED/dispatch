@@ -12,7 +12,7 @@ const lines = values => values.map(value => value.trim()).filter(Boolean);
 
 export function formFromProject(project) {
   return {
-    path: project.repositoryPath, name: project.name, base: project.baseBranch ?? '', git: project.git !== false,
+    path: project.repositoryPath, name: project.name, base: project.baseBranch ?? '', targets: project.targetBranches ?? [], git: project.git !== false,
     validation: project.validation.filter(step => !smokeStep(step)), smoke: project.validation.find(smokeStep) ?? null, setup: project.setup,
     risk: riskSettings(project.risk, project.validation), scopes: projectScopes(project), instructions: project.instructions ?? [], protectedPaths: project.protectedPaths ?? [], linked: project.linked ?? [], linkedEnv: project.linkedEnv ?? {},
     review: project.review === true, browser: project.browser?.enabled === true, headed: project.browser?.headed === true, memory: project.memory !== false, trackRemote: project.trackRemote !== false, dispatchCoAuthor: project.dispatchCoAuthor !== false,
@@ -21,13 +21,16 @@ export function formFromProject(project) {
 }
 
 export function blankForm(path = '') {
-  return { risk: { mode: 'agent', minimumChecks: { low: [], medium: [], high: [] }, guidance: '' }, path, name: '', base: '', git: true, validation: [], smoke: null, setup: [], scopes: [], instructions: [], protectedPaths: [], linked: [], linkedEnv: {}, review: false, browser: false, headed: false, memory: true, trackRemote: true, dispatchCoAuthor: true, allowSensitiveFiles: false, connectors: {} };
+  return { risk: { mode: 'agent', minimumChecks: { low: [], medium: [], high: [] }, guidance: '' }, path, name: '', base: '', targets: [], git: true, validation: [], smoke: null, setup: [], scopes: [], instructions: [], protectedPaths: [], linked: [], linkedEnv: {}, review: false, browser: false, headed: false, memory: true, trackRemote: true, dispatchCoAuthor: true, allowSensitiveFiles: false, connectors: {} };
 }
 
 export function formFromInspect(info) {
   const { validation, setup, browser, checkScopes } = suggestedRecipe(info);
   return { ...blankForm(info.repositoryPath), name: info.name, base: info.baseBranch ?? '', git: info.git !== false, validation, setup, browser, scopes: checkScopes };
 }
+
+export const branchChoices = (info, form) => info.branches.filter(branch => branch === form.base || form.targets.includes(branch) || !info.taskBranches?.includes(branch));
+export const existingTargets = (form, branches) => form.targets.filter(branch => branches.includes(branch) && branch !== form.base);
 
 export const checkIds = form => [...form.validation.map(step => step.id), ...(form.smoke ? [form.smoke.id] : [])];
 
@@ -65,7 +68,7 @@ const landingRisk = form => form.risk.landingChecks ? { ...form.risk, landingChe
 
 export function projectPayload(form, repositoryPath) {
   const scopes = form.scopes.map(scope => ({ ...scope, paths: lines(scope.paths) })).filter(scope => scope.paths.length), git = form.git !== false;
-  return { repositoryPath, name: form.name, baseBranch: git ? form.base : null, confirmed: true,
+  return { repositoryPath, name: form.name, baseBranch: git ? form.base : null, targetBranches: git ? form.targets : [], confirmed: true,
     validation: [...form.validation, ...(form.smoke ? [form.smoke] : [])], setup: form.setup, checkScopes: scopes, risk: landingRisk(form),
     instructions: lines(form.instructions), protectedPaths: lines(form.protectedPaths), linked: form.linked, linkedEnv: Object.fromEntries(Object.entries(form.linkedEnv).map(([id, name]) => [id, name.trim()]).filter(([id, name]) => name && form.linked.includes(id))), trackRemote: git && form.trackRemote,
     connectors: form.connectors,

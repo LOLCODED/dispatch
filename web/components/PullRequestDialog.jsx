@@ -2,14 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import { Dialog } from 'radix-ui';
 import { GitBranch, GitPullRequest, X } from 'lucide-react';
 import { IconButton } from '@/components/IconButton';
-import { Select } from '@/components/Select';
+import { SearchSelect } from '@/components/SearchSelect';
 import { useAction } from '@/lib/use-action';
-import { api, preference, savePreference } from '@/lib/workspace';
+import { branchLimit } from '@/lib/branches.mjs';
+import { api, preference, savePreference, useWorkspace } from '@/lib/workspace';
 
 const baseKey = projectId => `dispatch-pr-base-${projectId}`;
 
 function BaseBranch({ projectId, name, value, onChange }) {
-  const [branches, setBranches] = useState(null);
+  const [branches, setBranches] = useState(null), { state } = useWorkspace();
   useEffect(() => {
     const controller = new AbortController();
     api(`/api/projects/${projectId}/branches?remote=1`, undefined, controller.signal).then(result => {
@@ -18,7 +19,7 @@ function BaseBranch({ projectId, name, value, onChange }) {
     }).catch(() => setBranches([]));
     return () => controller.abort();
   }, [projectId, onChange]);
-  return <Select aria-label={`Base branch for ${name}`} icon={GitBranch} value={value ?? ''} disabled={!branches?.length} onChange={event => onChange(projectId, event.target.value)}>{(branches ?? []).map(branch => <option key={branch} value={branch}>{branch}</option>)}</Select>;
+  return <SearchSelect aria-label={`Base branch for ${name}`} icon={GitBranch} limit={branchLimit(state.projects.find(project => project.id === projectId))} searchLabel="Search branches" value={value ?? ''} disabled={!branches?.length} onChange={event => onChange(projectId, event.target.value)}>{(branches ?? []).map(branch => <option key={branch} value={branch}>{branch}</option>)}</SearchSelect>;
 }
 
 const openedItems = runs => runs.flatMap(run => [{ key: run.id, title: run.title, delivery: run.delivery }, ...(run.linked ?? []).filter(member => member.delivery).map(member => ({ key: `${run.id}:${member.projectId}`, title: `${run.title} · ${member.name}`, delivery: member.delivery }))]);

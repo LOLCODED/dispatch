@@ -138,7 +138,9 @@ export class Landings {
     const owned = new Set(this.engine.runs.map(run => run.branch).filter(Boolean));
     const list = (depth, ref) => git(project.repositoryPath, ['for-each-ref', `--format=%(refname:lstrip=${depth})`, ref]).then(output => output.split('\n'));
     const names = [...await list(2, 'refs/heads'), ...(remote ? await list(3, `refs/remotes/origin`) : [])];
-    return { base: project.baseBranch, branches: [...new Set(names)].filter(branch => branch && branch !== 'HEAD' && !owned.has(branch)) };
+    const available = [...new Set(names)].filter(branch => branch && branch !== 'HEAD' && !owned.has(branch));
+    const preferred = [project.baseBranch, ...(project.targetBranches ?? [])].filter(branch => available.includes(branch));
+    return { base: project.baseBranch, branches: [...preferred, ...available.filter(branch => !preferred.includes(branch))] };
   }
 
   async work(run, signal) {

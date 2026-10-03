@@ -3,8 +3,10 @@ import { Dialog } from 'radix-ui';
 import { GitBranch, GitMerge, X } from 'lucide-react';
 import { IconButton } from '@/components/IconButton';
 import { Select } from '@/components/Select';
+import { SearchSelect } from '@/components/SearchSelect';
 import { useAction } from '@/lib/use-action';
-import { api, navigate, preference, savePreference } from '@/lib/workspace';
+import { branchLimit } from '@/lib/branches.mjs';
+import { api, navigate, preference, savePreference, useWorkspace } from '@/lib/workspace';
 
 const strategyKey = 'dispatch-land-strategy';
 const strategies = { squash: 'Squash: one commit per task', rebase: 'Rebase: replay each task\'s commits', merge: 'Merge: a merge commit per task' };
@@ -17,13 +19,13 @@ export function landingRepositories(runs) {
 }
 
 function TargetBranch({ repository, value, onChange }) {
-  const [branches, setBranches] = useState(null);
+  const [branches, setBranches] = useState(null), { state } = useWorkspace();
   useEffect(() => {
     const controller = new AbortController();
     api(`/api/projects/${repository.projectId}/branches`, undefined, controller.signal).then(result => { setBranches(result.branches); onChange(repository.projectId, result.base); }).catch(() => setBranches([]));
     return () => controller.abort();
   }, [repository.projectId, onChange]);
-  return <Select aria-label={repository.primary ? 'Target branch' : `Target branch for ${repository.name}`} icon={GitBranch} value={value ?? ''} disabled={!branches?.length} onChange={event => onChange(repository.projectId, event.target.value)}>{(branches ?? []).map(name => <option key={name} value={name}>{name}</option>)}</Select>;
+  return <SearchSelect aria-label={repository.primary ? 'Target branch' : `Target branch for ${repository.name}`} icon={GitBranch} limit={branchLimit(state.projects.find(project => project.id === repository.projectId))} searchLabel="Search branches" value={value ?? ''} disabled={!branches?.length} onChange={event => onChange(repository.projectId, event.target.value)}>{(branches ?? []).map(name => <option key={name} value={name}>{name}</option>)}</SearchSelect>;
 }
 
 function landingNote(repositories, targets, target) {
