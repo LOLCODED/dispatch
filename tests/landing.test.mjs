@@ -103,6 +103,20 @@ test('uncommitted changes in the target checkout block the landing before anythi
   assert.equal(readFileSync(join(repo, 'value.txt'), 'utf8'), 'my work'); assert.ok(existsSync(task.workspace));
 });
 
+test('uncommitted changes to files the landing does not touch stay in the target checkout and do not block it', async t => {
+  const { live, engine, project, repo } = await liveFixture(t, { behavior: writes({ 'value.txt': 'changed', 'a.txt': 'A' }) });
+  writeFileSync(join(repo, 'staged.txt'), 'base'); writeFileSync(join(repo, 'edited.txt'), 'base');
+  await git(repo, ['add', 'staged.txt', 'edited.txt']); await git(repo, ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', 'commit', '-m', 'More files']);
+  const [task] = await readyTasks(live, engine, project, ['Add A']);
+  writeFileSync(join(repo, 'staged.txt'), 'my staged work'); await git(repo, ['add', 'staged.txt']);
+  writeFileSync(join(repo, 'edited.txt'), 'my work');
+  const landing = await land(live, engine, [task]);
+  assert.equal(landing.status, 'ready', JSON.stringify(landing.events.at(-1)));
+  assert.equal(readFileSync(join(repo, 'a.txt'), 'utf8'), 'A'); assert.equal(await log(repo, '-1'), 'Add A');
+  assert.equal(readFileSync(join(repo, 'staged.txt'), 'utf8'), 'my staged work'); assert.equal(readFileSync(join(repo, 'edited.txt'), 'utf8'), 'my work');
+  assert.deepEqual((await git(repo, ['status', '--porcelain'])).split('\n'), [' M edited.txt', 'M  staged.txt']);
+});
+
 test('cancelling a landing stops the conflict resolution and leaves the target where it was', async t => {
   const waits = async options => { await new Promise(resolve => options.signal.addEventListener('abort', resolve, { once: true })); return { outcome: 'cancelled' }; };
   const { live, engine, project, repo } = await liveFixture(t, { behavior: byTicket({ 'dispatch is landing': waits, 'Add A': writes({ 'value.txt': 'changed', 'note.txt': 'A\n' }), 'Add B': writes({ 'value.txt': 'changed', 'note.txt': 'B\n' }) }) });

@@ -30,9 +30,14 @@ async function targetHead(root, target, signal) {
   catch { throw new InputError(`Branch ${target} does not exist in this repository.`); }
 }
 
-async function dirtyCheckout(root, target, signal) {
+const changedPaths = (cwd, range, signal) => git(cwd, ['diff', '--name-only', '--no-renames', '-z', ...range], { signal }).then(output => output.split('\0').filter(Boolean));
+const listed = files => `${files.slice(0, 5).join(', ')}${files.length > 5 ? ` and ${files.length - 5} more` : ''}`;
+
+// Git keeps uncommitted edits through a fast-forward unless the landing changes the same files, so only those block it.
+async function checkoutConflicts(root, target, touched, signal) {
   const path = await checkoutOf(root, target, signal);
-  return path && await git(path, ['status', '--porcelain', '--untracked-files=no'], { signal }) ? path : null;
+  const files = path ? (await changedPaths(path, ['HEAD'], signal)).filter(file => touched.has(file)) : [];
+  return { path, files };
 }
 
 function landingTargets(value) {
@@ -59,9 +64,9 @@ async function integrate(workspace, strategy, head, message, identity, signal) {
   if (!await succeeds(git(workspace, ['diff', '--cached', '--quiet'], { signal }))) await run(['commit', '-m', message]);
 }
 
-async function moveTarget({ root, target, head, baseSha }, signal) {
-  const path = await checkoutOf(root, target, signal);
-  if (path && await dirtyCheckout(root, target, signal)) throw new Error(`${target} has uncommitted changes at ${path}.`);
+async function moveTarget({ root, target, head, baseSha, touched }, signal) {
+  const { path, files } = await checkoutConflicts(root, target, touched, signal);
+  if (files.length) throw new Error(`${target} has uncommitted changes to ${listed(files)} at ${path}.`);
   if (path) await git(path, ['merge', '--ff-only', head], { signal });
   else await git(root, ['update-ref', `refs/heads/${target}`, head, baseSha], { signal });
 }
@@ -149,8 +154,8 @@ export class Landings {
     const all = lanes(run);
     this.engine.transition(run, 'preparing', `Starting a landing worktree from ${all.map(lane => lane.label).join(', ')}.`);
     for (const lane of all) {
-      const dirty = await dirtyCheckout(lane.root, lane.target, signal);
-      if (dirty) { this.engine.transition(run, 'blocked', `${lane.lane ? `${lane.lane.name}: ` : ''}${lane.target} is checked out at ${dirty} with uncommitted changes. Commit or stash them, then land again. Nothing landed.`); return false; }
+      const { path, files } = await checkoutConflicts(lane.root, lane.target, await this.taskPaths(run, lane, signal), signal);
+      if (files.length) { this.engine.transition(run, 'blocked', `${lane.lane ? `${lane.lane.name}: ` : ''}${lane.target} is checked out at ${path} with uncommitted changes to ${listed(files)}, which this landing also changes. Commit or stash them, then land again. Nothing landed.`); return false; }
     }
     if (run.landing.target) {
       run.baseSha = await targetHead(run.project.repositoryPath, run.landing.target, signal);
@@ -161,6 +166,12 @@ export class Landings {
       await git(lane.project.repositoryPath, ['worktree', 'add', '--detach', lane.workspace, lane.baseSha], { signal });
     }
     this.engine.store.save(); return true;
+  }
+
+  async taskPaths(run, lane, signal) {
+    const tasks = run.landing.items.map(item => this.engine.get(item.runId));
+    const heads = tasks.map(task => lane.lane ? this.memberOf(task, lane.lane)?.headSha : task.headSha).filter(Boolean);
+    return new Set((await Promise.all(heads.map(head => changedPaths(lane.root, [`${lane.target}...${head}`], signal)))).flat());
   }
 
   async landItem(run, item, signal) {
@@ -268,12 +279,15 @@ export class Landings {
 
   async advance(run, signal) {
     const all = lanes(run);
-    for (const lane of all) lane.head = await git(lane.workspace, ['rev-parse', 'HEAD'], { signal });
+    for (const lane of all) {
+      lane.head = await git(lane.workspace, ['rev-parse', 'HEAD'], { signal });
+      lane.touched = new Set(await changedPaths(lane.workspace, [lane.baseSha, lane.head], signal));
+    }
     const moving = all.filter(lane => lane.head !== lane.baseSha);
     this.engine.transition(run, 'landing', moving.length ? `Moving ${moving.map(lane => `${lane.label} from ${short(lane.baseSha)} to ${short(lane.head)}`).join('; ')}.` : `${run.landing.target} already holds these changes.`);
     for (const lane of moving) {
-      const path = await checkoutOf(lane.root, lane.target, signal);
-      if (path && await dirtyCheckout(lane.root, lane.target, signal)) { this.engine.transition(run, 'failed', `${lane.label} could not move to ${short(lane.head)}: ${lane.target} has uncommitted changes at ${path}. The combined commit stays in the landing worktree. Nothing landed.`); return; }
+      const { path, files } = await checkoutConflicts(lane.root, lane.target, lane.touched, signal);
+      if (files.length) { this.engine.transition(run, 'failed', `${lane.label} could not move to ${short(lane.head)}: ${lane.target} has uncommitted changes to ${listed(files)} at ${path}. The combined commit stays in the landing worktree. Nothing landed.`); return; }
     }
     const moved = [];
     for (const lane of moving) {
