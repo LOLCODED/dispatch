@@ -12,7 +12,7 @@ export const providerName = id => providers.find(provider => provider.id === id)
 export const modelKey = model => model ? `${model.provider ?? 'codex'}:${model.model}` : '';
 
 export function providerConnected(provider, catalog, settings) {
-  return settings?.[provider.id] === true && Boolean(catalog?.models?.some(model => model.provider === provider.id));
+  return settings?.[provider.id] === true && Boolean(catalog?.allModels?.some(model => model.provider === provider.id));
 }
 
 export function canAddProvider(catalog, settings) {

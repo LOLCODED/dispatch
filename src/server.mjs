@@ -207,6 +207,7 @@ export function createServer(engine, { assetRoot = root, devFraming = false } = 
         return json(res, 200, await live.refreshModels());
       }
       if (req.method === 'POST' && path === '/api/models/tiers') return json(res, 200, live.setAutoTiers(await jsonBody(req)));
+      if (req.method === 'POST' && path === '/api/models/enabled') return json(res, 200, live.setModelEnabled(await jsonBody(req)));
       const modelPath = path.match(/^\/api\/runs\/([a-f0-9-]+)\/model$/);
       if (req.method === 'POST' && modelPath) return json(res, 200, viewRun(live.switchModel(modelPath[1], await jsonBody(req))));
       if (req.method === 'GET' && path === '/api/projects') return json(res, 200, live.projects);
@@ -311,7 +312,7 @@ export function createServer(engine, { assetRoot = root, devFraming = false } = 
         return json(res, 200, engine.cancel(cancel[1]));
       }
       if (await evidenceRoute({ live, engine, viewRun, traceViewer }, req, res, url, path)) return;
-      const clientRoute = /^\/(?:setup(?:\/keyboard)?|brain|admin(?:\/projects(?:\/(?:new|[a-f0-9-]+))?)?|runs\/[a-f0-9-]+)?$/.test(path);
+      const clientRoute = /^\/(?:setup(?:\/keyboard|\/integrations)?|brain|admin(?:\/projects(?:\/(?:new|[a-f0-9-]+))?)?|runs\/[a-f0-9-]+)?$/.test(path);
       const clientAsset = /^\/assets\/[a-zA-Z0-9_.-]+\.(?:js|css)$/.test(path);
       if (req.method === 'GET' && (clientRoute || clientAsset)) {
         const name = clientRoute ? 'index.html' : path, content = appAssets.get(name);

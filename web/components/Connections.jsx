@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Bot, ChevronDown, Code, MousePointer2, Plus, Sparkles, Terminal, Ticket, Trash2 } from 'lucide-react';
+import { Bot, ChevronDown, Code, Folder, FolderPlus, MousePointer2, Sparkles, Terminal, Ticket, Trash2, X } from 'lucide-react';
 import { ConnectionRow } from '@/components/ConnectionRow';
 import { connectorIcon } from '@/components/ConnectorIcon';
 import { IconButton } from '@/components/IconButton';
-import { Input } from '@/components/ui/input';
+import { FolderBrowser } from '@/components/FolderBrowser';
 import { SwitchRow } from '@/components/Switch';
 import { providers } from '@/lib/providers.mjs';
 import { api, useWorkspace } from '@/lib/workspace';
@@ -73,24 +73,28 @@ export function ConnectorList({ connections, busy, onToggle, onAction }) {
   return <ul className="row-list connection-list">{catalog.map(connector => <ConnectorRow key={connector.id} connector={connector} connection={connections?.connectors?.[connector.id]} busy={busy} onToggle={enabled => onToggle(connector.id, enabled)} onAction={onAction}/>)}</ul>;
 }
 
-const pluginState = plugin => plugin.error ? `Did not load: ${plugin.error}` : plugin.loaded ? `${plugin.name} (${plugin.id})` : 'Not loaded';
+const pluginDetail = plugin => plugin.error ? `Did not load: ${plugin.error}` : plugin.loaded ? plugin.path : `Not loaded · ${plugin.path}`;
+const folderName = path => path.split('/').filter(Boolean).at(-1) ?? path;
+
+function AddedConnector({ plugin, busy, onRemove }) {
+  const name = plugin.name ?? folderName(plugin.path);
+  return <li className="added-connector">
+    <Folder size={14} aria-hidden="true"/>
+    <div className="switch-text"><span>{name}</span><small className="break-all" data-failed={plugin.error ? true : undefined}>{pluginDetail(plugin)}</small></div>
+    {plugin.id && <IconButton label={`Remove ${name}`} icon={Trash2} disabled={busy} onClick={onRemove}/>}
+  </li>;
+}
 
 export function ConnectorFolders({ busy, perform, onChange }) {
-  const [plugins, setPlugins] = useState([]), [path, setPath] = useState('');
+  const [plugins, setPlugins] = useState([]), [browse, setBrowse] = useState(false);
   const load = async () => setPlugins(await api('/api/connectors/plugins'));
   useEffect(() => { perform(load); }, []);
   const changed = async () => { refreshWorkspace(); await load(); await onChange?.(); };
-  const add = event => { event.preventDefault(); perform(async () => { await api('/api/connectors/plugins', { path: path.trim() }); setPath(''); await changed(); }); };
+  const add = path => perform(async () => { await api('/api/connectors/plugins', { path }); setBrowse(false); await changed(); });
   const remove = plugin => perform(async () => { await api(`/api/connectors/plugins/${plugin.id}/remove`, {}); await changed(); });
   return <div className="connector-folders">
-    {plugins.length > 0 && <ul className="row-list">{plugins.map(plugin => <li key={plugin.path} className="setting-row">
-      <span><code className="break-all">{plugin.path}</code><small className="muted"> · {pluginState(plugin)}</small></span>
-      {plugin.id && <IconButton label={`Remove ${plugin.name ?? plugin.id}`} icon={Trash2} disabled={busy} onClick={() => remove(plugin)}/>}
-    </li>)}</ul>}
-    <form className="setting-row" onSubmit={add}>
-      <label className="sr-only" htmlFor="connector-path">Connector folder</label>
-      <Input id="connector-path" value={path} onChange={event => setPath(event.target.value)} placeholder="/absolute/path/to/connector" spellCheck={false}/>
-      <IconButton type="submit" label="Add connector" icon={Plus} disabled={busy || !path.trim()}/>
-    </form>
+    <div className="setting-row"><span>Added connectors</span><IconButton label={browse ? 'Close folder browser' : 'Add a connector folder'} icon={browse ? X : FolderPlus} aria-expanded={browse} disabled={busy} onClick={() => setBrowse(!browse)}/></div>
+    {browse && <FolderBrowser onChoose={add}/>}
+    {plugins.length > 0 && <ul className="row-list">{plugins.map(plugin => <AddedConnector key={plugin.path} plugin={plugin} busy={busy} onRemove={() => remove(plugin)}/>)}</ul>}
   </div>;
 }

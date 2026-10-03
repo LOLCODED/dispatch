@@ -130,3 +130,17 @@ test('a provider without a sandbox is refused unless the run has full access', a
   assert.throws(() => live.setLocalAgent({ agent: 'codex' }), /Choose one of/);
   assert.equal(live.setLocalAgent({ agent: 'pi' }).localAgent, 'pi');
 });
+
+test('a model turned off leaves the pickers and runs but stays listed across refreshes', async t => {
+  const { live, project } = await fixture(t);
+  live.setProvider({ id: 'claude', enabled: true }); await live.refreshModels();
+  const off = live.setModelEnabled({ provider: 'claude', model: 'opus', enabled: false });
+  assert.deepEqual(off.models.map(model => model.model), ['test-sol']);
+  assert.deepEqual(off.allModels.map(model => model.model), ['test-sol', 'opus']);
+  assert.deepEqual((await live.refreshModels()).models.map(model => model.model), ['test-sol']);
+  await assert.rejects(live.create({ projectId: project.id, input: 'Change it', execution: { provider: 'claude', model: 'opus' } }), /enabled provider/);
+  assert.throws(() => live.setModelEnabled({ provider: 'codex', model: 'retired', enabled: false }), /unavailable/);
+  assert.throws(() => live.setModelEnabled({ provider: 'codex', model: 'test-sol', enabled: 'no' }), /whether it is on/);
+  assert.deepEqual(live.setModelEnabled({ provider: 'claude', model: 'opus', enabled: true }).models.map(model => model.model), ['test-sol', 'opus']);
+  assert.deepEqual(live.hiddenModels, []);
+});

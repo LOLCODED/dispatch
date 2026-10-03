@@ -31,7 +31,7 @@ function storedAlerts() {
   } catch { return Object.fromEntries(alertKinds.map(kind => [kind, true])); }
 }
 
-function useStored(key, read, write = value => value) {
+export function useStored(key, read, write = value => value) {
   const [value, setValue] = useState(read);
   return [value, next => { savePreference(key, write(next)); setValue(next); }];
 }

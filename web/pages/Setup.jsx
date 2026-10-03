@@ -1,24 +1,20 @@
 import { useEffect, useState } from 'react';
 import { Slider } from 'radix-ui';
-import { ArrowDown, ArrowUp, ArrowUpRight, Bell, BellOff, ChevronsDown, Code, Cpu, Database, Plus, Trash2, FolderOpen, HardDrive, House, Info, LayoutGrid, ScrollText, ListOrdered, Palette, Plug, Unplug, ShieldCheck, MousePointer2, MousePointerClick, PanelBottomOpen, RefreshCw, Square, SquareDashed, Volume1, Volume2 } from 'lucide-react';
+import { ArrowUpRight, Bell, BellOff, ChevronsDown, Code, Database, FolderOpen, HardDrive, House, Info, LayoutGrid, ScrollText, ListOrdered, Palette, ShieldCheck, MousePointer2, MousePointerClick, PanelBottomOpen, Square, SquareDashed, Volume1, Volume2 } from 'lucide-react';
 import { SettingsLayout } from '@/components/SettingsLayout';
 import { SettingsTabs } from '@/components/SettingsTabs';
 import { StorageSettings } from '@/components/StorageSettings';
 import { ChangelogDialog } from '@/components/ChangelogDialog';
-import { LocalModels } from '@/components/LocalModels';
-import { ConnectorFolders, ConnectorList, ProviderList, useConnections } from '@/components/Connections';
 import { IconButton } from '@/components/IconButton';
 import { Select } from '@/components/Select';
 import { LayoutPicker } from '@/components/LayoutDemo';
 import { MotionChoice, ThemeChoice } from '@/components/AppearanceChoices';
 import { maxConcurrency } from '../../src/catalog.mjs';
 import { useAction } from '@/lib/use-action';
-import { api, Link, savePreference, useWorkspace } from '@/lib/workspace';
+import { api, Link, useWorkspace } from '@/lib/workspace';
 import { tileFocusKey, tileFocusMode, tileStrokeKey, tileStrokeMode } from '@/lib/tiles';
-import { usePreferences } from '@/lib/preferences';
+import { usePreferences, useStored } from '@/lib/preferences';
 import { playPing } from '@/lib/ping';
-import { ModelPicker } from '@/components/ModelPicker';
-import { executionKey, readExecution } from '@/lib/execution';
 import { version } from '../../package.json';
 
 function About() {
@@ -90,13 +86,8 @@ function Notifications() {
   </section><HomeAlerts/></>;
 }
 
-function usePreference(key, read, write = value => value) {
-  const [value, setValue] = useState(read);
-  return [value, next => { savePreference(key, write(next)); setValue(next); }];
-}
-
 function Tiles() {
-  const [focus, setFocus] = usePreference(tileFocusKey, tileFocusMode), [stroke, setStroke] = usePreference(tileStrokeKey, tileStrokeMode), { layout, setLayout } = usePreferences();
+  const [focus, setFocus] = useStored(tileFocusKey, tileFocusMode), [stroke, setStroke] = useStored(tileStrokeKey, tileStrokeMode), { layout, setLayout } = usePreferences();
   return <section className="panel" id="tiles"><h2>Tiles</h2>
     <div className="setting-row is-stacked"><span>Layout</span><LayoutPicker value={layout} onChange={setLayout}/></div>
     <div className="setting-row"><span>Focus</span><div className="segmented" role="group" aria-label="Tile focus">
@@ -152,69 +143,8 @@ function Queue({ busy, onChange }) {
   </section>;
 }
 
-function Providers({ connections, busy, onCheck, onToggle }) {
-  return <section className="panel" id="providers"><div className="section-heading"><h2>Providers</h2><IconButton label="Check connections" icon={RefreshCw} disabled={busy} onClick={onCheck}/></div>
-    <ProviderList connections={connections} busy={busy} onToggle={onToggle}/>
-    <p className="muted">Turning a provider on lets dispatch check its CLI and list its models; nothing runs until you dispatch. Connection checks do not start a model task. Credentials stay with each CLI.</p>
-  </section>;
-}
-
-function Connectors({ connections, busy, perform, onCheck, onReload, onToggle, onAction }) {
-  return <section className="panel" id="connectors"><div className="section-heading"><h2>Connectors</h2><IconButton label="Check connector connections" icon={RefreshCw} disabled={busy} onClick={onCheck}/></div>
-    <ConnectorList connections={connections} busy={busy} onToggle={onToggle} onAction={onAction}/>
-    <p className="muted">Turning a connector on lets dispatch check its login. A repository uses it only after you turn it on in that repository’s Extras; reading actions start on and writing actions start off. Credentials stay with each CLI.</p>
-    <h3>Added connectors</h3>
-    <ConnectorFolders busy={busy} perform={perform} onChange={onReload}/>
-    <p className="muted">Add a connector from a folder on this machine. It runs inside dispatch with your permissions, so add only code you trust. See docs/INTEGRATIONS.md to write one.</p>
-  </section>;
-}
-
-function DefaultModel({ models }) {
-  const [execution, setExecution] = usePreference(executionKey, readExecution, JSON.stringify);
-  return <div className="setting-row"><span>Composer starts with</span><ModelPicker label="Default model" value={execution} models={models?.models ?? []} onChange={setExecution}/></div>;
-}
-
-const sameEntry = (a, b) => a.provider === b.provider && a.model === b.model;
-
-function TierRow({ tier, index, count, models, busy, onChange, onMove, onRemove }) {
-  return <li className="tier-row">
-    <span className="tier-index" aria-hidden="true">{index + 1}</span>
-    <ModelPicker label={`Tier ${index + 1} model`} defaultLabel="Choose a model" value={tier} models={models} onChange={value => value && onChange(value)}/>
-    <IconButton label="Move up" icon={ArrowUp} disabled={busy || index === 0} onClick={() => onMove(-1)}/>
-    <IconButton label="Move down" icon={ArrowDown} disabled={busy || index === count - 1} onClick={() => onMove(1)}/>
-    <IconButton label="Remove tier" icon={Trash2} disabled={busy} onClick={onRemove}/>
-  </li>;
-}
-
-function AutoTiers({ models, busy, perform }) {
-  const { state } = useWorkspace(), [edited, setEdited] = useState(null), tiers = edited ?? state.autoTiers ?? [], catalog = models?.models ?? [];
-  const save = next => perform(async () => {
-    setEdited(next);
-    try { setEdited((await api('/api/models/tiers', { tiers: next })).autoTiers); } catch (failure) { setEdited(null); throw failure; }
-    window.dispatchEvent(new Event('dispatch-refresh'));
-  });
-  const unused = catalog.find(model => !tiers.some(tier => sameEntry(tier, model)));
-  const move = (index, by) => { const next = [...tiers]; [next[index], next[index + by]] = [next[index + by], next[index]]; save(next); };
-  return <div className="auto-tiers">
-    <div className="setting-row"><span>Auto tiers</span><IconButton label="Add tier" icon={Plus} disabled={busy || !unused || tiers.length >= 8} onClick={() => save([...tiers, { provider: unused.provider, model: unused.model, effort: unused.defaultReasoningEffort ?? null }])}/></div>
-    {tiers.length > 0 && <ol className="tier-list" aria-label="Auto tiers">{tiers.map((tier, index) => <TierRow key={`${index}:${tier.provider}:${tier.model}`} tier={tier} index={index} count={tiers.length} models={catalog} busy={busy}
-      onChange={value => save(tiers.map((item, at) => at === index ? value : item))} onMove={by => move(index, by)} onRemove={() => save(tiers.filter((_, at) => at !== index))}/>)}</ol>}
-    <p className="muted">Lightest first. Auto starts on the first tier; when checks or review still fail after the repair, it gets one more attempt on the next tier. Models missing from the last refresh are skipped. With no tiers, Auto uses the provider’s default.</p>
-  </div>;
-}
-
-function Models({ models, busy, perform, onRefresh }) {
-  return <section className="panel"><div className="section-heading"><h2>Models</h2><IconButton label="Refresh models" icon={RefreshCw} disabled={busy} onClick={onRefresh}/></div>
-    <p className="muted" role="status">{models?.message}{models?.fetchedAt && ` Last checked ${new Date(models.fetchedAt).toLocaleString()}.`}</p>
-    <DefaultModel models={models}/>
-    <AutoTiers models={models} busy={busy} perform={perform}/>
-    <p className="muted">Choose a model and reasoning level in the composer, or switch it on the run page from the next turn. Replies and repairs keep the session unless the provider changes.</p>
-  </section>;
-}
-
 export function Setup() {
-  const { state } = useWorkspace(), { busy, error, perform } = useAction();
-  const { connections, catalog, setCatalog, check, reload, toggle, saveEndpoints, chooseLocalAgent, toggleConnector, setConnectorAction } = useConnections(perform);
+  const { busy, error, perform } = useAction();
   const tabs = [
     { value: 'appearance', label: 'Appearance', icon: Palette, content: <Appearance/> },
     { value: 'home', label: 'Home', icon: House, content: <Home/> },
@@ -223,14 +153,10 @@ export function Setup() {
     { value: 'editor', label: 'Editor', icon: Code, content: <Editor/> },
     { value: 'access', label: 'Agent access', icon: ShieldCheck, content: <AgentAccess busy={busy} onChange={mode => perform(async () => { await api('/api/access', { mode }); window.dispatchEvent(new Event('dispatch-refresh')); })}/> },
     { value: 'queue', label: 'Queue', icon: ListOrdered, content: <Queue busy={busy} onChange={concurrency => perform(async () => { await api('/api/concurrency', { concurrency }); window.dispatchEvent(new Event('dispatch-refresh')); })}/> },
-    { value: 'providers', label: 'Providers', icon: Plug, content: <Providers connections={connections} busy={busy} onCheck={check} onToggle={toggle}/> },
-    { value: 'local-models', label: 'Local models', icon: HardDrive, content: <LocalModels connection={connections?.['local-models']} busy={busy} onCheck={check} onToggle={enabled => toggle('local-models', enabled)} onSave={saveEndpoints} onAgent={chooseLocalAgent}/> },
-    { value: 'connectors', label: 'Connectors', icon: Unplug, content: <Connectors connections={connections} busy={busy} perform={perform} onCheck={check} onReload={reload} onToggle={toggleConnector} onAction={setConnectorAction}/> },
-    { value: 'models', label: 'Models', icon: Cpu, content: <Models models={catalog ?? state.modelCatalog} busy={busy} perform={perform} onRefresh={() => perform(async () => setCatalog(await api('/api/models/refresh', {})))}/> },
     { value: 'storage', label: 'Storage', icon: Database, content: <StorageSettings/> },
     { value: 'about', label: 'About', icon: Info, content: <About/> },
   ];
-  return <SettingsLayout title="Settings" description="Appearance, home, notifications, tiles, editor, agent access, queue, providers, local models, connectors, models and storage.">
+  return <SettingsLayout title="Settings" description="Appearance, home, notifications, tiles, editor, agent access, queue and storage.">
     <SettingsTabs label="Settings sections" tabs={tabs}/>
     {error && <p role="alert" className="error">{error}</p>}
   </SettingsLayout>;

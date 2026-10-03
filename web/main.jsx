@@ -8,6 +8,7 @@ import { Run } from '@/pages/Run';
 import { Admin } from '@/pages/Admin';
 import { Brain } from '@/pages/Brain';
 import { Keyboard } from '@/pages/Keyboard';
+import { Integrations } from '@/pages/Integrations';
 import { Projects, ProjectForm } from '@/pages/Projects';
 import { Welcome } from '@/pages/Welcome';
 import { SetupReveal } from '@/components/SetupReveal';
@@ -23,6 +24,7 @@ function route(path, finishSetup) {
   if (path === '/welcome') return <Welcome onFinish={finishSetup}/>;
   if (path === '/setup') return <Setup/>;
   if (path === '/setup/keyboard') return <Keyboard/>;
+  if (path === '/setup/integrations') return <Integrations/>;
   if (path === '/brain') return <Brain/>;
   if (run) return <Run key={run[1]} id={run[1]}/>;
   if (path === '/admin') return <Admin/>;
@@ -38,10 +40,18 @@ function useFirstRun(path) {
   return { revealing, finish: () => { setFinished(true); setRevealing(true); }, revealed: () => setRevealing(false) };
 }
 
+const movedSettingsTabs = { providers: 'providers', connectors: 'connectors', models: 'models', 'local-models': 'models' };
+
+function redirectMovedSettings() {
+  const moved = location.pathname === '/setup' && movedSettingsTabs[location.hash.slice(1)];
+  if (moved) history.replaceState(history.state, '', `/setup/integrations#${moved}`);
+}
+
 function App() {
   const path = usePath(), firstRun = useFirstRun(path);
   useAttention();
   return <>{path !== '/welcome' && <AppHeader path={path}/>}{route(path, firstRun.finish)}<WhatsNew/>{firstRun.revealing && <SetupReveal onDone={firstRun.revealed}/>}</>;
 }
 
+redirectMovedSettings();
 createRoot(document.getElementById('root')).render(<ThemeProvider><PreferencesProvider><WorkspaceProvider><App/></WorkspaceProvider></PreferencesProvider></ThemeProvider>);

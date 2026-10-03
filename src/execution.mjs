@@ -39,7 +39,18 @@ export function tierList(value, models, stored = []) {
   if (tiers.some((tier, index) => tiers.findIndex(other => sameModel(other, tier)) !== index)) throw new InputError('Each Auto tier must be a different model or reasoning level.');
   return tiers;
 }
-export const activeTiers = (tiers = [], models) => tiers.map(tier => validChoice(tier, models)).filter((tier, index, all) => tier && all.findIndex(other => sameModel(other, tier)) === index);
+const hiddenLimit = 500;
+export const isHiddenModel = (model, hidden = []) => hidden.some(item => item.provider === model.provider && item.model === model.model);
+export function toggleHiddenModel(hidden, input, models) {
+  if (!input || typeof input !== 'object' || typeof input.provider !== 'string' || typeof input.model !== 'string' || typeof input.enabled !== 'boolean') throw new InputError('Choose a model and whether it is on.');
+  const rest = hidden.filter(item => !isHiddenModel(input, [item]));
+  if (input.enabled) return rest;
+  const model = models.find(model => model.provider === input.provider && model.model === input.model);
+  if (!model) throw new InputError('This model is unavailable. Refresh models and try again.');
+  if (rest.length >= hiddenLimit) throw new InputError(`At most ${hiddenLimit} models can be turned off.`);
+  return [...rest, { provider: model.provider, model: model.model }];
+}
+export const activeTiers =(tiers = [], models) => tiers.map(tier => validChoice(tier, models)).filter((tier, index, all) => tier && all.findIndex(other => sameModel(other, tier)) === index);
 
 export function nextTier(execution, tiers, models) {
   const active = activeTiers(tiers, models);

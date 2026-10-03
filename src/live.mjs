@@ -34,7 +34,7 @@ import { branchName, safeBranch, validateTemplate } from './branch.mjs';
 import { runProcess } from './process.mjs';
 import { installedEditors, openPath, openTargets } from './open-path.mjs';
 import { Interactions } from './interactions.mjs';
-import { modelChoice, modelLabel, modelPreferenceKey, modelValue, nextTier, parseModelValue, sameModel, selectExecution, tierList } from './execution.mjs';
+import { isHiddenModel, modelChoice, modelLabel, modelPreferenceKey, modelValue, nextTier, parseModelValue, sameModel, selectExecution, tierList, toggleHiddenModel } from './execution.mjs';
 import { agentPrimary, resolveRepository } from './repository.mjs';
 import { agentMembers, taskRepositories } from './repository-selection.mjs';
 import { longRunningScript, npmScript } from './recipe-roles.mjs';
@@ -165,8 +165,14 @@ export class LiveService {
   get projects() { return this.engine.store.state.projects; }
   get modelCatalog() {
     const catalog = this.engine.store.state.modelCatalog ?? { available: false, models: [], message: 'Refresh models in Setup to choose a model. Auto currently uses your CLI defaults.' };
-    const enabled = new Set(this.providers.enabledIds());
-    return { ...catalog, models: catalog.models.map(model => ({ provider: 'codex', ...model })).filter(model => enabled.has(model.provider)) };
+    const enabled = new Set(this.providers.enabledIds()), hidden = this.hiddenModels;
+    const allModels = catalog.models.map(model => ({ provider: 'codex', ...model })).filter(model => enabled.has(model.provider));
+    return { ...catalog, allModels, models: allModels.filter(model => !isHiddenModel(model, hidden)) };
+  }
+  get hiddenModels() { return this.engine.store.state.hiddenModels ?? []; }
+  setModelEnabled(input) {
+    this.engine.store.state.hiddenModels = toggleHiddenModel(this.hiddenModels, input, this.modelCatalog.allModels);
+    this.engine.store.save(); return this.modelCatalog;
   }
   async refreshModels() {
     if (!this.modelRefresh) this.modelRefresh = this.discoverModels().then(value => {

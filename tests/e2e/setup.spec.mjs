@@ -87,7 +87,7 @@ test('repository settings save optional review and show revision-bound verdicts'
 
 test('setup discovers models and the composer keeps an explicit model choice with accessible custom controls', { tag: '@setup' }, async ({ page, request }, testInfo) => {
   const before = await (await request.get('/api/state')).json();
-  await page.goto('/setup#providers'); await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
+  await page.goto('/setup#providers'); await expect(page.getByRole('heading', { name: 'Integrations', exact: true })).toBeVisible();
   await expect(page.getByText('Off', { exact: true })).toHaveCount(4);
   await expect(page.getByText('Connected', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Check connections' }).click();

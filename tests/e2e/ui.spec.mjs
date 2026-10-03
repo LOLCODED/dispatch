@@ -166,7 +166,7 @@ test('scrolling down moves the composer up and lists tasks below it, one row per
 test('the model picker links to provider setup while providers remain unconnected', { tag: '@ui' }, async ({ page }) => {
   await page.goto('/');
   await selectChoice(page, 'Model', '__add_provider__');
-  await expect(page).toHaveURL(/\/setup#providers$/);
+  await expect(page).toHaveURL(/\/setup\/integrations#providers$/);
   await expect(page.locator('#providers')).toBeInViewport();
 });
 

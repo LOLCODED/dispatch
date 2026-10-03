@@ -32,7 +32,7 @@ export function ModelPicker({ value, onChange, models, label = 'Model', defaultL
   const option = model => <option key={modelKey(model)} value={modelKey(model)}>{model.displayName}</option>;
   const list = groups.length > 1 ? groups.map(provider => <optgroup key={provider} label={providerName(provider)}>{models.filter(model => model.provider === provider).map(option)}</optgroup>) : models.map(option);
   const chooseModel = event => {
-    if (event.target.value === addProviderValue) { navigate('/setup#providers'); return; }
+    if (event.target.value === addProviderValue) { navigate('/setup/integrations#providers'); return; }
     const model = models.find(model => modelKey(model) === event.target.value);
     onChange(model ? { provider: model.provider, model: model.model, effort: model.defaultReasoningEffort ?? null } : null);
   };

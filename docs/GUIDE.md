@@ -53,7 +53,7 @@ When a run ends blocked or failed on a check, **Checks → Edit checks and conti
 Turning a provider on is consent for dispatch to check its CLI and list its models. A provider that is off is never probed. Each CLI keeps its own login; dispatch copies no credentials.
 
 - **Codex:** `codex app-server` for owner turns (streamed messages, native questions), `codex exec --json` read-only for review. On by default.
-- **Claude Code:** `claude -p` stream-json. Owner turns use `acceptEdits` inside Claude Code's sandbox; review denies mutating tools; nothing may prompt. Off until you enable it under **Settings → Providers**.
+- **Claude Code:** `claude -p` stream-json. Owner turns use `acceptEdits` inside Claude Code's sandbox; review denies mutating tools; nothing may prompt. Off until you enable it under **Settings → Integrations → Providers**.
 
 **Settings → General → Agent access** decides what owner turns may write: **Home folder** (default) keeps the OS sandbox with network off; **Full access** removes it. Review turns stay read-only either way.
 

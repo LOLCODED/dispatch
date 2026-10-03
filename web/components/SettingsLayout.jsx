@@ -1,9 +1,10 @@
 import { motion } from 'motion/react';
-import { ArrowLeft, Brain, ChartNoAxesCombined, FolderGit2, Keyboard, SlidersHorizontal } from 'lucide-react';
+import { ArrowLeft, Brain, ChartNoAxesCombined, FolderGit2, Keyboard, Plug, SlidersHorizontal } from 'lucide-react';
 import { Link, usePath } from '@/lib/workspace';
 
 const sections = [
   { href: '/setup', label: 'General', icon: SlidersHorizontal, current: path => path === '/setup' },
+  { href: '/setup/integrations', label: 'Integrations', icon: Plug, current: path => path === '/setup/integrations' },
   { href: '/setup/keyboard', label: 'Keyboard', icon: Keyboard, current: path => path === '/setup/keyboard' },
   { href: '/admin/projects', label: 'Repositories', icon: FolderGit2, current: path => path.startsWith('/admin/projects') },
   { href: '/brain', label: 'Brain', icon: Brain, current: path => path === '/brain' },
