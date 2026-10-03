@@ -108,8 +108,28 @@ function resolveRef(app, ref) {
   return tag;
 }
 
+function remoteUrl(cwd) {
+  const result = spawnSync('git', ['remote', 'get-url', 'origin'], { cwd, encoding: 'utf8' });
+  return result.status === 0 ? result.stdout.trim() || null : null;
+}
+
+// The install clones a local checkout, which goes stale on machines that never pull it; release tags also come from that checkout's own origin.
+export function upstreamUrl(app) {
+  const source = remoteUrl(app);
+  return source && existsSync(source) ? remoteUrl(source) : null;
+}
+
+function fetchTags(app) {
+  run('git', ['fetch', '--tags', '--force', 'origin'], { cwd: app });
+  const upstream = upstreamUrl(app);
+  if (!upstream) return;
+  console.log(`$ git fetch --tags --force ${upstream}`);
+  const result = spawnSync('git', ['fetch', '--tags', '--force', upstream], { cwd: app, stdio: 'inherit' });
+  if (result.status !== 0) console.log(`Could not fetch release tags from ${upstream}; using the tags in the source checkout.`);
+}
+
 function checkout(layout, ref) {
-  run('git', ['fetch', '--tags', '--force', 'origin'], { cwd: layout.app });
+  fetchTags(layout.app);
   const target = resolveRef(layout.app, ref);
   run('git', ['checkout', '--detach', '--force', target], { cwd: layout.app });
   run('npm', ['ci', '--no-audit', '--no-fund'], { cwd: layout.app });

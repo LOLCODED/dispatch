@@ -1,6 +1,10 @@
 import test from 'node:test';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import assert from 'node:assert/strict';
-import { activeRuns, installLayout, latestTag, launchdPlist, servicePath, systemdUnit, waitForIdle } from '../bin/install.mjs';
+import { activeRuns, installLayout, latestTag, launchdPlist, servicePath, systemdUnit, upstreamUrl, waitForIdle } from '../bin/install.mjs';
 
 const layout = installLayout({ dir: '/home/me/.local/share/dispatch', port: 4317 });
 const spec = { layout, node: '/usr/bin/node', path: '/home/me/.local/bin:/usr/bin' };
@@ -40,4 +44,19 @@ test('waiting for idle reports a server that cannot hold its queue, and fails if
   assert.equal(await waitForIdle({ hold: async () => null }), false);
   const states = [{ working: ['Big task'] }, null];
   await assert.rejects(waitForIdle({ hold: async () => states.shift() }, { log: () => {}, wait: async () => {} }), /Lost contact/);
+});
+
+test('an install cloned from a local checkout finds that checkout\'s own origin for release tags', t => {
+  const root = mkdtempSync(join(tmpdir(), 'dispatch-upstream-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const git = (cwd, ...args) => execFileSync('git', args, { cwd, stdio: 'pipe' });
+  const [release, source, app] = ['release', 'source', 'app'].map(name => join(root, name));
+  git(root, 'init', '-q', release);
+  git(release, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'init');
+  git(root, 'clone', '-q', release, source);
+  git(root, 'clone', '-q', '--no-checkout', source, app);
+  assert.equal(upstreamUrl(app), release);
+  assert.equal(upstreamUrl(source), null);
+  git(app, 'remote', 'set-url', 'origin', 'git@github.com:me/dispatch.git');
+  assert.equal(upstreamUrl(app), null);
 });
