@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FolderInput, Folders, ListTree, X } from 'lucide-react';
+import { FolderInput, Folders, X } from 'lucide-react';
 import { IconButton } from '@/components/IconButton';
 import { useAction } from '@/lib/use-action';
 import { api, preference, savePreference } from '@/lib/workspace';
@@ -20,7 +20,6 @@ export function FolderAlert({ suggestions }) {
   return <aside className="folder-alert" aria-label="Folder suggestions">
     <Folders size={14} aria-hidden="true"/>
     <span>{suggestions.length} unfiled tasks have a suggested folder</span>
-    <IconButton label="Review suggestions in the task list" icon={ListTree} size="icon-xs" href="/#tasks"/>
     <IconButton label={`Move all ${suggestions.length} to their suggested folders`} icon={FolderInput} size="icon-xs" disabled={busy} onClick={moveAll}/>
     <IconButton label="Remind me tomorrow" icon={X} size="icon-xs" onClick={dismiss}/>
     {error && <p className="error" role="alert">{error}</p>}

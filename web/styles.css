@@ -258,9 +258,6 @@ kbd { font-family:var(--mono); font-size:10px; padding:1px 5px; border:1px solid
 .board-row-edit, .board-row-time { margin-left:auto; flex:none; opacity:0; transition:opacity .15s; }
 .board-row-time { color:var(--muted-foreground); font-size:12px; white-space:nowrap; font-variant-numeric:tabular-nums; }
 .board-row-edit + .board-row-time { margin-left:0; }
-.board-row-suggest { margin-left:auto; flex:none; color:var(--muted-foreground); opacity:.45; transition:opacity .15s; }
-.board-row-suggest:is(:hover, :focus-visible) { opacity:1; }
-.board-row-suggest ~ :is(.board-row-edit, .board-row-time) { margin-left:0; }
 .board-row:hover :is(.board-row-edit, .board-row-time), .board-row-edit:focus-visible { opacity:1; }
 @media (hover: none) { .board-row-edit, .board-row-time { opacity:1; } }
 .board-row-select { position:absolute; left:-28px; color:var(--muted-foreground); opacity:0; transition:opacity .15s, background-color .15s, color .15s; }

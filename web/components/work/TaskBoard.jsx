@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowUpRight, Check, ChevronDown, CornerUpLeft, FolderInput, GitMerge, GitPullRequest, Pencil } from 'lucide-react';
+import { ArrowUpRight, Check, ChevronDown, CornerUpLeft, GitMerge, GitPullRequest, Pencil } from 'lucide-react';
 import { IconButton } from '@/components/IconButton';
 import { DecisionGroup } from '@/components/work/DecisionGroup';
 import { FolderBar } from '@/components/work/FolderBar';
@@ -9,7 +9,6 @@ import { LandDialog } from '@/components/LandDialog';
 import { PullRequestDialog } from '@/components/PullRequestDialog';
 import { ListControls, Pager, useListControls, usePage } from '@/components/ListControls';
 import { activityAt, boardView, editTarget } from '@/lib/board.mjs';
-import { unfiledSuggestions } from '@/lib/folder-suggestion.mjs';
 import { ascending, byText, filterSort, textMatches } from '@/lib/list-view.mjs';
 import { boardScopeKey, useBoardAction } from '@/lib/board-actions';
 import { relativeTime } from '@/lib/status.mjs';
@@ -33,15 +32,14 @@ function EntryTime({ entry }) {
   return <RowTime at={latest?.finishedAt} label="Last reply"/>;
 }
 
-function TaskRow({ entry, folders, suggestions, onEdit, selection }) {
-  const { busy, error, send } = useBoardAction(), edit = editTarget(entry), suggestion = suggestions?.get(entry.key);
+function TaskRow({ entry, folders, onEdit, selection }) {
+  const { busy, error, send } = useBoardAction(), edit = editTarget(entry);
   return <li className="board-row" data-run={entry.latest?.id}>
     {selection && <IconButton label={`Select ${entry.title} ${entry.latest.landable ? 'to land' : 'for a pull request'}`} icon={Check} size="icon-xs" className="board-row-select" aria-pressed={selection.checked} onClick={() => selection.onChange(!selection.checked)}/>}
     <StateDot entry={entry} folders={folders} busy={busy} onAction={send}/>
     <LandingMark entry={entry}/>
     {entry.latest ? <Link href={`/runs/${entry.latest.id}`} className="board-title">{entry.title}</Link> : <span className="board-title">{entry.title}</span>}
     {!entry.latest && entry.sourceRunId && <IconButton label="Open the run this task came from" icon={CornerUpLeft} href={`/runs/${entry.sourceRunId}`}/>}
-    {suggestion && <IconButton label={`Move to ${suggestion.folder.name} · ${suggestion.reason}`} icon={FolderInput} size="icon-xs" className="board-row-suggest" disabled={busy} onClick={() => send(`/api/board/items/${entry.key}`, { folderId: suggestion.folder.id })}/>}
     {edit && <IconButton label="Edit" icon={Pencil} size="icon-xs" className="board-row-edit" disabled={busy} onClick={() => onEdit(edit)}/>}
     <EntryTime entry={entry}/>
     {error && <p className="error" role="alert">{error}</p>}
@@ -73,7 +71,7 @@ const taskSorts = [
 ];
 const entryMatches = (entry, query) => textMatches([entry.title, entry.request], query);
 
-function Group({ state, entries, folders, suggestions, onEdit, resetKey }) {
+function Group({ state, entries, folders, onEdit, resetKey }) {
   const { runs, landable, publishable, selection, clear } = useSelection(entries), [dialog, setDialog] = useState(null), review = state === 'review';
   const close = () => { setDialog(null); clear(); };
   const paged = usePage(entries, groupPageSize, resetKey);
@@ -83,13 +81,13 @@ function Group({ state, entries, folders, suggestions, onEdit, resetKey }) {
       <h2 id={`group-${state}`}><span className={`board-dot state-${state}`} aria-hidden="true"/>{stateLabels[state]}{review && <SelectionActions runs={runs} landable={landable} publishable={publishable} onAction={setDialog}/>}</h2>
       <Pager paged={paged} label={`${stateLabels[state]} pages`}/>
     </div>
-    <ul>{paged.items.map(entry => <TaskRow key={entry.key} entry={entry} folders={folders} suggestions={suggestions} onEdit={onEdit} selection={review ? selection(entry) : null}/>)}</ul>
+    <ul>{paged.items.map(entry => <TaskRow key={entry.key} entry={entry} folders={folders} onEdit={onEdit} selection={review ? selection(entry) : null}/>)}</ul>
     {dialog === 'land' && <LandDialog runs={runs} onClose={close}/>}
     {dialog === 'pull-request' && <PullRequestDialog runs={runs} onClose={close}/>}
   </section>;
 }
 
-function Collapsed({ state, entries, folders, suggestions, onEdit, resetKey }) {
+function Collapsed({ state, entries, folders, onEdit, resetKey }) {
   const [open, setOpen] = useState(false), paged = usePage(entries, groupPageSize, resetKey);
   if (!entries.length) return null;
   return <section className={`board-collapsed board-${state}`}>
@@ -97,7 +95,7 @@ function Collapsed({ state, entries, folders, suggestions, onEdit, resetKey }) {
       <button type="button" className="collapsed-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>{entries.length} {state}<ChevronDown size={12} aria-hidden="true"/></button>
       {open && <Pager paged={paged} label={`${stateLabels[state]} pages`}/>}
     </div>
-    {open && <ul>{paged.items.map(entry => <TaskRow key={entry.key} entry={entry} folders={folders} suggestions={suggestions} onEdit={onEdit}/>)}</ul>}
+    {open && <ul>{paged.items.map(entry => <TaskRow key={entry.key} entry={entry} folders={folders} onEdit={onEdit}/>)}</ul>}
   </section>;
 }
 
@@ -110,15 +108,14 @@ function useScope(folders) {
 export function TaskBoard({ runs, tasks, board, projects, onEdit }) {
   const folders = board?.folders ?? [], [scope, setScope] = useScope(folders), controls = useListControls(taskSorts);
   const view = Object.fromEntries(Object.entries(boardView({ runs, tasks, board, folderId: scope })).map(([group, entries]) => [group, filterSort(entries, { query: controls.query, matches: entryMatches, compare: controls.compare })]));
-  const suggestions = new Map(unfiledSuggestions(Object.values(boardView({ runs, tasks, board })).flat(), folders).map(({ entry, folder, reason }) => [entry.key, { folder, reason }]));
   const resetKey = `${scope}|${controls.query}|${controls.sort}`, empty = !runs.length && !tasks.length;
   if (empty) return <div className="empty"><ArrowUpRight aria-hidden="true"/><p>No work yet. {projects.length ? 'Drop a ticket above and give it a direction.' : <Link href="/admin/projects/new">Connect your first repository to get moving.</Link>}</p></div>;
   return <div className="task-board" role="region" aria-label="Tasks">
     <div className="board-toolbar"><FolderBar folders={folders} scope={scope} onScope={setScope}/><ListControls controls={controls} sorts={taskSorts} searchLabel="Search tasks" placeholder="Search tasks…"/></div>
     {controls.query.trim() && !Object.values(view).some(entries => entries.length) && <p className="muted">Nothing matches the search.</p>}
     <DecisionGroup entries={view.decision} folders={folders} reviewing={view.review.length > 0}/>
-    {['active', 'reviewing', 'queued', 'review', 'awaiting', 'todo'].map(state => <Group key={state} state={state} entries={view[state]} folders={folders} suggestions={suggestions} onEdit={onEdit} resetKey={resetKey}/>)}
-    <Collapsed state="completed" entries={view.completed} folders={folders} suggestions={suggestions} onEdit={onEdit} resetKey={resetKey}/>
+    {['active', 'reviewing', 'queued', 'review', 'awaiting', 'todo'].map(state => <Group key={state} state={state} entries={view[state]} folders={folders} onEdit={onEdit} resetKey={resetKey}/>)}
+    <Collapsed state="completed" entries={view.completed} folders={folders} onEdit={onEdit} resetKey={resetKey}/>
     <Collapsed state="archived" entries={view.archived} folders={folders} resetKey={resetKey}/>
   </div>;
 }
