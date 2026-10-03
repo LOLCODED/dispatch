@@ -20,7 +20,7 @@ import { contextFileLimits } from './context-files.mjs';
 import { landable } from './landing.mjs';
 import { publishable } from './pull-requests.mjs';
 import { failingChecks } from './delivery.mjs';
-import { committedMember } from './linked-repositories.mjs';
+import { committed, committedMember } from './linked-repositories.mjs';
 import { changelog } from './changelog.mjs';
 import { parseSubject } from './conventional-commit.mjs';
 import { completeSetup, setupNeeded } from './onboarding.mjs';
@@ -69,8 +69,8 @@ function runSummary(run, live) {
     repositories: repositoriesView(run), landedRunIds: run.landing?.items.map(item => item.runId), resolvesConflicts: Boolean(run.mergeIn),
   };
 }
-// The primary first, then every linked repository with a tested commit: what a landing or pull request will touch.
-const repositoriesView = run => [...(run.baseBranch ? [{ projectId: run.projectId, name: run.project?.name, baseBranch: run.baseBranch, primary: true }] : []), ...(run.linked ?? []).filter(committedMember).map(member => ({ projectId: member.projectId, name: member.name, baseBranch: member.baseBranch, primary: false }))];
+// The primary when it has a tested commit, then every linked repository with one: what a landing or pull request will touch.
+const repositoriesView = run => [...(run.baseBranch && committed(run) ? [{ projectId: run.projectId, name: run.project?.name, baseBranch: run.baseBranch, primary: true }] : []), ...(run.linked ?? []).filter(committedMember).map(member => ({ projectId: member.projectId, name: member.name, baseBranch: member.baseBranch, primary: false }))];
 const editDraft = ({ projectId, projectIds, title, input, execution }) => ({ projectId, projectIds: projectIds ?? null, title, input, execution: execution && execution !== 'auto' && execution.mode !== 'auto' ? { provider: execution.provider, model: execution.model, effort: execution.effort } : null });
 async function editRoute({ tasks, live }, req, kind, id) {
   if (req.method === 'GET') return [200, editDraft(kind === 'tasks' ? tasks.editable(id) : live.editable(id))];

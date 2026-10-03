@@ -7,14 +7,14 @@ import { digest, git } from './local-tools.mjs';
 import { isPlain } from './plain-folder.mjs';
 import { commitMessage } from './conventional-commit.mjs';
 import { coAuthored, commitIdentity } from './commit-identity.mjs';
-import { committedMember, memberRecipe, memberWorkspace } from './linked-repositories.mjs';
+import { committed, committedMember, memberRecipe, memberWorkspace } from './linked-repositories.mjs';
 
 export const strategies = ['squash', 'rebase', 'merge'];
 const maxTasks = 20;
 const succeeds = promise => promise.then(() => true, () => false);
 const short = sha => sha.slice(0, 12);
 
-export const landable = run => run.mode === 'live' && run.kind === 'change' && run.status === 'ready' && (Boolean(run.headSha) || (run.linked ?? []).some(committedMember)) && !run.answered && !run.landed && !run.supersededBy && !run.worktreeRemovedAt;
+export const landable = run => run.mode === 'live' && run.kind === 'change' && run.status === 'ready' && (committed(run) || (run.linked ?? []).some(committedMember)) && !run.answered && !run.landed && !run.supersededBy && !run.worktreeRemovedAt;
 
 export const checkFailurePrompt = (target, check, merged, repository = null) => `${repository ? `In the linked repository ${repository.name} (worktree ${repository.workspace}): ` : ''}dispatch is landing this task on ${target}, and check ${check.name} failed on the combined result.${merged ? ` dispatch merged ${target} (at ${short(merged)}) into this branch without committing so you can fix it on top of the latest ${target}; keep the changes already on ${target}, and do not commit, abort the merge or run other Git commands that change history.` : ''} Fix the cause without changing the validation recipe, and make sure ${check.name} runs on your result.\n${JSON.stringify(check.command)}\n${String(check.output ?? '').slice(-16000)}`;
 
@@ -115,7 +115,7 @@ export class Landings {
     if (!strategies.includes(strategy)) throw new InputError(`Land by ${strategies.join(', ')}.`);
     const tasks = this.tasks(input.runIds), project = this.live.projects.find(item => item.id === tasks[0].projectId);
     if (!project) throw new InputError('Project not found', 404);
-    const target = isPlain(project) ? null : input.target ?? project.baseBranch;
+    const target = isPlain(project) || !tasks.some(committed) ? null : input.target ?? project.baseBranch;
     if (target) await targetHead(project.repositoryPath, target);
     const title = `Land ${tasks.length === 1 ? `"${tasks[0].title.slice(0, 80)}"` : `${tasks.length} tasks`}${target ? ` on ${target}` : ''}`;
     const ticket = { key: `landing:${digest(tasks.map(task => task.shadow ? task.id : task.workspace).sort())}`, title, description: tasks.map(task => `- ${task.ticketId}: ${task.title}`).join('\n'), acceptance: '', sourceUrl: null };

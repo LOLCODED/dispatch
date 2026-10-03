@@ -57,7 +57,7 @@ import { homedir } from 'node:os';
 import { Landings } from './landing.mjs';
 import { PullRequests, reviewPages } from './pull-requests.mjs';
 import { commitMessage, commitSubject, withoutCommitLine } from './conventional-commit.mjs';
-import { LinkedRepositories, appName, changedMembers, commitTested, committedMember, linkedEnvSettings, linkedSettings, workspaceScripts } from './linked-repositories.mjs';
+import { LinkedRepositories, appName, changedMembers, commitTested, committed, committedMember, linkedEnvSettings, linkedSettings, workspaceScripts } from './linked-repositories.mjs';
 import { remainingMarker, remainingWork } from './remaining.mjs';
 
 const rawLogBytes = 16_000_000;
@@ -410,12 +410,12 @@ export class LiveService {
   }
   async pullRequest(run, base, bases) {
     if (run.mode !== 'live' || run.kind === 'answer') throw new InputError('Only a live run can be published.', 404);
-    if (run.status !== 'ready' || !(run.headSha || changedMembers(run).some(committedMember))) throw new InputError('Only a ready run with a tested commit can be published.', 409);
+    if (run.status !== 'ready' || !(committed(run) || changedMembers(run).some(committedMember))) throw new InputError('Only a ready run with a tested commit can be published.', 409);
     if (run.supersededBy) throw new InputError('Publish the most recent execution of this ticket.', 409);
     if (run.worktreeRemovedAt || !existsSync(run.workspace)) throw new InputError('This run has no dispatch worktree to push from.', 409);
     if (run.headSha && base !== undefined && !safeBranch(base)) throw new InputError('Choose a valid base branch.');
     await this.readyToPublish(run.project);
-    if (run.headSha && run.headSha !== run.baseSha) this.log(run, 'delivery', await this.delivery.deliver(run, run.project, { base, pages: await reviewPages(this.steps, run.id) }));
+    if (committed(run)) this.log(run, 'delivery', await this.delivery.deliver(run, run.project, { base, pages: await reviewPages(this.steps, run.id) }));
     if (run.delivery?.pr) run.delivery.submittedAt = new Date().toISOString();
     await this.linked.deliver(run, { bases });
     await this.pullRequests.link([run]);

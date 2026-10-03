@@ -46,5 +46,5 @@ test('Agent decides puts every saved repository in reach and commits only the on
   expect(ready.headSha).toBe(ready.baseSha);
   expect(ready.linked.filter(member => member.headSha && member.headSha !== member.baseSha).map(member => member.name)).toEqual(['Frontend repository']);
   expect(ready.checks.map(check => check.name)).toEqual(['Frontend repository: unit']);
-  expect(ready.repositories.map(item => item.name)).toEqual([ready.project.name, 'Frontend repository']);
+  expect(ready.repositories.map(item => item.name)).toEqual(['Frontend repository']);
 });

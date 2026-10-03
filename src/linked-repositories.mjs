@@ -44,7 +44,8 @@ export function memberWorkspace(root, runId, project, taken = new Set()) {
 }
 
 export const changedMembers = run => (run.linked ?? []).filter(member => member.changedPaths?.length);
-export const committedMember = member => Boolean(member.headSha) && member.headSha !== member.baseSha;
+export const committed = repository => Boolean(repository.headSha) && repository.headSha !== repository.baseSha;
+export const committedMember = committed;
 export const memberRecipe = member => digest({ setup: member.project.setup, checks: member.project.validation, scripts: workspaceScripts(member.workspace) });
 
 export async function commitTested({ workspace, revision, identity, message, tree, signal }) {

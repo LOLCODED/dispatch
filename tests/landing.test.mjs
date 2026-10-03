@@ -235,3 +235,25 @@ test('a task whose primary is a plain folder lands only its Git member, and the 
   assert.equal(readFileSync(join(folder, 'value.txt'), 'utf8'), 'changed');
   await assert.rejects(live.landings.create({ runIds: [task.id] }), /no tested commit/);
 });
+
+test('a task that changed only its linked repository lands only that repository and leaves its own target untouched', async t => {
+  const { dir: apiDir, repo: api } = await temporaryRepository(); t.after(() => rmSync(apiDir, { recursive: true, force: true }));
+  const memberOnly = options => { writeFileSync(join(options.prompt.match(/^- api: (\S+)/m)[1], 'value.txt'), 'changed'); return { outcome: 'completed', sessionId: 'session-1', summary: 'Done\nDISPATCH_COMMIT: feat(api): change the member' }; };
+  const adapter = { ...workerDouble(memberOnly), contract: { writableRoots: true } };
+  const { live, engine, project, repo } = await liveFixture(t, { adapter });
+  const member = await live.saveProject({ repositoryPath: api, name: 'api', baseBranch: 'main', confirmed: true, validation: [unitCheck] });
+  const task = await live.create({ projectIds: [project.id, member.id], input: 'Change the member' }); await settle(engine, task);
+  assert.equal(task.status, 'ready', JSON.stringify(task.events.at(-1))); assert.equal(task.headSha, task.baseSha); assert.ok(task.linked[0].headSha);
+  assert.equal(landable(task), true); assert.equal(publishable(task), true);
+  const landing = await land(live, engine, [task]);
+  assert.equal(landing.status, 'ready', JSON.stringify(landing.events.at(-1)));
+  assert.equal(landing.landing.target, null);
+  assert.deepEqual((await log(repo)).split('\n'), ['Initial']);
+  assert.deepEqual((await log(api, '-2')).split('\n'), ['feat(api): change the member', 'Initial']);
+  assert.match(landing.events.at(-1).message, /Landed 1 task on api on main at [0-9a-f]{12} by squash/);
+});
+
+test('a ready task without a commit in any repository is neither landable nor publishable', () => {
+  const run = { mode: 'live', kind: 'change', status: 'ready', headSha: 'abc', baseSha: 'abc', linked: [{ headSha: 'def', baseSha: 'def' }] };
+  assert.equal(landable(run), false); assert.equal(publishable(run), false);
+});

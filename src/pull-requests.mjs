@@ -3,7 +3,7 @@ import { safeBranch } from './branch.mjs';
 import { terminal } from './catalog.mjs';
 import { pullRequestState } from './board-state.mjs';
 import { fetchBase, pullRequestConflictPrompt, reviewRepairPrompt } from './delivery.mjs';
-import { committedMember } from './linked-repositories.mjs';
+import { committed, committedMember } from './linked-repositories.mjs';
 
 const maxRuns = 20, loopback = new Set(['127.0.0.1', 'localhost', '[::1]']), watchIntervalMs = 5 * 60_000;
 const stateNotes = {
@@ -14,7 +14,7 @@ const stateNotes = {
   ci: pr => `CI failed on pull request #${pr.number ?? '?'}.`,
 };
 
-export const publishable = (run, autoDelivers = false) => run.mode === 'live' && run.kind !== 'answer' && run.kind !== 'landing' && run.status === 'ready' && (Boolean(run.headSha) || (run.linked ?? []).some(committedMember)) && !run.answered && !run.supersededBy && !run.worktreeRemovedAt && !run.delivery?.pr && !run.linked?.some(member => member.delivery?.pr) && !autoDelivers;
+export const publishable = (run, autoDelivers = false) => run.mode === 'live' && run.kind !== 'answer' && run.kind !== 'landing' && run.status === 'ready' && (committed(run) || (run.linked ?? []).some(committedMember)) && !run.answered && !run.supersededBy && !run.worktreeRemovedAt && !run.delivery?.pr && !run.linked?.some(member => member.delivery?.pr) && !autoDelivers;
 
 function appPage(url) {
   try { const parsed = new URL(url); return loopback.has(parsed.hostname) ? `${parsed.pathname}${parsed.search}` : null; } catch { return null; }
