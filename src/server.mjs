@@ -123,7 +123,7 @@ async function connectorPluginRoute(live, req, path) {
 export function createServer(engine, { assetRoot = root, devFraming = false } = {}) {
   const live = engine.live ?? new LiveService(engine);
   const tasks = new Tasks(live), board = new Board(live), storage = new Storage(live), appAssets = snapshotAppAssets(assetRoot), traceViewer = snapshotTraceViewer();
-  const viewRun = run => ({ ...run, ...(run.mode === 'live' ? { insights: runInsights(run), ...handoffView(run, live), repositories: repositoriesView(run) } : {}) });
+  const viewRun = run => ({ ...run, ...(run.mode === 'live' ? { insights: runInsights(run), ...handoffView(run, live), repositories: repositoriesView(run), linkOffer: live.router.offerFor(run) } : {}) });
   return http.createServer(async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -139,7 +139,7 @@ export function createServer(engine, { assetRoot = root, devFraming = false } = 
       if (req.method === 'POST' && path === '/api/queue/hold') return json(res, 200, engine.holdQueue((await jsonBody(req)).seconds));
       if (req.method === 'POST' && path === '/api/queue/release') { await jsonBody(req); return json(res, 200, engine.releaseQueue()); }
       if (req.method === 'GET' && path === '/api/workspace') { live.reconcileWorktrees(); live.pullRequests.watch(); }
-      if (req.method === 'GET' && path === '/api/workspace') return json(res, 200, { mode: 'local', modelCatalog: live.modelCatalog, autoTiers: live.autoTiers, modelSuggestions: live.modelSuggestions(), providerSettings: live.providers.settings, localEndpoints: live.localEndpoints, localAgent: live.localAgent, connectors: live.connectorList.map(({ id, name, delivers, tickets }) => ({ id, name, delivers, tickets })), providerContracts: live.providers.contracts(), traceViewer: traceViewer.size > 0, accessMode: live.accessMode, branchNaming: live.branchNaming, homeProjectId: live.homeProject()?.id ?? null, setupNeeded: setupNeeded(engine.store.state), concurrency: engine.concurrency, tasks: tasks.list().map(({ input, ...task }) => ({ ...task, request: cap(input, requestLength) })), labels, projects: live.projects, board: engine.store.state.board, runs: engine.runs.filter(run => run.mode === 'live').map(run => runSummary(run, live)) });
+      if (req.method === 'GET' && path === '/api/workspace') return json(res, 200, { mode: 'local', modelCatalog: live.modelCatalog, autoTiers: live.autoTiers, modelSuggestions: live.modelSuggestions(), providerSettings: live.providers.settings, localEndpoints: live.localEndpoints, localAgent: live.localAgent, connectors: live.connectorList.map(({ id, name, delivers, tickets }) => ({ id, name, delivers, tickets })), providerContracts: live.providers.contracts(), traceViewer: traceViewer.size > 0, accessMode: live.accessMode, branchNaming: live.branchNaming, homeProjectId: live.homeProject()?.id ?? null, setupNeeded: setupNeeded(engine.store.state), concurrency: engine.concurrency, tasks: tasks.list().map(({ input, ...task }) => ({ ...task, request: cap(input, requestLength) })), labels, projects: live.projects, linkSuggestions: live.router.suggestions(), board: engine.store.state.board, runs: engine.runs.filter(run => run.mode === 'live').map(run => runSummary(run, live)) });
       if (path.startsWith('/api/board/')) { const result = await boardRoute(board, req, path); if (result) return json(res, ...result); }
       const respondPath = path.match(/^\/api\/runs\/([a-f0-9-]+)\/respond$/);
       if (respondPath && req.method === 'POST') {
@@ -218,6 +218,9 @@ export function createServer(engine, { assetRoot = root, devFraming = false } = 
       if (req.method === 'GET' && path === '/api/projects') return json(res, 200, live.projects);
       if (req.method === 'GET' && path === '/api/folders') return json(res, 200, await listFolders(url.searchParams.get('path') ?? '~'));
       if (req.method === 'POST' && path === '/api/folders/pick') { const input = await jsonBody(req); return json(res, 200, await pickFolder({ multiple: input?.multiple === true })); }
+      if (req.method === 'POST' && path === '/api/routing/preview') return json(res, 200, await live.router.preview(await jsonBody(req)));
+      if (req.method === 'POST' && path === '/api/routing/link') return json(res, 200, live.router.link((await jsonBody(req)).ids));
+      if (req.method === 'POST' && path === '/api/routing/dismiss') return json(res, 200, live.router.dismiss((await jsonBody(req)).ids));
       if (req.method === 'POST' && path === '/api/projects/inspect') {
         if (!req.headers['content-type']?.startsWith('application/json')) throw new InputError('Use application/json', 415);
         return json(res, 200, await live.inspect((await body(req)).repositoryPath));

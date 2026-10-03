@@ -23,7 +23,7 @@ export const riskTool = {
 };
 
 export const repositoryTool = {
-  name: 'dispatch_repository', kind: 'repository', description: 'Add a folder outside this task to it instead of editing it in place. inspect: whether it is saved and the settings dispatch would give it. add: ask the operator, then save it as a dispatch repository; it joins this task from the next turn with its own workspace and checks. Omitted settings use the inspect defaults; alwaysLink also links it to this repository for future tasks.',
+  name: 'dispatch_repository', kind: 'repository', description: 'Add a folder outside this task to it instead of editing it in place. inspect: whether it is saved and the settings dispatch would give it. add: a saved repository joins without asking; a new folder is saved as a dispatch repository once the operator approves; either joins this task from the next turn with its own workspace and checks. Omitted settings use the inspect defaults; alwaysLink also links it to this repository for future tasks.',
   inputSchema: { type: 'object', properties: {
     action: { type: 'string', enum: ['inspect', 'add'] }, path: { type: 'string', maxLength: 1000 }, name: { type: 'string', maxLength: 100 }, baseBranch: { type: 'string', maxLength: 200 },
     checks: { type: 'array', maxItems: 12, items: { type: 'string', maxLength: 500 }, description: 'Check commands, e.g. npm run test' }, setup: { type: 'array', maxItems: 8, items: { type: 'string', maxLength: 500 } },

@@ -3,7 +3,7 @@ import { modelChoice } from './execution.mjs';
 import { InputError } from './engine.mjs';
 import { taskRepositories } from './repository-selection.mjs';
 import { agentPrimary } from './repository.mjs';
-import { autoRepository, homeAndSaved } from './home-repository.mjs';
+import { homeAndSaved } from './home-repository.mjs';
 import { latestRun } from './conversations.mjs';
 import { openRemaining, remainingTaskInput } from './remaining.mjs';
 import { TaskImages, decodeTaskImages } from './task-images.mjs';
@@ -40,7 +40,7 @@ export class Tasks {
   repositories(input, text) {
     const choice = taskRepositories(input, this.live.projects);
     const projects = this.live.projects, { home, saved } = homeAndSaved(projects, this.live.homePath);
-    const primary = choice.mode === 'manual' ? projects.find(project => project.id === choice.ids[0]) : choice.mode === 'agent' ? agentPrimary(text, saved).project : home && autoRepository(text, projects, home).project;
+    const primary = choice.mode === 'manual' ? projects.find(project => project.id === choice.ids[0]) : choice.mode === 'agent' ? agentPrimary(text, saved).project : home && this.live.router.route(text, home).project;
     if (!primary) throw new InputError('Choose a saved repository.');
     return { projectId: primary.id, projectIds: choice.mode === 'agent' ? 'all' : choice.inherit ? undefined : choice.ids };
   }

@@ -237,6 +237,18 @@ kbd { font-family:var(--mono); font-size:10px; padding:1px 5px; border:1px solid
 .history-cue svg { color:var(--muted-foreground); }
 .hints { display:flex; align-items:center; gap:4px; }
 .composer-targets { margin-right:auto; margin-left:-4px; }
+.route-reason { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin:0 auto 0 0; min-width:0; }
+.route-confidence { padding:1px 6px; border-radius:999px; background:var(--secondary); color:var(--foreground); }
+.route-confidence.route-certain, .route-confidence.route-likely { background:var(--primary); color:var(--primary-foreground); }
+.route-confidence.route-ask { box-shadow:inset 0 0 0 1px var(--attention); }
+.route-guess { border:1px solid var(--border); border-radius:999px; padding:1px 8px; background:transparent; color:var(--foreground); font:inherit; cursor:pointer; }
+.route-guess:hover { border-color:var(--primary); }
+.route-link { border:0; padding:0; background:none; color:var(--muted-foreground); font:inherit; text-decoration:underline; text-underline-offset:2px; cursor:pointer; }
+.route-link:hover { color:var(--foreground); }
+.route-link:focus-visible { outline:2px solid var(--primary); outline-offset:1px; }
+.route-confidence.route-chosen { box-shadow:inset 0 0 0 1px var(--border); }
+.link-suggestion { display:block; margin-top:2px; color:var(--attention); }
+.route-guess:focus-visible { outline:2px solid var(--primary); outline-offset:1px; }
 .activity { flex:1; min-height:0; overflow:auto; margin-top:26px; padding-bottom:40px; }
 .activity>* { max-width:760px; margin-inline:auto; }
 

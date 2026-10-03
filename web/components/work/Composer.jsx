@@ -8,6 +8,7 @@ import { IconButton } from '@/components/IconButton';
 import { ModelPicker } from '@/components/ModelPicker';
 import { RepositoryQuestion } from '@/components/work/RepositoryQuestion';
 import { FolderPicker, useFolderTarget, withLinked } from '@/components/work/ComposerTargets';
+import { RouteChip, useRoutePreview } from '@/components/work/RoutePreview';
 import { ForgetCard } from '@/components/brain/ForgetCard';
 import { ConnectorQuestion } from '@/components/work/ConnectorQuestion';
 import { BranchQuestion } from '@/components/work/BranchQuestion';
@@ -73,6 +74,7 @@ export function Composer({ taskRef, hints }) {
   const attachments = useAttachments('home', setError), reading = attachments.documents.reading;
   const command = parseCommand(input), asksRepository = !command || command.name === 'todo';
   const selected = selection.ids[0], folder = useFolderTarget(state, input);
+  const route = useRoutePreview(input, asksRepository && selection.mode === 'auto');
   const canDispatch = command?.name === 'todo' ? Boolean(command.text) : Boolean(command || !question);
   const changeDraft = (visible, attachments) => {
     if (composerText(visible, attachments).length > ticketTextLimit) { setError('Ticket text including attachments must be at most 12,000 characters.'); return; }
@@ -89,8 +91,9 @@ export function Composer({ taskRef, hints }) {
     if (!next) { setError('Ticket text including attachments must be at most 12,000 characters.'); return; }
     changeDraft(next.visible, next.attachments);
   };
-  const chooseProject = id => { setSelection(id === 'all' ? { mode: 'agent', ids: [] } : { mode: 'manual', ids: withLinked(id, state.projects) }); setQuestion(null); setOffer(null); setError(''); };
-  const request = { projectId: selected ?? 'auto', ...(selection.mode === 'agent' ? { projectIds: 'all' } : selection.ids.length ? { projectIds: selection.ids } : {}), input, execution: settings.choice ?? 'auto' };
+  const chooseProject = (id, answer = false) => { setSelection(id === 'all' ? { mode: 'agent', ids: [] } : id ? { mode: 'manual', ids: withLinked(id, state.projects), answer } : blankSelection); setQuestion(null); setOffer(null); setError(''); };
+  const answerRoute = id => chooseProject(id, true);
+  const request = { projectId: selected ?? 'auto', ...(selection.mode === 'agent' ? { projectIds: 'all' } : selection.ids.length ? { projectIds: selection.ids } : {}), ...(selection.answer ? { routingAnswer: true } : {}), input, execution: settings.choice ?? 'auto' };
   const runCommand = () => perform(async () => {
     if (!command.text) { navigate('/brain'); return; }
     const result = await api('/api/brain/forget', { text: command.text, ...(selected ? { projectId: selected } : {}) });
@@ -146,9 +149,10 @@ export function Composer({ taskRef, hints }) {
       {asksRepository && <div className="composer-pickers composer-targets">
         <FolderPicker target={folder} disabled={busy}/>
       </div>}
+      {asksRepository && input.trim() && <RouteChip route={route} selection={selection} projects={state.projects} disabled={busy} onChoose={answerRoute}/>}
       {hints}
     </motion.div>
     <p className="sr-only" role="status">{announcement}</p>
-    <Feedback notice={notice} error={error} question={asksRepository ? question : null} offer={offer} forget={forget} projects={state.projects} busy={busy} onChoose={chooseProject} onUsePath={chooseRepositoryPath} onOfferChange={setOffer} onCreate={createRepository} onForgetDone={() => { setForget(null); updateInput(''); }} onConnector={chooseConnector} onBranch={chooseBranch}/>
+    <Feedback notice={notice} error={error} question={asksRepository ? question : null} offer={offer} forget={forget} projects={state.projects} busy={busy} onChoose={answerRoute} onUsePath={chooseRepositoryPath} onOfferChange={setOffer} onCreate={createRepository} onForgetDone={() => { setForget(null); updateInput(''); }} onConnector={chooseConnector} onBranch={chooseBranch}/>
   </>;
 }

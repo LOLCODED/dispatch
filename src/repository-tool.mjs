@@ -3,6 +3,7 @@ import { linkedSettings, maxLinked } from './linked-repositories.mjs';
 import { maxTaskRepositories } from './repository.mjs';
 import { repositoryInput, setupSummary } from './repository-setup.mjs';
 import { providerName } from './providers.mjs';
+import { ticketText } from './repository-router.mjs';
 
 const approve = 'Add it', decline = 'Not now';
 const commandLines = steps => steps.map(step => step.kind === 'browser-smoke' ? 'dispatch browser-smoke' : [step.command, ...step.args].join(' '));
@@ -34,7 +35,7 @@ export function repositoryOptions(input) {
 
 const taskRepositories = run => [...new Set([run.projectId, ...(run.linked ?? []).map(member => member.projectId), ...(run.linkRequests ?? [])])];
 
-// Saves a folder as a dispatch repository for the CLI, and lets a run's agent add one to its task once the operator approves.
+// Saves a folder as a dispatch repository for the CLI, and lets a run's agent add one to its task: a saved repository joins straight away, a new folder once the operator approves.
 export class RepositoryTool {
   constructor(live) { this.live = live; }
 
@@ -70,10 +71,14 @@ export class RepositoryTool {
     if (inTask) return { added: false, note: `${existing.name} is already part of this task.` };
     if (taskRepositories(run).length >= maxTaskRepositories) throw new InputError(`A task can use at most ${maxTaskRepositories} repositories.`);
     const options = repositoryOptions({ ...args, repositoryPath: info.repositoryPath });
-    const answer = await this.approval(run, { info, existing, input: existing ? null : repositoryInput(info, options), always: args.alwaysLink === true }, signal);
-    if (answer !== approve) return { added: false, operator: answer };
-    const result = await this.add({ ...options, linkTo: args.alwaysLink === true ? run.projectId : undefined });
+    const always = args.alwaysLink === true;
+    if (!existing || always) {
+      const answer = await this.approval(run, { info, existing, input: existing ? null : repositoryInput(info, options), always }, signal);
+      if (answer !== approve) return { added: false, operator: answer };
+    }
+    const result = await this.add({ ...options, linkTo: always ? run.projectId : undefined });
     run.linkRequests = [...(run.linkRequests ?? []), result.project.id]; this.live.engine.store.save();
+    if (run.project?.repositoryPath === this.live.homePath) this.live.router.remember(ticketText(run.ticket), result.project.id, { runId: run.id, via: 'tool' });
     return { added: true, repository: result.project.name, savedNow: result.created, linkedTo: result.linkedTo,
       next: `${result.project.name} joins this task from its next turn, with its own isolated workspace and checks. Do not edit ${info.repositoryPath} directly. Finish this turn now, saying what is left to do in ${result.project.name}; dispatch then continues the ticket there in this session.` };
   }

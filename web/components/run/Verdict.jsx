@@ -4,6 +4,7 @@ import { IconButton, Tooltip } from '@/components/IconButton';
 import { api, Link, navigate } from '@/lib/workspace';
 import { useAction } from '@/lib/use-action';
 import { TrackerOffers } from '@/components/run/TrackerOffer';
+import { LinkOffer } from '@/components/run/LinkOffer';
 import { usePreferences } from '@/lib/preferences';
 import { RiskDecision } from '@/components/run/RiskDecision';
 import { currentChecks } from '@/lib/checks.mjs';
@@ -119,6 +120,7 @@ export function Verdict({ run, onUpdate }) {
     {run.sqlToRun && <SqlBlock sql={run.sqlToRun}/>}
     <CiRepair run={run} onUpdate={onUpdate}/>
     <TrackerOffers run={run} onUpdate={onUpdate}/>
+    <LinkOffer run={run} onUpdate={onUpdate}/>
     <BranchActions run={run}/>
     <WorktreeAction run={run} onUpdate={onUpdate}/>
   </section>;
