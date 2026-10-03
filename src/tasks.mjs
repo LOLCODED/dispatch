@@ -5,14 +5,16 @@ import { agentPrimary } from './repository.mjs';
 import { taskRepositories } from './repository-selection.mjs';
 import { latestRun } from './conversations.mjs';
 import { openRemaining, remainingTaskInput } from './remaining.mjs';
+import { TaskImages, decodeTaskImages } from './task-images.mjs';
 
 const titleOf = text => text.split('\n')[0].slice(0, 120);
+const imageDigests = images => JSON.stringify((images ?? []).map(image => image.sha256));
 const runProjectIds = run => run.repositorySelection?.mode === 'agent' ? 'all' : run.repositorySelection?.projectIds?.length > 1 ? run.repositorySelection.projectIds : undefined;
 
 // Saving is local only. Starting delegates to the same live lifecycle as the
 // composer; task->run linkage is persisted in the run's first atomic save.
 export class Tasks {
-  constructor(live) { this.live = live; this.engine = live.engine; this.pending = new Map(); }
+  constructor(live) { this.live = live; this.engine = live.engine; this.pending = new Map(); this.images = new TaskImages(this.engine.dataDir); }
   get records() { return this.engine.store.state.tasks; }
   linkedRun(id) {
     const runs = this.engine.runs;
@@ -43,13 +45,14 @@ export class Tasks {
   }
   save(input) {
     if (this.engine.stopping) throw new InputError('Server is stopping', 503);
-    const text = this.instructions(input.input), execution = this.execution(input.execution), { projectId, projectIds } = this.repositories(input, text);
-    const existing = this.records.find(task => task.projectId === projectId && JSON.stringify(task.projectIds ?? null) === JSON.stringify(projectIds ?? null) && task.input === text && JSON.stringify(task.execution ?? 'auto') === JSON.stringify(execution) && !this.engine.runs.some(run => run.taskId === task.id));
+    const text = this.instructions(input.input), execution = this.execution(input.execution), { projectId, projectIds } = this.repositories(input, text), images = decodeTaskImages(input.images);
+    const existing = this.records.find(task => task.projectId === projectId && JSON.stringify(task.projectIds ?? null) === JSON.stringify(projectIds ?? null) && task.input === text && JSON.stringify(task.execution ?? 'auto') === JSON.stringify(execution) && imageDigests(task.images) === imageDigests(images) && !this.engine.runs.some(run => run.taskId === task.id));
     if (existing) return existing;
     if (input.kind !== undefined && !['change', 'answer'].includes(input.kind)) throw new InputError('Task kind must be change or answer.');
     const source = input.sourceRunId === undefined ? null : this.engine.runs.find(run => run.id === input.sourceRunId && run.projectId === projectId);
     if (input.sourceRunId !== undefined && !source) throw new InputError('The source run is not in this repository.');
-    const task = { id: randomUUID(), projectId, ...(projectIds ? { projectIds } : {}), execution, kind: input.kind ?? 'change', title: titleOf(text), input: text, ...(source ? { sourceRunId: source.id } : {}), createdAt: new Date().toISOString() };
+    const id = randomUUID(), saved = this.images.write(id, images);
+    const task = { id, projectId, ...(projectIds ? { projectIds } : {}), execution, kind: input.kind ?? 'change', title: titleOf(text), input: text, ...(saved.length ? { images: saved } : {}), ...(source ? { sourceRunId: source.id } : {}), createdAt: new Date().toISOString() };
     this.records.unshift(task); this.engine.store.save(); return task;
   }
   // Unbuilt work either becomes its own Todo task or is dropped; the run's tested result stays for review either way.
@@ -61,6 +64,11 @@ export class Tasks {
     run.remaining = { ...run.remaining, resolution: action, ...(task && { taskId: task.id }), resolvedAt: new Date().toISOString() };
     this.engine.store.save();
     return run;
+  }
+  image(id, number) {
+    const task = this.records.find(task => task.id === id), image = task && this.images.read(task, number);
+    if (!image) throw new InputError('Image not found', 404);
+    return image;
   }
   editable(id) {
     const task = this.records.find(task => task.id === id);
@@ -79,8 +87,8 @@ export class Tasks {
     const existing = this.linkedRun(id);
     if (existing) return existing;
     if (this.pending.has(id)) return this.pending.get(id);
-    const promise = this.live.create({ projectId: task.projectId, projectIds: task.projectIds, input: task.input, execution: task.execution, kind: task.kind }, { taskId: task.id });
+    const promise = this.live.create({ projectId: task.projectId, projectIds: task.projectIds, input: task.input, execution: task.execution, kind: task.kind, ...this.images.payload(task) }, { taskId: task.id });
     this.pending.set(id, promise);
-    try { return await promise; } finally { this.pending.delete(id); }
+    try { const run = await promise; this.images.remove(id); return run; } finally { this.pending.delete(id); }
   }
 }

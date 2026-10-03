@@ -69,7 +69,7 @@ function entries({ runs, tasks, items }) {
     const key = conversationKey(chain[0]), latest = latestRun(runs, chain[0]), item = items[key] ?? {};
     return { key, title: latest.summary || chain[0].title, request: chain[0].request ?? null, createdAt: chain[0].createdAt, startedAt: chain.find(run => run.startedAt)?.startedAt ?? null, latest, turns: chain.length, item, state: taskState({ latest, item }) };
   }).filter(entry => !settledLanding(entry));
-  const saved = tasks.map(task => { const item = items[task.id] ?? {}; return { key: task.id, title: task.title, request: task.request ?? null, sourceRunId: task.sourceRunId ?? null, createdAt: task.createdAt, latest: null, turns: 0, item, state: taskState({ latest: null, item }) }; });
+  const saved = tasks.map(task => { const item = items[task.id] ?? {}; return { key: task.id, title: task.title, request: task.request ?? null, sourceRunId: task.sourceRunId ?? null, images: task.images?.length ?? 0, createdAt: task.createdAt, latest: null, turns: 0, item, state: taskState({ latest: null, item }) }; });
   return [...saved, ...started];
 }
 

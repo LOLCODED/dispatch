@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { ArrowUpRight, Eraser, ListPlus, Square } from 'lucide-react';
 import { IconButton } from '@/components/IconButton';
 import { RunModel } from '@/components/run/RunModel';
-import { Textarea } from '@/components/ui/textarea';
+import { CommandTextarea } from '@/components/CommandTextarea';
 import { referenceType } from '@/components/run/Artifacts';
 import { useAction } from '@/lib/use-action';
 import { api, navigate, terminal } from '@/lib/workspace';
@@ -12,7 +12,7 @@ import { parseCommand } from '@/lib/commands.mjs';
 import { useWorkspace } from '@/lib/workspace';
 import { submitOnShortcut } from '@/lib/keybinds.mjs';
 import { usePreferences } from '@/lib/preferences';
-import { AttachButton, AttachmentList, useAttachments } from '@/components/work/Attachments';
+import { AttachButton, AttachmentList, savedTaskImages, useAttachments } from '@/components/work/Attachments';
 
 export const appendReference = (draft, reference) => `${draft.trimEnd()}${draft.trim() ? '\n' : ''}${reference}\n`;
 
@@ -54,7 +54,7 @@ export function RunComposer({ run, question, draft, setDraft, composerRef, onUpd
   const submit = event => {
     event.preventDefault();
     if (locked) return;
-    if (command?.name === 'todo') { perform(async () => { if (!command.text) throw new Error('Describe the task after /todo.'); const task = await api('/api/tasks', { projectId: run.projectId, input: command.text, sourceRunId: run.id }); setDraft(''); setSavedTask(task.title); window.dispatchEvent(new Event('dispatch-refresh')); }); return; }
+    if (command?.name === 'todo') { perform(async () => { if (!command.text) throw new Error('Describe the task after /todo.'); const task = await api('/api/tasks', { projectId: run.projectId, input: command.text, sourceRunId: run.id, ...savedTaskImages(attachments) }); setDraft(''); attachments.clear(); setSavedTask(task.title); window.dispatchEvent(new Event('dispatch-refresh')); }); return; }
     if (command) { if (!command.text) { navigate('/brain'); return; } perform(async () => { const result = await api('/api/brain/forget', { text: command.text, projectId: run.projectId }); setForget({ query: command.text, matches: result.matches }); }); return; }
     if (!canSend || !draft.trim() || reading) return;
     perform(async () => { const next = await api(`/api/runs/${run.id}/${mode === 'interrupt' ? 'interrupt' : 'followup'}`, { input: draft, ...attachments.payload() }); setDraft(''); attachments.clear(); onUpdate(next); navigate(`/runs/${next.id}`); });
@@ -63,7 +63,7 @@ export function RunComposer({ run, question, draft, setDraft, composerRef, onUpd
   const change = event => { setDraft(event.target.value); setSavedTask(''); };
   return <form onSubmit={submit} onPaste={attachments.pasted.paste} className={`composer run-composer ${drop.over ? 'is-drop-target' : ''}`} {...drop.handlers}>
     <label className="sr-only" htmlFor="followup-input">{question ? 'Your answer' : 'Continue this ticket'}</label>
-    <Textarea ref={composerRef} id="followup-input" value={draft} onChange={change} onKeyDown={keys} placeholder={suggestion ?? placeholders[mode]} aria-describedby={suggestion ? 'followup-suggestion' : undefined} maxLength={12000} rows={2} disabled={locked}/>
+    <CommandTextarea ref={composerRef} id="followup-input" value={draft} accent={!question} onChange={change} onKeyDown={keys} placeholder={suggestion ?? placeholders[mode]} aria-describedby={suggestion ? 'followup-suggestion' : undefined} maxLength={12000} rows={2} disabled={locked}/>
     <AttachmentList attachments={attachments} busy={busy}/>
     {forget && <ForgetCard query={forget.query} matches={forget.matches} projects={state.projects} onDone={() => { setForget(null); setDraft(''); }}/>}
     <div className="composer-bar">

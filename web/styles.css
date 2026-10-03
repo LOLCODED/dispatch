@@ -187,6 +187,10 @@ kbd { font-family:var(--mono); font-size:10px; padding:1px 5px; border:1px solid
 .composer:focus-within { border-color:var(--muted-foreground); }
 .composer textarea { border:0; box-shadow:none; background:transparent!important; padding:2px 4px; min-height:84px; font-size:16px; line-height:1.6; resize:none; }
 .composer textarea:focus-visible { outline:0; box-shadow:none; }
+.command-field { position:relative; }
+.command-backdrop { position:absolute; inset:0; overflow:hidden; border-style:solid; border-color:transparent; white-space:pre-wrap; overflow-wrap:break-word; pointer-events:none; color:var(--foreground); }
+.command-name { color:var(--primary); }
+.command-field[data-command] textarea { color:transparent; caret-color:var(--foreground); }
 .composer-images { display:flex; flex-wrap:wrap; gap:6px; margin:8px 4px 0; padding:0; list-style:none; }
 .composer-images li { position:relative; width:88px; aspect-ratio:16/10; border:1px solid var(--border); border-radius:5px; overflow:hidden; background:var(--secondary); }
 .composer-images img { width:100%; height:100%; object-fit:cover; object-position:top; }
@@ -267,6 +271,15 @@ kbd { font-family:var(--mono); font-size:10px; padding:1px 5px; border:1px solid
 .board-land { margin-left:auto; height:20px; width:20px; }
 .board-land + .board-land { margin-left:4px; }
 .board-title { flex:1; min-width:0; font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.board-row-images { display:flex; flex:none; gap:4px; }
+.board-row-images button { display:block; width:32px; height:20px; padding:0; border:1px solid var(--border); border-radius:4px; overflow:hidden; background:var(--secondary); cursor:zoom-in; transition:border-color .15s; }
+.board-row-images button:hover, .board-row-images button:focus-visible { border-color:var(--muted-foreground); outline:0; }
+.board-row-images img { width:100%; height:100%; object-fit:cover; object-position:top; }
+.board-row-images-more { display:none; align-self:center; color:var(--muted-foreground); font-size:11px; font-variant-numeric:tabular-nums; }
+@media (max-width: 640px) {
+  .board-row-images li:not(:first-child) { display:none; }
+  .board-row-images li.board-row-images-more { display:block; }
+}
 a.board-title:hover { text-decoration:underline; text-underline-offset:4px; text-decoration-color:var(--border); }
 .board-dot-button { width:24px; height:24px; display:grid; place-items:center; border-radius:50%; flex:none; }
 .board-dot-button:hover, .board-dot-button[data-state=open] { background:var(--secondary); }

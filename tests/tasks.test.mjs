@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { Engine } from '../src/engine.mjs';
@@ -72,4 +72,27 @@ test('a task can name the run it came from only when that run is in the same rep
   assert.equal(tasks.save({ projectId: 'project', input: 'Deferred finding', sourceRunId: 'source' }).sourceRunId, 'source');
   assert.throws(() => tasks.save({ projectId: 'project', input: 'Another', sourceRunId: 'elsewhere' }), /source run/);
   assert.equal(tasks.save({ projectId: 'project', input: 'Plain' }).sourceRunId, undefined);
+});
+
+test('saved tasks keep pasted images on disk and hand them to the run they start', async t => {
+  const { tasks, live, directory } = fixture(t);
+  const image = { mimeType: 'image/png', data: Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), Buffer.from('pixels')]).toString('base64') };
+  const task = tasks.save({ projectId: 'project', input: 'Match this', images: [image] });
+  assert.equal(task.images.length, 1); assert.doesNotMatch(readFileSync(join(directory, 'state.json'), 'utf8'), new RegExp(image.data.slice(-8)));
+  assert.equal(tasks.save({ projectId: 'project', input: 'Match this', images: [image] }).id, task.id);
+  assert.notEqual(tasks.save({ projectId: 'project', input: 'Match this' }).id, task.id);
+  assert.throws(() => tasks.save({ projectId: 'project', input: 'Bad', images: [{ mimeType: 'image/png', data: 'bad' }] }), /PNG or JPEG/);
+  const recoveredEngine = new Engine({ dataDir: directory }); t.after(() => recoveredEngine.shutdown());
+  const run = await new Tasks({ ...live, engine: recoveredEngine }).start(task.id);
+  assert.deepEqual(run.images, [image]); assert.equal(existsSync(join(directory, 'task-images', task.id)), false);
+});
+
+test('a saved task serves its images by number until it starts', async t => {
+  const { tasks } = fixture(t);
+  const bytes = Buffer.from([255, 216, 255, 224, 1, 2]), task = tasks.save({ projectId: 'project', input: 'Look', images: [{ mimeType: 'image/jpeg', data: bytes.toString('base64') }] });
+  assert.deepEqual(tasks.image(task.id, 1), { mimeType: 'image/jpeg', bytes });
+  assert.throws(() => tasks.image(task.id, 2), /Image not found/);
+  assert.throws(() => tasks.image('missing', 1), /Image not found/);
+  await tasks.start(task.id);
+  assert.throws(() => tasks.image(task.id, 1), /Image not found/);
 });

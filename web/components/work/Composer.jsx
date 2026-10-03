@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { ArrowUpRight, FolderPlus, GitBranch, Plus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { CommandTextarea } from '@/components/CommandTextarea';
 import { IconButton } from '@/components/IconButton';
 import { ModelPicker } from '@/components/ModelPicker';
 import { RepositoryQuestion } from '@/components/work/RepositoryQuestion';
@@ -21,7 +22,7 @@ import { usePreferences } from '@/lib/preferences';
 import { executionKey, readExecution } from '@/lib/execution';
 import { AttachmentDialog } from '@/components/work/AttachmentDialog';
 import { attachPastedText, composerText, longPasteLength, ticketTextLimit } from '@/lib/composer-text.mjs';
-import { AttachButton, AttachmentList, useAttachments } from '@/components/work/Attachments';
+import { AttachButton, AttachmentList, savedTaskImages, useAttachments } from '@/components/work/Attachments';
 import { flyToTask } from '@/lib/dispatch-flight';
 import { ticketReader } from '@/lib/connectors.mjs';
 
@@ -113,7 +114,7 @@ export function Composer({ taskRef, hints }) {
     const enable = () => choice === 'global' ? api('/api/brain', { kind: 'connector', scope: 'global', key: `connector.${question.tracker}` }) : api(`/api/projects/${question.projectId}/connectors`, { [question.tracker]: { enabled: true } });
     perform(async () => { await enable(); window.dispatchEvent(new Event('dispatch-refresh')); setQuestion(null); chooseProject(question.projectId); await dispatch({ projectId: question.projectId, projectIds: withLinked(question.projectId, state.projects) }); });
   };
-  const saveTask = (text = input) => attachments.any ? setError('Saved tasks keep text only. dispatch now, or remove the files and images first.') : perform(async () => { const task = await api('/api/tasks', { ...request, input: text, projectId: selected }); await fileInto(task.id, folder.folderId); updateInput(''); setNotice('Task saved to Todo.'); window.dispatchEvent(new Event('dispatch-refresh')); });
+  const saveTask = (text = input) => perform(async () => { const task = await api('/api/tasks', { ...request, input: text, projectId: selected, ...savedTaskImages(attachments) }); await fileInto(task.id, folder.folderId); updateInput(''); attachments.clear(); setNotice('Task saved to Todo.'); window.dispatchEvent(new Event('dispatch-refresh')); });
   const openRepositoryPath = async (path, select = chooseProject) => {
     let info; try { info = await api('/api/projects/inspect', { repositoryPath: path }); } catch (failure) { if (/does not exist/.test(failure.message)) { setOffer({ path, access: true }); return; } throw failure; }
     const saved = state.projects.find(project => project.repositoryPath === info.repositoryPath); if (saved) select(saved.id); else navigate(`/admin/projects/new?path=${encodeURIComponent(info.repositoryPath)}`);
@@ -126,7 +127,7 @@ export function Composer({ taskRef, hints }) {
   return <>
     <form className="composer" onSubmit={submit}>
       <label className="sr-only" htmlFor="task-input">Ticket or instructions</label>
-      <Textarea ref={taskRef} id="task-input" value={draft.visible} onChange={event => changeDraft(event.target.value, draft.attachments)} placeholder={placeholder} maxLength={Math.max(0, ticketTextLimit - (input.length - draft.visible.length) - (!draft.visible && draft.attachments.some(Boolean) ? 2 : 0))} required={!draft.attachments.some(text => text.trim())} rows={3} onKeyDown={onKeyDown} onPaste={paste}/>
+      <CommandTextarea ref={taskRef} id="task-input" value={draft.visible} onChange={event => changeDraft(event.target.value, draft.attachments)} placeholder={placeholder} maxLength={Math.max(0, ticketTextLimit - (input.length - draft.visible.length) - (!draft.visible && draft.attachments.some(Boolean) ? 2 : 0))} required={!draft.attachments.some(text => text.trim())} rows={3} onKeyDown={onKeyDown} onPaste={paste}/>
       {draft.attachments.length > 0 && <ul className="composer-texts" aria-label="Attached text">{draft.attachments.map((text, index) => <li key={index}>
         <Button type="button" variant="ghost" onClick={() => setEditingText(index)}>Pasted text {index + 1} · {text.length.toLocaleString()} characters</Button>
         <IconButton label={`Remove text ${index + 1}`} icon={X} onClick={() => changeDraft(draft.visible, draft.attachments.filter((_, item) => item !== index))}/>

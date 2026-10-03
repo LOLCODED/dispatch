@@ -7,6 +7,7 @@ import { LandingMark } from '@/components/work/LandingMark';
 import { StateDot, stateLabels } from '@/components/work/StateDot';
 import { LandDialog } from '@/components/LandDialog';
 import { PullRequestDialog } from '@/components/PullRequestDialog';
+import { AttachmentDialog } from '@/components/work/AttachmentDialog';
 import { ListControls, Pager, useListControls, usePage } from '@/components/ListControls';
 import { activityAt, boardView, editTarget } from '@/lib/board.mjs';
 import { ascending, byText, filterSort, textMatches } from '@/lib/list-view.mjs';
@@ -32,6 +33,18 @@ function EntryTime({ entry }) {
   return <RowTime at={latest?.finishedAt} label="Last reply"/>;
 }
 
+function SavedImages({ entry }) {
+  const [preview, setPreview] = useState(null);
+  if (entry.latest || !entry.images) return null;
+  const url = number => `/api/tasks/${entry.key}/images/${number}`;
+  return <>
+    <ul className="board-row-images" aria-label="Saved images">{Array.from({ length: entry.images }, (_, index) => <li key={index}>
+      <button type="button" aria-label={`Preview image ${index + 1}`} onClick={() => setPreview(index + 1)}><img src={url(index + 1)} alt="" loading="lazy"/></button>
+    </li>)}{entry.images > 1 && <li className="board-row-images-more" aria-hidden="true">+{entry.images - 1}</li>}</ul>
+    {preview && <AttachmentDialog title={`Image ${preview}`} onClose={() => setPreview(null)}><img src={url(preview)} alt={`Saved image ${preview}`}/></AttachmentDialog>}
+  </>;
+}
+
 function TaskRow({ entry, folders, onEdit, selection }) {
   const { busy, error, send } = useBoardAction(), edit = editTarget(entry);
   return <li className="board-row" data-run={entry.latest?.id}>
@@ -39,6 +52,7 @@ function TaskRow({ entry, folders, onEdit, selection }) {
     <StateDot entry={entry} folders={folders} busy={busy} onAction={send}/>
     <LandingMark entry={entry}/>
     {entry.latest ? <Link href={`/runs/${entry.latest.id}`} className="board-title">{entry.title}</Link> : <span className="board-title">{entry.title}</span>}
+    <SavedImages entry={entry}/>
     {!entry.latest && entry.sourceRunId && <IconButton label="Open the run this task came from" icon={CornerUpLeft} href={`/runs/${entry.sourceRunId}`}/>}
     {edit && <IconButton label="Edit" icon={Pencil} size="icon-xs" className="board-row-edit" disabled={busy} onClick={() => onEdit(edit)}/>}
     <EntryTime entry={entry}/>

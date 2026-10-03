@@ -9,3 +9,12 @@ export function parseCommand(input) {
   if (!match) return null;
   return { name: 'forget', text: (match[1] ?? '').trim() };
 }
+
+const prefix = /^(\s*)(\/(?:todo|forget))/;
+
+export function commandToken(input) {
+  const text = String(input ?? '');
+  if (!parseCommand(text)) return null;
+  const [, lead, name] = prefix.exec(text);
+  return { lead, name, rest: text.slice(lead.length + name.length) };
+}

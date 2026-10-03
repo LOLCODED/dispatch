@@ -57,6 +57,12 @@ export function useAttachments(key, setError) {
   };
 }
 
+export function savedTaskImages(attachments) {
+  if (attachments.documents.files.length) throw new Error('Saved tasks keep text and images only. dispatch now, or remove the documents first.');
+  const { images } = attachments.payload();
+  return images ? { images } : {};
+}
+
 function PastedImages({ images, onRemove }) {
   const [preview, setPreview] = useState(null);
   if (!images.length) return null;

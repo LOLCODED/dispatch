@@ -150,12 +150,18 @@ export function createServer(engine, { assetRoot = root, devFraming = false } = 
       if (req.method === 'GET' && path === '/api/tasks') return json(res, 200, tasks.list());
       if (req.method === 'POST' && path === '/api/tasks') {
         if (!req.headers['content-type']?.startsWith('application/json')) throw new InputError('Use application/json', 415);
-        return json(res, 201, tasks.save(await body(req)));
+        return json(res, 201, tasks.save(await body(req, runBodyLimit)));
       }
       const remainingPath = path.match(/^\/api\/runs\/([a-f0-9-]+)\/remaining$/);
       if (req.method === 'POST' && remainingPath) {
         if (!req.headers['content-type']?.startsWith('application/json')) throw new InputError('Use application/json', 415);
         return json(res, 200, viewRun(tasks.settleRemaining(remainingPath[1], await body(req))));
+      }
+      const taskImage = path.match(/^\/api\/tasks\/([a-f0-9-]+)\/images\/([1-9])$/);
+      if (req.method === 'GET' && taskImage) {
+        const { mimeType, bytes } = tasks.image(taskImage[1], Number(taskImage[2]));
+        res.writeHead(200, { 'Content-Type': mimeType, 'Content-Length': bytes.length, 'Cache-Control': 'private, max-age=3600' });
+        res.end(bytes); return;
       }
       const taskStart = path.match(/^\/api\/tasks\/([a-f0-9-]+)\/start$/);
       if (req.method === 'POST' && taskStart) {
