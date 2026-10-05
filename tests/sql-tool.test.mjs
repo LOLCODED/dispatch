@@ -35,3 +35,14 @@ test('dispatch_sql is attached only when the repository has a database', () => {
   assert.equal(toolNames(calls.tools({ project: { memory: false } }, { questions: 'native' })).includes('dispatch_sql'), false);
   assert.deepEqual(toolNames(calls.tools({ project: { memory: false, database: { envFile: '.env', variable: 'DATABASE_URL' } } }, { questions: 'native' })), ['dispatch_sql']);
 });
+
+test('a connector can provide the connection string, for example from a secret store', async () => {
+  assert.deepEqual(databaseSettings({ source: 'connector', connector: 'ado' }), { source: 'connector', connector: 'ado' });
+  for (const value of [{ source: 'connector' }, { source: 'connector', connector: 'Bad Id' }, { source: 'connector', connector: 'ado', extra: 1 }]) assert.throws(() => databaseSettings(value), JSON.stringify(value));
+  const run = { workspace: '/nowhere', project: { database: { source: 'connector', connector: 'vault' } } }, asked = [];
+  const connectorUrl = async (project, id) => { asked.push(id); return `${url}\n`; };
+  const execute = async (command, args) => ({ exitCode: 0, output: `ok ${args[0]}` });
+  const result = await sqlCall({ run, args: { query: 'select 1' }, execute, connectorUrl });
+  assert.deepEqual(asked, ['vault']); assert.equal(result.content[0].text, 'ok <database>');
+  await assert.rejects(sqlCall({ run, args: { query: 'select 1' }, execute, connectorUrl: async () => 'mysql://x' }), /did not return a postgres/);
+});

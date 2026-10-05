@@ -44,7 +44,7 @@ export class DispatchToolCalls {
     if (tool.kind === 'memory') return this.live.memoryTool(run, args);
     if (tool.kind === 'browser') return this.live.browserCall(run, tool.name, args, options);
     if (tool.kind === 'http') return this.live.httpCall(run, args, options);
-    if (tool.kind === 'sql') return sqlCall({ run, args, signal: options.signal });
+    if (tool.kind === 'sql') return sqlCall({ run, args, signal: options.signal, connectorUrl: (project, id, signal) => this.live.connectors.invoke(project, id, 'database.url', [], { signal }) });
     if (tool.kind === 'connector') return this.live.connectors.callTool(run.project, tool.name, args, { signal: options.signal, workspace: run.workspace, readOnly: options.readOnly || run.kind === 'answer' });
     throw new InputError('Unknown dispatch tool kind.');
   }

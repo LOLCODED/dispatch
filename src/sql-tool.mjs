@@ -12,8 +12,15 @@ export const sqlTool = {
   inputSchema: { type: 'object', additionalProperties: false, required: ['query'], properties: { query: { type: 'string', maxLength: 20000 } } },
 };
 
+const connectorId = /^[a-z][a-z0-9]{1,30}$/;
+
+// The connection string comes from an env file in the task's copy, or from a connector (a secret store such as Key Vault).
 export function databaseSettings(value) {
   if (value === undefined || value === null) return null;
+  if (value?.source === 'connector') {
+    if (!connectorId.test(value.connector ?? '') || Object.keys(value).some(key => !['source', 'connector'].includes(key))) throw new InputError('A connector database names the connector that provides it.');
+    return { source: 'connector', connector: value.connector };
+  }
   if (typeof value !== 'object' || Array.isArray(value) || typeof value.envFile !== 'string' || !value.envFile.trim() || value.envFile.includes('..') || value.envFile.startsWith('/') || !variable.test(value.variable ?? '')) throw new InputError('A database needs an env file inside the repository and a variable name such as DATABASE_URL.');
   return { envFile: value.envFile.trim(), variable: value.variable };
 }
@@ -27,10 +34,18 @@ export function databaseUrl(workspace, database) {
   return url;
 }
 
-export async function sqlCall({ run, args, signal, execute = runProcess }) {
+async function connectionString(run, database, connectorUrl, signal) {
+  if (database.source !== 'connector') return databaseUrl(run.workspace, database);
+  if (!connectorUrl) throw new Error('Connectors are not available.');
+  const url = String(await connectorUrl(run.project, database.connector, signal) ?? '').trim();
+  if (!/^postgres(ql)?:\/\//.test(url)) throw new Error(`The ${database.connector} connector did not return a postgres:// URL.`);
+  return url;
+}
+
+export async function sqlCall({ run, args, signal, execute = runProcess, connectorUrl }) {
   const database = run.project?.database;
   if (!database) throw new Error('This repository has no database set up for queries.');
-  const url = databaseUrl(run.workspace, database);
+  const url = await connectionString(run, database, connectorUrl, signal);
   const result = await execute('psql', [url, '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-P', 'pager=off', '-c', args.query], { cwd: run.workspace, signal, timeoutMs, inheritEnv: false, env: localEnvironment({ PGOPTIONS: '-c default_transaction_read_only=on -c statement_timeout=15000', PGCONNECT_TIMEOUT: '5' }) });
   const output = String(result.output ?? '').split(url).join('<database>');
   const shown = output.length > maxOutput ? `${output.slice(0, maxOutput)}\n… ${output.length - maxOutput} more characters` : output;

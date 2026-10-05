@@ -1,18 +1,25 @@
 import { SwitchRow } from '@/components/Switch';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { useConnectorCatalog } from '@/components/Connections';
 import { effectiveAction, overridden, setAction, setSetting, setUsed, settingValue } from '@/lib/connectors.mjs';
 
-function Database({ form, update }) {
-  const database = form.database ?? { envFile: '', variable: '' }, set = change => update({ database: { ...database, ...change } });
+function Database({ form, update, connectors }) {
+  const database = form.database ?? { source: 'env', connector: '', envFile: '', variable: '' }, set = change => update({ database: { ...database, ...change } });
+  const providers = connectors.filter(connector => connector.databases);
   return <section className="tab-section"><h3>Database for read-only queries</h3>
-    <p className="muted">Gives the agent dispatch_sql: read-only queries against a development Postgres, with results shown in the run. dispatch reads the connection string from this env file in the task's copy (add the file under Copied from your checkout) and never shows it. Needs psql installed.</p>
-    <div className="form-columns">
-      <div className="field"><Label htmlFor="database-env-file">Env file</Label><Input id="database-env-file" className="mono-input" placeholder=".env.development" value={database.envFile} onChange={event => set({ envFile: event.target.value })}/></div>
-      <div className="field"><Label htmlFor="database-variable">Variable</Label><Input id="database-variable" className="mono-input" placeholder="DATABASE_URL" value={database.variable} onChange={event => set({ variable: event.target.value })}/></div>
+    <p className="muted">Gives the agent dispatch_sql: read-only queries against a development Postgres, with results shown in the run. The connection string is never shown. Needs psql installed. A local Docker database is reached through the Docker connector's own tools instead.</p>
+    <div className="segmented" role="group" aria-label="Connection string from">
+      <Button type="button" variant="ghost" aria-pressed={database.source !== 'connector'} onClick={() => set({ source: 'env' })}>Env file</Button>
+      {providers.map(connector => <Button key={connector.id} type="button" variant="ghost" aria-pressed={database.source === 'connector' && database.connector === connector.id} onClick={() => set({ source: 'connector', connector: connector.id })}>{connector.name}</Button>)}
     </div>
+    {database.source === 'connector' ? <p className="muted">{connectors.find(item => item.id === database.connector)?.name ?? database.connector} provides it; set where it reads from in that connector's settings below.</p>
+      : <div className="form-columns">
+        <div className="field"><Label htmlFor="database-env-file">Env file</Label><Input id="database-env-file" className="mono-input" placeholder=".env.development" value={database.envFile} onChange={event => set({ envFile: event.target.value })}/></div>
+        <div className="field"><Label htmlFor="database-variable">Variable</Label><Input id="database-variable" className="mono-input" placeholder="DATABASE_URL" value={database.variable} onChange={event => set({ variable: event.target.value })}/></div>
+      </div>}
   </section>;
 }
 
@@ -57,7 +64,7 @@ export function ExtrasTab({ form, update }) {
       {form.git && <li><SwitchRow label="dispatch as co-author" description="Commits carry a Co-authored-by trailer for dispatch, so code hosts show it beside you." checked={form.dispatchCoAuthor} onChange={dispatchCoAuthor => update({ dispatchCoAuthor })}/></li>}
     </ul></section>
     <Network form={form} update={update}/>
-    <Database form={form} update={update}/>
+    <Database form={form} update={update} connectors={connectors}/>
     {connectors.length > 0 && <section className="tab-section"><h3>Connectors</h3><ul className="row-list">
       {connectors.map(connector => <ConnectorRows key={connector.id} form={form} connector={connector} update={update}/>)}
     </ul></section>}
