@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { InputError } from './engine.mjs';
 import { digest, git } from './local-tools.mjs';
-import { checkScope } from './check-scope.mjs';
+import { checkScope, recipeChange, recipeDiffers, savedRecipe } from './check-scope.mjs';
 import { changeFlags } from './flags.mjs';
 import { coAuthored, commitIdentity } from './commit-identity.mjs';
 import { commitMessage } from './conventional-commit.mjs';
@@ -157,6 +157,19 @@ export class LinkedRepositories {
 
   acceptContinued(run) {
     for (const member of (run.linked ?? []).filter(item => item.scriptsChanged)) this.acceptScripts(run, member, 'you continued the run');
+  }
+
+  // Unaccepted script drift keeps the old recipe so the next observation still blocks on it.
+  refreshRecipes(run) {
+    for (const member of run.linked ?? []) {
+      const saved = this.live.projects.find(item => item.id === member.projectId);
+      if (!saved || !recipeDiffers(member.project, saved) || memberRecipe(member) !== member.protectedDigest) continue;
+      const before = savedRecipe(member.project), after = structuredClone(savedRecipe(saved));
+      Object.assign(member.project, after);
+      member.protectedDigest = memberRecipe(member);
+      if (digest(before.setup) !== digest(after.setup)) member.setupComplete = false;
+      this.live.log(run, 'check', recipeChange(member.name, before, after));
+    }
   }
 
   async observe(run, signal) {

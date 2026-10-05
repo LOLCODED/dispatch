@@ -68,6 +68,32 @@ test('a failing linked check is repaired in the same session and names the repos
   assert.deepEqual(run.checks.filter(check => check.linked).map(check => check.status), ['failed', 'passed']);
 });
 
+const leavesApiWrong = options => { writeFileSync(join(options.workspace, 'value.txt'), 'changed'); writeFileSync(join(memberPath(options.prompt), 'value.txt'), 'wrong'); return completed; };
+const passCheck = { id: 'pass', command: process.execPath, args: ['-e', '0'] };
+
+test('a follow-up picks up checks saved for a linked repository after the task started', async t => {
+  const { live, engine, project, api, linked } = await linkedFixture(t, leavesApiWrong);
+  const run = await live.create({ projectId: project.id, input: 'Change both repositories' }); await settle(engine, run);
+  assert.equal(run.status, 'failed'); assert.equal(run.checks.at(-1).name, 'api: unit');
+  await live.saveProject({ repositoryPath: api, name: 'api', baseBranch: 'main', confirmed: true, validation: [passCheck] }, linked.id);
+  const next = await live.followup(run.id, { input: 'I changed the api checks' }); await settle(engine, next);
+  assert.equal(next.status, 'ready', JSON.stringify(next.events.map(event => event.message)));
+  assert.deepEqual(next.linked[0].project.validation.map(step => step.id), ['pass']);
+  assert.deepEqual(next.checks.filter(check => check.linked).map(check => [check.name, check.status]), [['api: pass', 'passed']]);
+  assert.ok(next.events.some(event => /api picked up its saved settings: checks unit → pass\./.test(event.message)));
+});
+
+test('editing a failing linked check from the run saves that repository and continues', async t => {
+  const { live, engine, project, linked } = await linkedFixture(t, leavesApiWrong);
+  const run = await live.create({ projectId: project.id, input: 'Change both repositories' }); await settle(engine, run);
+  await assert.rejects(live.continueWithRecipe(run.id, { projectId: 'elsewhere', validation: [passCheck] }), /repository in this task/);
+  const next = await live.continueWithRecipe(run.id, { projectId: linked.id, validation: [passCheck] }); await settle(engine, next);
+  assert.equal(next.status, 'ready', JSON.stringify(next.events.map(event => event.message)));
+  assert.deepEqual(live.projects.find(item => item.id === linked.id).validation.map(step => step.id), ['pass']);
+  assert.deepEqual(project.validation.map(step => step.id), ['unit']);
+  assert.deepEqual(next.checks.filter(check => check.linked).map(check => check.status), ['passed']);
+});
+
 test('opening pull requests opens one per changed repository and links them', async t => {
   const forge = forgeDouble();
   const both = options => { writeFileSync(join(options.workspace, 'value.txt'), 'changed'); writeFileSync(join(memberPath(options.prompt), 'value.txt'), 'changed'); return completed; };
@@ -150,13 +176,16 @@ test('landing moves every repository only after all combined checks pass', async
 });
 
 test('a failing linked check on the combined result moves no branch', async t => {
-  const { live, engine, project, repo, api, linked } = await linkedFixture(t, both);
+  const bothOrRepair = options => memberPath(options.prompt) ? both(options) : completed;
+  const { live, engine, project, repo, api, linked } = await linkedFixture(t, bothOrRepair);
   const task = await live.create({ projectId: project.id, input: 'Change both repositories' }); await settle(engine, task);
   await live.saveProject({ repositoryPath: api, name: 'api', baseBranch: 'main', confirmed: true, validation: [{ id: 'fails', command: process.execPath, args: ['-e', 'process.exit(1)'] }] }, linked.id);
   const apiMain = await git(api, ['rev-parse', 'main']), repoMain = await git(repo, ['rev-parse', 'main']);
   const landing = await live.landings.create({ runIds: [task.id] }); await settle(engine, landing);
-  assert.equal(landing.status, 'failed'); assert.match(landing.events.at(-1).message, /Check api: fails failed on the combined result after its agent repaired it, so no branch moved\./);
-  assert.equal(engine.get(landing.landing.items[0].repairRunId).previousRunId, task.id);
+  assert.equal(landing.status, 'blocked'); assert.match(landing.events.at(-1).message, /the check repair ended as .+ Nothing landed\./);
+  const repair = engine.get(landing.landing.items[0].repairRunId);
+  assert.equal(repair.previousRunId, task.id);
+  assert.ok(repair.checks.some(check => check.name === 'api: fails' && check.status === 'failed'));
   assert.equal(await git(api, ['rev-parse', 'main']), apiMain); assert.equal(await git(repo, ['rev-parse', 'main']), repoMain);
 });
 

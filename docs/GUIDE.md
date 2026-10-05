@@ -42,7 +42,7 @@ Every saved step has a role, `check` or `setup`. Long-running scripts (`start`, 
 
 **Browser smoke check** is built in for apps without their own tests: dispatch starts the first of the `dev`, `preview`, `start` or `serve` scripts on a free port, loads the page in Chromium, keeps a screenshot, and fails on page errors, console errors or an HTTP error status. Switch it on under Checks, or add `{ "id": "browser-smoke", "kind": "browser-smoke" }` (optional `start`, `url`, `readyTimeoutSeconds`) to the repository's `validation` through the API.
 
-When a run ends blocked or failed on a check, **Checks → Edit checks and continue** changes the mandatory checks, updates the repository's recipe and continues the same session with fresh checks.
+When a run ends blocked or failed on a check, **Checks → Edit checks and continue** changes the mandatory checks of the repository whose check failed (the primary or a linked one), saves them to that repository and continues the same session with fresh checks. Checks and setup you change in a repository's settings also reach the task on its next follow-up.
 
 ## dispatch browser
 

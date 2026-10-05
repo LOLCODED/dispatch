@@ -86,3 +86,12 @@ export function checkScope(project, changedPaths) {
   const kept = new Set([...matched].flatMap(scope => scope.checks));
   return { scoped: true, matched: [...matched], steps: steps.filter(step => kept.has(step.id)), skipped: steps.filter(step => !kept.has(step.id)) };
 }
+
+export const savedRecipe = project => ({ validation: project.validation ?? [], setup: project.setup ?? [], checkScopes: projectScopes(project) });
+export const recipeDiffers = (snapshot, saved) => JSON.stringify(savedRecipe(snapshot)) !== JSON.stringify(savedRecipe(saved));
+const stepIds = steps => steps.map(step => step.id).join(', ') || 'none';
+export function recipeChange(name, before, after) {
+  const changed = ['validation', 'setup', 'checkScopes'].filter(key => JSON.stringify(before[key]) !== JSON.stringify(after[key]));
+  const parts = changed.map(key => key === 'validation' ? `checks ${stepIds(before.validation)} → ${stepIds(after.validation)}` : key === 'setup' ? `setup ${stepIds(before.setup)} → ${stepIds(after.setup)}` : 'check scopes');
+  return `${name} picked up its saved settings: ${parts.join('; ')}.`;
+}

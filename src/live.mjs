@@ -38,7 +38,7 @@ import { isHiddenModel, modelChoice, modelLabel, modelPreferenceKey, modelValue,
 import { agentPrimary, resolveRepository } from './repository.mjs';
 import { agentMembers, taskRepositories } from './repository-selection.mjs';
 import { longRunningScript, npmScript } from './recipe-roles.mjs';
-import { checkScope, projectScopes, recipeScopes, protectedPaths } from './check-scope.mjs';
+import { checkScope, projectScopes, recipeChange, recipeDiffers, recipeScopes, protectedPaths, savedRecipe } from './check-scope.mjs';
 import { changeFlags, sqlToRun } from './flags.mjs';
 import { RiskChecks } from './risk-checks.mjs';
 import { RepositoryTool } from './repository-tool.mjs';
@@ -602,13 +602,23 @@ export class LiveService {
   async continueWithRecipe(id, input) {
     const previous = this.engine.get(id);
     if (previous.mode !== 'live' || !['blocked', 'failed', 'ready'].includes(previous.status) || this.engine.active.has(previous.id)) throw new InputError('Edit checks after the run stops as blocked, failed or ready.', 409);
-    const project = this.projects.find(item => item.id === previous.projectId);
+    const targetId = input.projectId ?? previous.projectId;
+    if (targetId !== previous.projectId && !previous.linked?.some(member => member.projectId === targetId)) throw new InputError('Edit the checks of a repository in this task.');
+    const project = this.projects.find(item => item.id === targetId);
     if (!project) throw new InputError('Project not found', 404);
     const changes = projectRecipe({ validation: input.validation, setup: input.setup ?? [], checkScopes: projectScopes(project) });
     if (input.setup === undefined) changes.setup = project.setup;
     try { riskSettings(project.risk, changes.validation); } catch (error) { throw new InputError(error.message); }
+    if (targetId !== previous.projectId) return this.continueWithMemberRecipe(id, project, changes);
     const run = await this.followup(id, { input: 'Continue with the updated checks.' }, { project: { ...structuredClone(project), ...changes } });
     Object.assign(project, changes); this.engine.store.save(); return run;
+  }
+  // A linked member's recipe reaches the follow-up through refreshRecipes, so it is saved first and restored if the follow-up is refused.
+  async continueWithMemberRecipe(id, project, changes) {
+    const original = Object.fromEntries(Object.keys(changes).map(key => [key, project[key]]));
+    Object.assign(project, changes);
+    try { const run = await this.followup(id, { input: 'Continue with the updated checks.' }); this.engine.store.save(); return run; }
+    catch (error) { Object.assign(project, original); throw error; }
   }
   async committedRecipeDigest(run, project) {
     let scripts = run.scriptsAccepted ? run.baselineScripts : null;
@@ -625,6 +635,9 @@ export class LiveService {
     if (alive(previous.workerPid)) throw new InputError('The previous worker process is still alive. Stop it before continuing.', 409);
     this.exclude(previous.ticket.key, repositoriesOf(previous), workspacesOf(previous));
     if (previous.kind !== 'answer' && !previous.shadow && await git(previous.workspace, ['branch', '--show-current']) !== previous.branch) throw new InputError('Workspace branch has changed; inspect it before continuing.', 409);
+    const current = this.projects.find(item => item.id === previous.projectId);
+    const refreshed = !project && current && recipeDiffers(previous.project, current) ? { ...structuredClone(previous.project), ...structuredClone(savedRecipe(current)) } : null;
+    project ??= refreshed;
     const replacedDigest = project && await this.committedRecipeDigest(previous, project);
     if (this.engine.stopping) throw new InputError('Server is stopping', 503);
     if (previous.supersededBy) throw new InputError('Continue the most recent execution of this ticket.', 409);
@@ -633,11 +646,12 @@ export class LiveService {
     const run = this.newRun(project ?? previous.project, previous.ticket, input.input.trim());
     Object.assign(run, { kind: previous.kind ?? 'change', provider: previous.execution?.provider ?? 'codex', execution: structuredClone(previous.execution ?? { provider: 'codex', model: null, effort: null, mode: 'auto', reason: 'Continuing the original CLI defaults.' }), repositorySelection: structuredClone(previous.repositorySelection ?? { mode: 'manual', reason: 'Continuing in the original repository.' }), previousRunId: previous.id, workspace: previous.workspace, shadow: previous.shadow ?? null, branch: previous.branch, baseSha: previous.baseSha, baseSource: previous.baseSource, baseFetchedAt: previous.baseFetchedAt, sessionId: previous.sessionId, commitSubject: previous.commitSubject ?? null, protectedDigest: previous.protectedDigest, setupComplete: previous.setupComplete, scriptsAtBase: previous.scriptsAtBase, baselineScripts: previous.baselineScripts, scriptsAccepted: previous.scriptsAccepted, linked: [...this.linked.continued(previous), ...this.linked.snapshot(previous.project, run.id, joining.map(item => item.id))] });
     run.usageCumulative = structuredClone(previous.usageCumulative ?? {});
-    const current = this.projects.find(item => item.id === previous.projectId);
     if (current) run.project.instructions = structuredClone(current.instructions ?? []);
     if (project) Object.assign(run, { recipeReplaced: true, protectedDigest: replacedDigest, setupComplete: run.setupComplete && digest(project.setup) === digest(previous.project.setup) });
     if (previous.scriptsChanged) this.acceptScripts(run, 'you continued the run');
     this.linked.acceptContinued(run);
+    if (refreshed) this.log(run, 'check', recipeChange(run.project.name, savedRecipe(previous.project), savedRecipe(refreshed)));
+    this.linked.refreshRecipes(run);
     if (previous.nextExecution) { this.applyExecution(run, previous.nextExecution, 'switch'); delete previous.nextExecution; }
     if (mergeIn) Object.assign(run, { mergeIn, ...(mergeInto ? { mergeInto } : {}) });
     this.browserEvidence.attach(run, attachments, { check: 'Follow-up' });

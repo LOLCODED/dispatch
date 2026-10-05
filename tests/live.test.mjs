@@ -435,6 +435,19 @@ test('editing checks on a failed run updates the repository recipe and continues
   assert.deepEqual(project.validation.map(step => step.id), ['other']); assert.equal(run.checks.length, 2); assert.equal(run.supersededBy, next.id);
   await assert.rejects(live.continueWithRecipe(run.id, { validation }), /most recent/);
 });
+test('a plain follow-up picks up checks saved for the repository after the task started', async t => {
+  const { live, engine, project } = await fixture(t, async options => { writeFileSync(join(options.workspace, 'value.txt'), 'other'); return { outcome: 'completed', sessionId: 'session-1' }; });
+  const run = await live.create({ projectId: project.id, input: 'Checks are wrong' }); await settle(engine, run);
+  assert.equal(run.status, 'failed');
+  await live.saveProject({ ...project, confirmed: true, validation: [{ id: 'other', command: process.execPath, args: ['-e', '0'] }] }, project.id);
+  const next = await live.followup(run.id, { input: 'I fixed the checks' }); await settle(engine, next);
+  assert.equal(next.status, 'ready', JSON.stringify(next.events.map(event => event.message)));
+  assert.deepEqual(next.checks.map(check => [check.name, check.status]), [['other', 'passed']]);
+  assert.ok(next.events.some(event => /picked up its saved settings: checks unit → other\./.test(event.message)));
+  const again = await live.followup(next.id, { input: 'Nothing else' }); await settle(engine, again);
+  assert.equal(again.events.some(event => /picked up its saved settings/.test(event.message)), false);
+});
+
 test('checks cannot be edited while a run is active', async t => {
   const { live, engine, project } = await fixture(t, async options => { await new Promise(resolve => options.signal.addEventListener('abort', resolve, { once: true })); return { outcome: 'cancelled' }; });
   const run = await live.create({ projectId: project.id, input: 'Still working' });

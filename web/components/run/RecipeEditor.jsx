@@ -10,15 +10,18 @@ import { confirmLongRunning, longRunningSteps, parseRecipeText, recipeText } fro
 
 export const recipeEditable = run => ['blocked', 'failed'].includes(run.status) && !run.supersededBy && Boolean(run.sessionId) && run.checks.at(-1)?.status === 'failed';
 
+const failingMember = run => run.linked?.find(member => member.projectId === run.checks.at(-1)?.linked) ?? null;
+
 export function RecipeEditor({ run }) {
-  const [text, setText] = useState(() => recipeText(run.project.validation)), [confirmed, setConfirmed] = useState(false);
+  const member = failingMember(run), current = member?.project.validation ?? run.project.validation;
+  const [text, setText] = useState(() => recipeText(current)), [confirmed, setConfirmed] = useState(false);
   const { busy, error, perform } = useAction();
-  const steps = parseRecipeText(text, run.project.validation), longRunning = longRunningSteps(steps).length > 0;
+  const steps = parseRecipeText(text, current), longRunning = longRunningSteps(steps).length > 0;
   const submit = event => {
     event.preventDefault();
-    perform(async () => { const next = await api(`/api/runs/${run.id}/recipe`, { validation: confirmed ? confirmLongRunning(steps) : steps }); navigate(`/runs/${next.id}`); });
+    perform(async () => { const next = await api(`/api/runs/${run.id}/recipe`, { validation: confirmed ? confirmLongRunning(steps) : steps, ...(member ? { projectId: member.projectId } : {}) }); navigate(`/runs/${next.id}`); });
   };
-  return <details className="custom-commands recipe-editor"><summary>Edit checks and continue</summary>
+  return <details className="custom-commands recipe-editor"><summary>{member ? `Edit ${member.name} checks and continue` : 'Edit checks and continue'}</summary>
     <form onSubmit={submit}>
       <p className="muted">One command per line. Saving updates this repository’s checks and continues the same session; the checks then run fresh.</p>
       <Label htmlFor={`recipe-${run.id}`}>Mandatory checks</Label>
