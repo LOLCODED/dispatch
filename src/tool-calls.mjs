@@ -9,6 +9,7 @@ import { perTask } from './task-databases.mjs';
 
 const limits = { args: 16_000, result: 24_000, view: 14_000 };
 // A step record is one line of at most 32k; a view that would not fit is left to the text result.
+const taskDatabaseOf = (live, run) => { const name = live.taskDatabases?.saved(run)?.task.name; return name ? { taskDatabase: name } : {}; };
 const fitting = view => view && JSON.stringify(view).length <= limits.view ? view : null;
 const textContent = value => [{ type: 'text', text: (typeof value === 'string' ? value : JSON.stringify(value)).slice(0, limits.result) }];
 
@@ -52,7 +53,7 @@ export class DispatchToolCalls {
     if (tool.kind === 'ci') return this.live.ci.call(run, args, options);
     if (tool.kind === 'database') return this.live.taskDatabases.call(run, args, options);
     if (tool.kind === 'sql') return this.live.databases.call(run, args, options);
-    if (tool.kind === 'connector') return this.live.connectors.callTool(run.project, tool.name, args, { signal: options.signal, workspace: run.workspace, readOnly: options.readOnly || run.kind === 'answer' });
+    if (tool.kind === 'connector') return this.live.connectors.callTool(run.project, tool.name, args, { signal: options.signal, workspace: run.workspace, readOnly: options.readOnly || run.kind === 'answer', ...taskDatabaseOf(this.live, run) });
     throw new InputError('Unknown dispatch tool kind.');
   }
   async review(run, args, { signal, readOnly }) {
