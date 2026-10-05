@@ -14,7 +14,7 @@ export class DispatchToolCalls {
   tools(run, contract, { readOnly = false } = {}) {
     const browser = usesBrowser(run) && Boolean(this.live.browserCall);
     const connectors = readOnly && contract.readOnlyTools !== true ? [] : this.live.connectors?.agentTools(run.project, { readOnly: readOnly || run.kind === 'answer' }) ?? [];
-    return [...toolSet({ risk: !readOnly && riskEnabled(run.project), question: contract.questions === 'tool' && !readOnly, memory: run.project?.memory !== false && !readOnly, browser: browser && (!readOnly || contract.readOnlyTools === true), review: !readOnly && run.kind !== 'answer', repository: !readOnly && run.kind === 'change' && Boolean(this.live.repositories), permission: !readOnly && run.kind !== 'answer' && contract.permissionPrompts === 'tool' && Boolean(this.live.sensitiveWrites) }), ...connectors];
+    return [...toolSet({ risk: !readOnly && riskEnabled(run.project), question: contract.questions === 'tool' && !readOnly, memory: run.project?.memory !== false && !readOnly, browser: browser && (!readOnly || contract.readOnlyTools === true), http: browser && !readOnly && run.kind !== 'answer', review: !readOnly && run.kind !== 'answer', repository: !readOnly && run.kind === 'change' && Boolean(this.live.repositories), permission: !readOnly && run.kind !== 'answer' && contract.permissionPrompts === 'tool' && Boolean(this.live.sensitiveWrites) }), ...connectors];
   }
   async call(run, name, args, { tools, signal, readOnly = false } = {}) {
     const tool = tools.find(item => item.name === name);
@@ -42,6 +42,7 @@ export class DispatchToolCalls {
     if (tool.kind === 'permission') return this.live.sensitiveWrites.call(run, args, options);
     if (tool.kind === 'memory') return this.live.memoryTool(run, args);
     if (tool.kind === 'browser') return this.live.browserCall(run, tool.name, args, options);
+    if (tool.kind === 'http') return this.live.httpCall(run, args, options);
     if (tool.kind === 'connector') return this.live.connectors.callTool(run.project, tool.name, args, { signal: options.signal, workspace: run.workspace, readOnly: options.readOnly || run.kind === 'answer' });
     throw new InputError('Unknown dispatch tool kind.');
   }
