@@ -2,12 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { ArrowDown, ArrowUpRight } from 'lucide-react';
 import { IconButton } from '@/components/IconButton';
+import { Button } from '@/components/ui/button';
 import { RunHistory } from '@/components/RunHistory';
 import { Decision } from '@/components/Decision';
 import { composerMode, RunComposer } from '@/components/run/RunComposer';
 import { AgentPulse } from '@/components/run/AgentPulse';
 import { runningAppUrl } from '@/components/run/AppFrame';
-import { api, navigate, terminal } from '@/lib/workspace';
+import { api, Link, navigate, terminal } from '@/lib/workspace';
 import { useScrollShadow } from '@/lib/scroll-shadow';
 import { useSmoothText } from '@/lib/smooth-text';
 import { prefersReducedMotion } from '@/lib/motion';
@@ -88,7 +89,7 @@ export function ChatTile({ run, history, labels, request, question, draft, setDr
     </section>
     <AnimatePresence>{!scroll.following && <motion.div className="latest-button" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}><IconButton variant="secondary" label="Latest" icon={ArrowDown} onClick={scroll.followLatest}/></motion.div>}</AnimatePresence>
     {(run.supersededBy || showComposer) && <div className="run-dock">
-      {run.supersededBy && <IconButton variant="outline" label="Open latest conversation" icon={ArrowUpRight} href={`/runs/${run.supersededBy}`}/>}
+      {run.supersededBy && <Button variant="outline" asChild><Link href={`/runs/${run.supersededBy}`}>Continued in a newer turn · Open<ArrowUpRight aria-hidden="true"/></Link></Button>}
       {showComposer && <RunComposer key={run.id} run={run} question={question} draft={draft} setDraft={setDraft} composerRef={composerRef} onUpdate={onUpdate}/>}
     </div>}
   </div>;

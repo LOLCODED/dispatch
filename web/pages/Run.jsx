@@ -17,7 +17,7 @@ import { conversationElapsed, runDurations, runElapsed } from '@/lib/run-time.mj
 import { useTiles, useMediaQuery, tileFocusMode, tileStrokeMode } from '@/lib/tiles';
 import { matches, tileIndex, usesCommandModifier } from '@/lib/keybinds.mjs';
 import { shortcutLabel, usePreferences } from '@/lib/preferences';
-import { api, Link, useWorkspace, terminal } from '@/lib/workspace';
+import { api, Link, navigate, useWorkspace, terminal } from '@/lib/workspace';
 import { blockedQuestionOf, remainingOptions, remainingQuestion } from '@/lib/question.mjs';
 import { openRemaining } from '../../src/remaining.mjs';
 import { lineReference } from '@/lib/diff.mjs';
@@ -56,7 +56,19 @@ function useOpenOnFinish(done, compact, setDrawer) {
   useEffect(() => { if (compact) setDrawer(current => current === 'auto' ? null : current); }, [compact, setDrawer]);
 }
 
+// dispatch can continue a run on its own (a repository joined the task), so a watched run that gains a successor moves to it; opening an older link stays put.
+function useFollowContinuation(run) {
+  const seen = useRef({ id: run.id, supersededBy: run.supersededBy ?? null });
+  useEffect(() => {
+    if (seen.current.id !== run.id) { seen.current = { id: run.id, supersededBy: run.supersededBy ?? null }; return; }
+    const next = run.supersededBy ?? null, path = next && `/runs/${next}`;
+    if (next && !seen.current.supersededBy && location.pathname !== path) navigate(path);
+    seen.current.supersededBy = next;
+  }, [run.id, run.supersededBy]);
+}
+
 function RunWorkspace({ run, setRun, mode }) {
+  useFollowContinuation(run);
   const { state } = useWorkspace(), { history } = useRunHistory(run.id), policy = layoutPolicy(mode);
   const done = terminal.has(run.status), now = useNow(!done), compact = useMediaQuery('(max-width: 899px)');
   const browsed = (run.stepSummary?.browser ?? 0) > 0, driving = ['implementing', 'repairing'].includes(run.status) && browsed;
