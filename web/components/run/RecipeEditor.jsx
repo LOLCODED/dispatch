@@ -8,9 +8,10 @@ import { useAction } from '@/lib/use-action';
 import { api, navigate } from '@/lib/workspace';
 import { confirmLongRunning, longRunningSteps, parseRecipeText, recipeText } from '@/lib/recipe-text.mjs';
 
-export const recipeEditable = run => ['blocked', 'failed'].includes(run.status) && !run.supersededBy && Boolean(run.sessionId) && run.checks.at(-1)?.status === 'failed';
+const latestFailure = run => run.checks.findLast(check => check.attempt === run.checks.at(-1)?.attempt && check.status === 'failed') ?? null;
+export const recipeEditable = run => ['blocked', 'failed'].includes(run.status) && !run.supersededBy && Boolean(run.sessionId) && Boolean(latestFailure(run));
 
-const failingMember = run => run.linked?.find(member => member.projectId === run.checks.at(-1)?.linked) ?? null;
+const failingMember = run => run.linked?.find(member => member.projectId === latestFailure(run)?.linked) ?? null;
 
 export function RecipeEditor({ run }) {
   const member = failingMember(run), current = member?.project.validation ?? run.project.validation;

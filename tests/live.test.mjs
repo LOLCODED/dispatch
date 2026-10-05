@@ -448,6 +448,42 @@ test('a plain follow-up picks up checks saved for the repository after the task 
   assert.equal(again.events.some(event => /picked up its saved settings/.test(event.message)), false);
 });
 
+const writesOther = prompts => async options => { prompts.push(options.prompt); writeFileSync(join(options.workspace, 'value.txt'), 'other'); return { outcome: 'completed', sessionId: 'session-1' }; };
+const failsUnless = (id, value) => ({ id, command: process.execPath, args: ['-e', `if(require("fs").readFileSync("value.txt","utf8")!==${JSON.stringify(value)})process.exit(1)`] });
+
+test('a check that also fails on the base commit is run there once and the repair is told so', async t => {
+  const prompts = [];
+  const { live, engine, project } = await fixture(t, writesOther(prompts));
+  const run = await live.create({ projectId: project.id, input: 'Change the value' }); await settle(engine, run);
+  assert.equal(run.status, 'failed');
+  assert.match(prompts[1], /Dispatch ran unit on the untouched base commit and it fails there too[\s\S]*DISPATCH_BLOCKED/);
+  assert.equal(run.events.filter(event => /running it once on the base commit/.test(event.message)).length, 1);
+  assert.ok(Object.values(run.baseChecks).every(result => result === 'failed'));
+  assert.ok(Number.isFinite(run.timings.baseCheckMs));
+  const next = await live.followup(run.id, { input: 'Try again' }); await settle(engine, next);
+  assert.equal(next.events.some(event => /running it once on the base commit/.test(event.message)), false);
+  assert.match(prompts.at(-1), /Dispatch ran unit on the untouched base commit/);
+});
+
+test('a check that passes on the base commit is repaired without a base note', async t => {
+  const prompts = [];
+  const { live, engine, project } = await fixture(t, writesOther(prompts));
+  await live.saveProject({ ...project, confirmed: true, validation: [{ ...failsUnless('original', 'original'), id: 'keeps' }] }, project.id);
+  const run = await live.create({ projectId: project.id, input: 'Change the value' }); await settle(engine, run);
+  assert.equal(run.status, 'failed');
+  assert.match(prompts[1], /^Repair this failing mandatory check without changing the validation recipe\./);
+  assert.doesNotMatch(prompts[1], /untouched base commit/);
+});
+
+test('every in-scope check runs after a failure and one repair prompt carries all of them', async t => {
+  const prompts = [];
+  const { live, engine, project } = await fixture(t, writesOther(prompts));
+  await live.saveProject({ ...project, confirmed: true, validation: [failsUnless('first', 'changed'), failsUnless('second', 'changed'), failsUnless('third', 'other')] }, project.id);
+  const run = await live.create({ projectId: project.id, input: 'Change the value' }); await settle(engine, run);
+  assert.deepEqual(run.checks.filter(check => check.attempt === 1).map(check => [check.name, check.status]), [['first', 'failed'], ['second', 'failed'], ['third', 'passed']]);
+  assert.match(prompts[1], /^Repair these failing mandatory checks[\s\S]*\n\nfirst: [\s\S]*\n\nsecond: /);
+});
+
 test('checks cannot be edited while a run is active', async t => {
   const { live, engine, project } = await fixture(t, async options => { await new Promise(resolve => options.signal.addEventListener('abort', resolve, { once: true })); return { outcome: 'cancelled' }; });
   const run = await live.create({ projectId: project.id, input: 'Still working' });

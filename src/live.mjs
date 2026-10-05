@@ -57,6 +57,7 @@ import { homedir } from 'node:os';
 import { Landings } from './landing.mjs';
 import { PullRequests, reviewPages } from './pull-requests.mjs';
 import { commitMessage, commitSubject, withoutCommitLine } from './conventional-commit.mjs';
+import { BaseChecks } from './base-checks.mjs';
 import { LinkedRepositories, appName, changedMembers, commitTested, committed, committedMember, linkedEnvSettings, linkedSettings, workspaceScripts } from './linked-repositories.mjs';
 import { remainingMarker, remainingWork } from './remaining.mjs';
 
@@ -119,7 +120,14 @@ const repositoriesOf = run => [run.projectId, ...(run.linked ?? []).map(member =
 const workspacesOf = run => [run.workspace, ...(run.linked ?? []).map(member => member.workspace)];
 const sharesWorkspace = (run, workspaces) => { const busy = new Set([].concat(workspaces ?? []).filter(Boolean)); return workspacesOf(run).some(workspace => busy.has(workspace)); };
 const memberSummary = (summary, run, member) => ({ ...summary, checks: run.checks.filter(check => check.linked === member.projectId).map(check => ({ name: check.name, status: check.status })), filesChanged: member.changedPaths.length, learnings: [] });
-const checkRepairPrompt = check => `Repair this failing mandatory check${check.repository ? ` in linked repository ${check.repository}` : ''} without changing the validation recipe.\n${JSON.stringify(check.command)}\n${String(check.output ?? '').slice(-16000)}`;
+const repairBudget = 16000;
+const failedCheck = (check, budget) => `${JSON.stringify(check.command)}\n${String(check.output ?? '').slice(-budget)}`;
+const leaveAlone = preexisting => preexisting.length ? `\nDispatch ran ${preexisting.map(check => check.name).join(', ')} on the untouched base commit and ${preexisting.length === 1 ? 'it fails' : 'they fail'} there too, before your changes. If the ticket does not ask you to fix ${preexisting.length === 1 ? 'that failure' : 'those failures'}, do not try to; finish with DISPATCH_BLOCKED: saying the check fails before this task, and offer to continue once the operator changes the checks.` : '';
+const checkRepairPrompt = (failures, preexisting = []) => {
+  if (failures.length === 1) { const [check] = failures; return `Repair this failing mandatory check${check.repository ? ` in linked repository ${check.repository}` : ''} without changing the validation recipe.\n${failedCheck(check, repairBudget)}${leaveAlone(preexisting)}`; }
+  const budget = Math.floor(repairBudget / failures.length);
+  return `Repair these failing mandatory checks without changing the validation recipe.${leaveAlone(preexisting)}\n\n${failures.map(check => `${check.name}${check.repository ? ` (linked repository ${check.repository})` : ''}: ${failedCheck(check, budget)}`).join('\n\n')}`;
+};
 const withOperatorNote = (ticket, input) => ticket.connector !== 'text' && /\s/.test(input.trim()) ? { ...ticket, note: input.trim() } : ticket;
 const operatorNoteBlock = ticket => ticket.note ? `\n\nOPERATOR NOTE (typed with the ticket link):\n${ticket.note}` : '';
 export const instructionsBlock = project => project?.instructions?.length ? `\n\nOPERATOR INSTRUCTIONS (standing rules for this repository; they apply on every turn):\n${project.instructions.map(line => `- ${line}`).join('\n')}` : '';
@@ -168,7 +176,7 @@ export class LiveService {
     this.workspaceRoot = join(resolve(engine.dataDir), 'live-workspaces'); this.shadowRoot = join(resolve(engine.dataDir), 'shadow');
     this.logRoot = join(resolve(engine.dataDir), 'live-logs');
     mkdirSync(this.workspaceRoot, { recursive: true }); mkdirSync(this.logRoot, { recursive: true });
-    this.landings = new Landings(this); this.riskChecks = new RiskChecks(this); this.pullRequests = new PullRequests(this); this.linked = new LinkedRepositories(this); this.repositories = new RepositoryTool(this); this.sensitiveWrites = new SensitiveWrites(this);
+    this.landings = new Landings(this); this.riskChecks = new RiskChecks(this); this.pullRequests = new PullRequests(this); this.linked = new LinkedRepositories(this); this.baseChecks = new BaseChecks(this); this.repositories = new RepositoryTool(this); this.sensitiveWrites = new SensitiveWrites(this);
     this.reconcileWorktrees();
   }
   get projects() { return this.engine.store.state.projects; }
@@ -644,7 +652,7 @@ export class LiveService {
     const joining = this.linked.joining(previous);
     this.exclude(previous.ticket.key, [...repositoriesOf(previous), ...joining.map(item => item.id)], [...workspacesOf(previous), ...inPlaceFolders(previous.project, joining)]);
     const run = this.newRun(project ?? previous.project, previous.ticket, input.input.trim());
-    Object.assign(run, { kind: previous.kind ?? 'change', provider: previous.execution?.provider ?? 'codex', execution: structuredClone(previous.execution ?? { provider: 'codex', model: null, effort: null, mode: 'auto', reason: 'Continuing the original CLI defaults.' }), repositorySelection: structuredClone(previous.repositorySelection ?? { mode: 'manual', reason: 'Continuing in the original repository.' }), previousRunId: previous.id, workspace: previous.workspace, shadow: previous.shadow ?? null, branch: previous.branch, baseSha: previous.baseSha, baseSource: previous.baseSource, baseFetchedAt: previous.baseFetchedAt, sessionId: previous.sessionId, commitSubject: previous.commitSubject ?? null, protectedDigest: previous.protectedDigest, setupComplete: previous.setupComplete, scriptsAtBase: previous.scriptsAtBase, baselineScripts: previous.baselineScripts, scriptsAccepted: previous.scriptsAccepted, linked: [...this.linked.continued(previous), ...this.linked.snapshot(previous.project, run.id, joining.map(item => item.id))] });
+    Object.assign(run, { kind: previous.kind ?? 'change', provider: previous.execution?.provider ?? 'codex', execution: structuredClone(previous.execution ?? { provider: 'codex', model: null, effort: null, mode: 'auto', reason: 'Continuing the original CLI defaults.' }), repositorySelection: structuredClone(previous.repositorySelection ?? { mode: 'manual', reason: 'Continuing in the original repository.' }), previousRunId: previous.id, workspace: previous.workspace, shadow: previous.shadow ?? null, branch: previous.branch, baseSha: previous.baseSha, baseSource: previous.baseSource, baseFetchedAt: previous.baseFetchedAt, sessionId: previous.sessionId, commitSubject: previous.commitSubject ?? null, protectedDigest: previous.protectedDigest, setupComplete: previous.setupComplete, scriptsAtBase: previous.scriptsAtBase, baselineScripts: previous.baselineScripts, scriptsAccepted: previous.scriptsAccepted, baseChecks: structuredClone(previous.baseChecks ?? {}), linked: [...this.linked.continued(previous), ...this.linked.snapshot(previous.project, run.id, joining.map(item => item.id))] });
     run.usageCumulative = structuredClone(previous.usageCumulative ?? {});
     if (current) run.project.instructions = structuredClone(current.instructions ?? []);
     if (project) Object.assign(run, { recipeReplaced: true, protectedDigest: replacedDigest, setupComplete: run.setupComplete && digest(project.setup) === digest(previous.project.setup) });
@@ -1021,7 +1029,7 @@ export class LiveService {
     e.store.saveSoon();
     return result;
   }
-  async validate(run, signal) {
+  async validate(run, signal, { all = false } = {}) {
     const e = this.engine;
     const scope = await this.riskChecks.selection(run, signal) ?? checkScope(run.project, run.changedPaths);
     await this.stopDevServer(run);
@@ -1029,11 +1037,13 @@ export class LiveService {
     e.transition(run, 'validating', scope.reason ?? (scope.scoped ? `Scoped change (${scope.matched.map(item => item.id).join(', ')}): running ${scope.steps.length ? scope.steps.map(step => step.id).join(', ') : 'no checks'} against tree ${run.revision.slice(0, 12)}, per repository rules.` : scope.steps.length ? `Running mandatory checks against tree ${run.revision.slice(0, 12)}.` : 'This repository has no checks configured.'));
     this.recordSkippedChecks(run, scope);
     const target = { workspace: run.workspace, revision: run.revision, recipeDigest: run.protectedDigest, current: async signal => await this.tree(run, signal) === run.revision && this.protectedRecipe(run) === run.protectedDigest };
+    let failure = null;
     for (const step of scope.steps) {
       const record = await this.runCheck(run, step, signal, target);
-      if (!record || record.status !== 'passed') return record;
+      if (!record) return null;
+      if (record.status !== 'passed') { failure ??= record; if (!all) break; }
     }
-    return null;
+    return failure;
   }
   // A target is the worktree a check runs in: the run's own, or one of its linked repositories.
   async runCheck(run, step, signal, target) {
@@ -1185,9 +1195,9 @@ export class LiveService {
     const markers = run.mergeIn ? await this.conflictMarkers(run, signal) : [];
     if (markers.length) return { prompt: `Conflict markers remain in ${markers.join(', ')}. Resolve them without committing.`, reason: 'conflict markers remained' };
     if (!changed) { const where = run.shadow ? 'folder' : 'worktree'; e.transition(run, 'blocked', `No changes in the ${where}. The worker finished without editing files, so there is nothing to check${run.shadow ? '' : ' or commit'}. Reply with more direction; files written outside the ${where} are not checked${run.shadow ? '' : ' or committed'}.`); return null; }
-    const failure = (run.changedPaths.length ? await this.validate(run, signal) : null) ?? (run.status === 'blocked' || signal.aborted ? null : await this.linked.validate(run, signal));
+    const failures = await this.validateAll(run, signal);
     if (run.status === 'blocked' || signal.aborted) return null;
-    if (failure) return { prompt: checkRepairPrompt(failure), reason: `check ${failure.name} still failed` };
+    if (failures.length) return this.repairFor(run, failures, signal);
     if (run.project.review) {
       const review = await this.review(run, adapter, signal);
       if (!review) return null;
@@ -1198,6 +1208,18 @@ export class LiveService {
     await this.timed(run, 'publishMs', () => this.publish(run, signal));
     if (run.status === 'ready') await this.timed(run, 'deliveryMs', () => this.deliver(run, signal));
     return null;
+  }
+  // Every in-scope check runs so one repair turn sees all failures; the first failure no longer hides the rest.
+  async validateAll(run, signal) {
+    const from = run.checks.length;
+    if (run.changedPaths.length) await this.validate(run, signal, { all: true });
+    if (run.status !== 'blocked' && !signal.aborted) await this.linked.validate(run, signal, { all: true });
+    return run.checks.slice(from).filter(check => check.status === 'failed');
+  }
+  async repairFor(run, failures, signal) {
+    const preexisting = await this.timed(run, 'baseCheckMs', () => this.baseChecks.preexisting(run, failures, signal));
+    if (signal.aborted) return null;
+    return { prompt: checkRepairPrompt(failures, preexisting), reason: `check ${failures.map(check => check.name).join(', ')} still failed` };
   }
   escalationTarget(run) {
     if (run.escalation || run.execution?.mode !== 'auto') return null;
@@ -1244,7 +1266,7 @@ export class LiveService {
   }
   previousFailure(run) {
     const previous = run.previousRunId && this.engine.runs.find(item => item.id === run.previousRunId), last = previous?.checks?.at(-1);
-    return last?.status === 'failed' ? checkRepairPrompt(last) : null;
+    return last?.status === 'failed' ? checkRepairPrompt([last]) : null;
   }
   async work(run, signal) {
     if (run.kind === 'landing') return this.landings.work(run, signal);

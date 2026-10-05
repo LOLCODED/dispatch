@@ -190,17 +190,19 @@ export class LinkedRepositories {
     return true;
   }
 
-  async validate(run, signal) {
+  async validate(run, signal, { all = false } = {}) {
     if (!await this.setup(run, signal, { deferred: true })) return null;
+    let failure = null;
     for (const member of changedMembers(run)) {
       const scope = checkScope(member.project, member.changedPaths);
       this.engine.transition(run, 'validating', `Running ${member.name} checks (${scope.steps.map(step => step.id).join(', ') || 'none required'}) against tree ${member.revision.slice(0, 12)}, per its repository rules.`);
       for (const step of scope.steps) {
         const record = await this.live.runCheck(run, step, signal, this.target(run, member));
-        if (!record || record.status !== 'passed') return record ?? null;
+        if (!record) return null;
+        if (record.status !== 'passed') { failure ??= record; if (!all) return failure; }
       }
     }
-    return null;
+    return failure;
   }
 
   async publish(run, signal) {
