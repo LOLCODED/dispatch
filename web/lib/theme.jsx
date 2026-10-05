@@ -1,14 +1,9 @@
 import { createContext, useContext, useEffect, useState } from 'react';
-import { preference, savePreference } from '@/lib/workspace';
+import { setPreference, usePreference } from '@/lib/server-preferences';
 
 export const themeModes = ['system', 'dark', 'light'];
 const darkQuery = '(prefers-color-scheme: dark)';
 const ThemeContext = createContext(null);
-
-function storedTheme() {
-  const value = preference('dispatch-theme');
-  return themeModes.includes(value) ? value : themeModes[0];
-}
 
 function useSystemDark() {
   const [dark, setDark] = useState(() => window.matchMedia(darkQuery).matches);
@@ -21,9 +16,8 @@ function useSystemDark() {
 }
 
 export function ThemeProvider({ children }) {
-  const [theme, setTheme] = useState(storedTheme), systemDark = useSystemDark();
+  const theme = usePreference('appearance.theme'), setTheme = value => setPreference('appearance.theme', value), systemDark = useSystemDark();
   const resolved = theme === 'system' ? (systemDark ? 'dark' : 'light') : theme;
-  useEffect(() => { savePreference('dispatch-theme', theme); }, [theme]);
   useEffect(() => {
     document.documentElement.classList.toggle('dark', resolved === 'dark');
     document.documentElement.dataset.theme = resolved;

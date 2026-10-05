@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures.mjs';
 import { exportRun, view } from './ui-helpers.mjs';
 
 test('a plain folder task works in place: the diff and checks show, and there is nothing to land, publish or remove', { tag: '@run' }, async ({ page, request }) => {

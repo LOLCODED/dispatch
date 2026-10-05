@@ -13,8 +13,8 @@ import { MotionChoice, ThemeChoice } from '@/components/AppearanceChoices';
 import { maxConcurrency } from '../../src/catalog.mjs';
 import { useAction } from '@/lib/use-action';
 import { api, Link, useWorkspace } from '@/lib/workspace';
-import { tileFocusKey, tileFocusMode, tileStrokeKey, tileStrokeMode } from '@/lib/tiles';
-import { usePreferences, useStored } from '@/lib/preferences';
+import { usePreferences } from '@/lib/preferences';
+import { setPreference, usePreference } from '@/lib/server-preferences';
 import { playPing } from '@/lib/ping';
 import { version } from '../../package.json';
 
@@ -88,7 +88,7 @@ function Notifications() {
 }
 
 function Tiles() {
-  const [focus, setFocus] = useStored(tileFocusKey, tileFocusMode), [stroke, setStroke] = useStored(tileStrokeKey, tileStrokeMode), { layout, setLayout } = usePreferences();
+  const focus = usePreference('runs.tileFocus'), setFocus = value => setPreference('runs.tileFocus', value), stroke = usePreference('runs.tileStroke'), setStroke = value => setPreference('runs.tileStroke', value), { layout, setLayout } = usePreferences();
   return <section className="panel" id="tiles"><h2>Tiles</h2>
     <div className="setting-row is-stacked"><span>Layout</span><LayoutPicker value={layout} onChange={setLayout}/></div>
     <div className="setting-row"><span>Focus</span><div className="segmented" role="group" aria-label="Tile focus">

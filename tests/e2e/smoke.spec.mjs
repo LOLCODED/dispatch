@@ -1,5 +1,5 @@
 import { exportRun, view } from './ui-helpers.mjs';
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures.mjs';
 
 test('the harness-owned browser smoke check starts the app, keeps a screenshot, and fails on page errors', { tag: '@smoke' }, async ({ page, request }) => {
   const state = await (await request.get('/api/state')).json(), project = name => state.projects.find(item => item.name === name).id;

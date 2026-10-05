@@ -1,5 +1,5 @@
 import { exportRun, readyRun } from './ui-helpers.mjs';
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures.mjs';
 
 test('live cancellation stays cancelled and does not produce handoff', { tag: '@tasks' }, async ({ page, request }) => {
   const state = await (await request.get('/api/state')).json();

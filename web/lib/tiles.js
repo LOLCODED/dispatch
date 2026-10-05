@@ -3,10 +3,6 @@ import { preference, savePreference } from '@/lib/workspace';
 import { layoutPolicy, managedTiles } from '@/lib/run-layouts.mjs';
 
 const storageKey = mode => mode === 'default' ? 'dispatch-tiles' : `dispatch-tiles-${mode}`;
-export const tileFocusKey = 'dispatch-tile-focus';
-export const tileFocusModes = ['hover', 'click'];
-export const tileStrokeKey = 'dispatch-tile-stroke';
-export const tileStrokeModes = ['on', 'off'];
 
 function defaultsFor(mode) {
   const { order, open, ratio } = layoutPolicy(mode);
@@ -25,8 +21,6 @@ function readLayout(mode) {
 }
 
 export const clampRatio = ratio => Math.min(0.8, Math.max(0.25, Number(ratio) || 0.56));
-export const tileFocusMode = () => tileFocusModes.includes(preference(tileFocusKey)) ? preference(tileFocusKey) : 'hover';
-export const tileStrokeMode = () => tileStrokeModes.includes(preference(tileStrokeKey)) ? preference(tileStrokeKey) : 'on';
 
 export function useMediaQuery(query) {
   const [matches, setMatches] = useState(() => window.matchMedia(query).matches);

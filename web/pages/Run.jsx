@@ -15,7 +15,8 @@ import { Lightbox } from '@/components/run/Artifacts';
 import { appendReference } from '@/components/run/RunComposer';
 import { useRunStream, useNow, useRunHistory, useLiveDiff, useDraft } from '@/lib/run-hooks';
 import { conversationElapsed, runDurations, runElapsed } from '@/lib/run-time.mjs';
-import { useTiles, useMediaQuery, tileFocusMode, tileStrokeMode } from '@/lib/tiles';
+import { useTiles, useMediaQuery } from '@/lib/tiles';
+import { usePreference } from '@/lib/server-preferences';
 import { matches, tileIndex, usesCommandModifier } from '@/lib/keybinds.mjs';
 import { shortcutLabel, usePreferences } from '@/lib/preferences';
 import { api, Link, navigate, useWorkspace, terminal } from '@/lib/workspace';
@@ -82,7 +83,7 @@ function RunWorkspace({ run, setRun, mode }) {
   const [drawer, setDrawer] = useState(() => done && (!compact || hashStep(location.hash, run.id) !== null) ? 'auto' : null), [preview, setPreview] = useState(null), [draft, setDraft] = useDraft(`dispatch-followup-${run.id}`), composerRef = useRef(null);
   const [error, setError] = useState('');
   const answerRef = useRef(null);
-  const [focusMode] = useState(tileFocusMode), [strokeMode] = useState(tileStrokeMode), { keybinds } = usePreferences(), fullKey = shortcutLabel(keybinds.fullScreen);
+  const focusMode = usePreference('runs.tileFocus'), strokeMode = usePreference('runs.tileStroke'), { keybinds } = usePreferences(), fullKey = shortcutLabel(keybinds.fullScreen);
   useTileShortcuts(available, layout, compact, keybinds);
   useOpenOnFinish(done, compact, setDrawer);
   const request = run.interactions?.find(item => item.status === 'pending'), question = blockedQuestion(run), decision = request?.id ?? question?.question ?? null;

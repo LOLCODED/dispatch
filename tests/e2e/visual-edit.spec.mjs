@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures.mjs';
 import { exportRun, openTimeline } from './ui-helpers.mjs';
 
 const drag = async (page, from, to, { x, y }) => {

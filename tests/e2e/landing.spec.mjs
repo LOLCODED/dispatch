@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { exportRun, selectChoice } from './ui-helpers.mjs';
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures.mjs';
 
 async function readyRun(request, input) {
   const project = (await (await request.get('/api/projects')).json()).find(item => item.name === 'Browser tool repository');

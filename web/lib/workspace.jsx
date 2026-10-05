@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState } from 'react';
+import { receivePreferences } from '@/lib/server-preferences';
 export const terminal = new Set(['planned', 'ready', 'failed', 'cancelled', 'interrupted', 'blocked', 'budget_exceeded']);
 export async function api(path, data, signal) {
   const response = await fetch(path, { signal, ...(data === undefined ? {} : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data) }) });
@@ -21,7 +22,7 @@ export function WorkspaceProvider({ children }) {
       pending = true;
       try {
         const result = await api('/api/workspace', undefined, controller.signal);
-        if (!stopped) { setState(result); setLoaded(true); setConnected(true); }
+        if (!stopped) { receivePreferences(result.preferences); setState(result); setLoaded(true); setConnected(true); }
       } catch { if (!stopped) setConnected(false); }
       finally { pending = false; if (!stopped) timer = setTimeout(refresh, document.hidden ? 10000 : 2000); }
     };

@@ -11,8 +11,7 @@ import { filterSort, textMatches } from '@/lib/list-view.mjs';
 import { SwitchRow } from '@/components/Switch';
 import { useAction } from '@/lib/use-action';
 import { api, useWorkspace } from '@/lib/workspace';
-import { useStored } from '@/lib/preferences';
-import { executionKey, readExecution } from '@/lib/execution';
+import { setPreference, usePreference } from '@/lib/server-preferences';
 import { modelKey, providerName } from '@/lib/providers.mjs';
 
 const refreshWorkspace =() => window.dispatchEvent(new Event('dispatch-refresh'));
@@ -34,7 +33,7 @@ function Connectors({ connections, busy, perform, onCheck, onReload, onToggle, o
 }
 
 function DefaultModel({ models }) {
-  const [execution, setExecution] = useStored(executionKey, readExecution, JSON.stringify);
+  const execution = usePreference('composer.model'), setExecution = value => setPreference('composer.model', value);
   return <div className="setting-row"><span>Composer starts with</span><ModelPicker label="Default model" value={execution} models={models?.models ?? []} onChange={setExecution}/></div>;
 }
 

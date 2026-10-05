@@ -19,7 +19,7 @@ import { api, useWorkspace, preference, savePreference, navigate } from '@/lib/w
 import { Checkbox } from '@/components/Checkbox';
 import { matches, submitOnShortcut } from '@/lib/keybinds.mjs';
 import { usePreferences } from '@/lib/preferences';
-import { executionKey, readExecution } from '@/lib/execution';
+import { setPreference, usePreference } from '@/lib/server-preferences';
 import { AttachmentDialog } from '@/components/work/AttachmentDialog';
 import { attachPastedText, composerText, longPasteLength, ticketTextLimit } from '@/lib/composer-text.mjs';
 import { AttachButton, AttachmentList, savedTaskImages, useAttachments } from '@/components/work/Attachments';
@@ -36,8 +36,7 @@ function useTicketDraft() {
 }
 
 function useModelChoice() {
-  const [choice, setChoice] = useState(readExecution);
-  return { choice, chooseModel: value => { setChoice(value); savePreference(executionKey, JSON.stringify(value)); } };
+  return { choice: usePreference('composer.model'), chooseModel: value => setPreference('composer.model', value) };
 }
 
 function NewRepositoryOffer({ offer, busy, onChange, onCreate }) {

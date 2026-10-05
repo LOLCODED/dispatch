@@ -1,5 +1,5 @@
 import { answerRepository, ensureSecondRepository, exportRun, readyRun, reveal, selectChoice, view } from './ui-helpers.mjs';
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures.mjs';
 
 test('registers a repository once with explicitly approved check commands', { tag: '@setup' }, async ({ page, request }) => {
   const state = await (await request.get('/api/state')).json();

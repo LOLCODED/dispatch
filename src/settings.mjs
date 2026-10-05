@@ -3,6 +3,7 @@ import { accessModes } from './access.mjs';
 import { branchModes } from './branch.mjs';
 import { localAgents } from './local-models.mjs';
 import { providerCatalog } from './providers.mjs';
+import { preferenceSpecs, preferenceValue, validPreference } from './preferences.mjs';
 
 // Every setting dispatch has is declared here once. The settings pages, the HTTP API, the CLI and the agent's
 // dispatch_settings read and change settings only through this list, so a new setting is reachable everywhere
@@ -45,7 +46,24 @@ export class SettingsRegistry {
       { key: 'localModels.endpoints', ...json, description: 'Local model servers: [{ name, kind: ollama | server, url }].', get: () => live.localEndpoints, set: endpoints => live.setLocalEndpoints({ endpoints }), stateKey: 'localEndpoints' },
       { key: 'localModels.agent', ...enumOf(localAgents), description: 'The agent CLI that drives local models.', get: () => live.localAgent, set: agent => live.setLocalAgent({ agent }), stateKey: 'localAgent' },
       ...this.connectorGlobals(),
+      ...this.preferenceEntries(),
     ];
+  }
+
+  preferenceEntries() {
+    return Object.entries(preferenceSpecs).map(([key, spec]) => ({ key, type: spec.type, ...(spec.values ? { values: spec.values } : {}), description: spec.description, get: () => preferenceValue(this.state.preferences, key), set: value => this.setPreference(key, value), stateKey: 'preferences' }));
+  }
+
+  setPreference(key, value) {
+    if (!validPreference(key, value)) throw new InputError(`${key} does not take that value. ${preferenceSpecs[key].description}`);
+    this.state.preferences = { ...this.state.preferences, [key]: value };
+    this.live.engine.store.save();
+  }
+
+  // The browser migrates its cached value once for a preference this install has never stored.
+  preferences() {
+    const stored = this.state.preferences ?? {};
+    return { values: Object.fromEntries(Object.keys(preferenceSpecs).map(key => [key, preferenceValue(stored, key)])), unset: Object.keys(preferenceSpecs).filter(key => !Object.hasOwn(stored, key)) };
   }
 
   connectorGlobals() {

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures.mjs';
 import { exportRun, openTimeline, readyRun, selectChoice, view } from './ui-helpers.mjs';
 
 async function bounded(page) {
@@ -246,4 +246,13 @@ test('release notes open after an update, not on a first visit', { tag: '@ui' },
   const notes = page.getByRole('dialog', { name: 'Release Notes' });
   await expect(notes).toContainText('a fixed thing'); await notes.getByRole('button', { name: 'Close' }).click();
   await page.reload(); await expect(page.getByLabel('Ticket or instructions')).toBeVisible(); await expect(notes).toHaveCount(0);
+});
+
+test('a setting changed through the settings API, as a task or the CLI would, shows on an open page without a reload', { tag: '@ui' }, async ({ page, request }) => {
+  await page.goto('/');
+  await expect(page.locator('html')).not.toHaveClass(/dark/);
+  await request.post('/api/settings', { data: { key: 'appearance.theme', value: 'dark' } });
+  await page.evaluate(() => window.dispatchEvent(new Event('dispatch-refresh')));
+  await expect(page.locator('html')).toHaveClass(/dark/);
+  expect(await page.evaluate(() => localStorage.getItem('dispatch-theme'))).toBe('dark');
 });

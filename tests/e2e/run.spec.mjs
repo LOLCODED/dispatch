@@ -1,5 +1,5 @@
 import { answerRepository, answerRepositoryQuestion, exportRun, readyRun, selectChoice, view } from './ui-helpers.mjs';
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures.mjs';
 
 test('central composer drives a real worktree, streams checks, shows diff and continues the session', { tag: '@run' }, async ({ page }, testInfo) => {
   const errors = []; page.on('pageerror', error => errors.push(error.message));

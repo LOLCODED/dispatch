@@ -37,3 +37,27 @@ test('a connector setting marked secret is never read back', async t => {
   const masked = live.settingsRegistry.masked('connectors', { vault: { enabled: true, settings: { token: 'abc123', region: 'eu' } } }, project);
   assert.deepEqual(masked.vault.settings, { token: '<secret>', region: 'eu' });
 });
+
+test('the web code keeps nothing in browser storage that should be a setting', async () => {
+  const { readdirSync, readFileSync, statSync } = await import('node:fs'), { join } = await import('node:path');
+  const { browserEvents, browserStateKeys, preferenceSpecs } = await import('../src/preferences.mjs');
+  const files = dir => readdirSync(dir).flatMap(name => { const path = join(dir, name); return statSync(path).isDirectory() ? files(path) : /\.(m?js|jsx)$/.test(name) ? [path] : []; });
+  const literals = files('web').flatMap(path => [...readFileSync(path, 'utf8').matchAll(/['`](dispatch-[a-z0-9-]+)/g)].map(match => match[1]));
+  const known = literal => browserEvents.includes(literal) || browserStateKeys.some(key => literal === key || (key.endsWith('-') && literal.startsWith(key)));
+  assert.deepEqual([...new Set(literals.filter(literal => !known(literal)))], [], 'register these in src/preferences.mjs as a setting, or as browser state');
+  assert.ok(Object.values(preferenceSpecs).every(spec => !literals.includes(spec.cache)), 'web code reads a preference from storage directly instead of through server-preferences');
+});
+
+test('preferences are validated settings, stored on the server and read back with their defaults', async t => {
+  const { live } = await liveFixture(t);
+  const { fromCache, cacheText } = await import('../src/preferences.mjs');
+  const registry = live.settingsRegistry;
+  assert.equal(registry.get('appearance.theme'), 'system');
+  assert.deepEqual(registry.preferences().unset.includes('appearance.theme'), true);
+  await registry.set('appearance.theme', 'dark'); await registry.set('attention.volume', '35'); await registry.set('keybinds', '{"fullScreen":"Alt+G"}');
+  assert.deepEqual([registry.get('appearance.theme'), registry.get('attention.volume'), registry.get('keybinds')], ['dark', 35, { fullScreen: 'Alt+G' }]);
+  assert.equal(registry.preferences().unset.includes('appearance.theme'), false);
+  await assert.rejects(registry.set('appearance.theme', 'purple'), /one of: system, dark, light/);
+  await assert.rejects(registry.set('attention.volume', 400), /does not take that value/);
+  assert.equal(fromCache('attention.volume', '35'), 35); assert.equal(fromCache('appearance.theme', 'purple'), undefined); assert.equal(cacheText('keybinds', { a: 'B' }), '{"a":"B"}');
+});

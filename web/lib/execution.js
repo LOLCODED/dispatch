@@ -1,11 +1,6 @@
-import { preference, terminal } from '@/lib/workspace';
+import { terminal } from '@/lib/workspace';
 import { providerName } from '@/lib/providers.mjs';
 
-export const executionKey = 'dispatch-execution';
-
-export function readExecution() {
-  try { return JSON.parse(preference(executionKey, 'null')); } catch { return null; }
-}
 
 export const choiceLabel = choice => `${providerName(choice?.provider ?? 'codex')} · ${choice?.model ?? 'CLI default'}${choice?.effort ? ` · ${choice.effort}` : ''}`;
 export const runModel = run => ({ ...run.execution, provider: run.execution?.provider ?? run.provider ?? 'codex' });

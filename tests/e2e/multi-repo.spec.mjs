@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures.mjs';
 import { exportRun, selectChoice } from './ui-helpers.mjs';
 
 const git = (project, ...args) => execFileSync('git', ['-C', project.repositoryPath, ...args], { encoding: 'utf8' }).trim();

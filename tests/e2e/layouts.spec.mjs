@@ -1,7 +1,7 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures.mjs';
 import { readyRun, view } from './ui-helpers.mjs';
 
-const useLayout = (page, mode) => page.addInitScript(value => localStorage.setItem('dispatch-run-layout', value), mode);
+const useLayout = (page, mode) => page.request.post('/api/settings', { data: { key: 'runs.layout', value: mode } });
 const tile = (page, name) => page.getByRole('region', { name, exact: true });
 const stream = (page, run) => page.route(`/api/runs/${run.id}/events`, route => route.fulfill({ contentType: 'text/event-stream', body: `data: ${JSON.stringify(run)}\n\n` }));
 

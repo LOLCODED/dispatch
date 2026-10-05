@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures.mjs';
 
 test('first run walks through setup once and docks into home', { tag: '@setup' }, async ({ page, request }) => {
   await request.post('/api/providers', { data: { id: 'codex', enabled: true } });

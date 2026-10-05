@@ -1,12 +1,12 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo } from 'react';
 import { MotionConfig } from 'motion/react';
-import { preference, savePreference } from '@/lib/workspace';
+import { preference } from '@/lib/workspace';
+import { setPreference, usePreference } from '@/lib/server-preferences';
 import { formatCombo, keybindDefaults, readKeybinds } from '@/lib/keybinds.mjs';
 import { settle } from '@/lib/motion';
 import { clampVolume } from '@/lib/attention.mjs';
-import { layoutModes } from '@/lib/run-layouts.mjs';
 
-const keys = { keybinds: 'dispatch-keybinds', legacyFullScreen: 'dispatch-full-screen-key', motion: 'dispatch-motion', home: 'dispatch-home-list', attentionSound: 'dispatch-attention-sound', attentionVolume: 'dispatch-attention-volume', afterDispatch: 'dispatch-after-dispatch', editor: 'dispatch-editor', layout: 'dispatch-run-layout', alerts: 'dispatch-alerts' };
+const legacyFullScreenKey = 'dispatch-full-screen-key';
 export const motionModes = ['system', 'reduce', 'full'];
 export const homeModes = ['reveal', 'open'];
 export const afterDispatchModes = ['open', 'stay'];
@@ -15,40 +15,17 @@ const motionConfig = { system: 'user', reduce: 'always', full: 'never' };
 
 const PreferencesContext = createContext(null);
 
-function choice(key, options) {
-  const value = preference(key);
-  return options.includes(value) ? value : options[0];
-}
-
-function storedKeybinds() {
-  try { return readKeybinds(JSON.parse(preference(keys.keybinds, 'null')), preference(keys.legacyFullScreen)); } catch { return readKeybinds(null, preference(keys.legacyFullScreen)); }
-}
-
-function storedAlerts() {
-  try {
-    const saved = JSON.parse(preference(keys.alerts, '{}')) ?? {};
-    return Object.fromEntries(alertKinds.map(kind => [kind, saved[kind] !== false]));
-  } catch { return Object.fromEntries(alertKinds.map(kind => [kind, true])); }
-}
-
-export function useStored(key, read, write = value => value) {
-  const [value, setValue] = useState(read);
-  return [value, next => { savePreference(key, write(next)); setValue(next); }];
-}
+// Each preference is a dispatch setting (src/preferences.mjs) so a task or the CLI can change it; this keeps the shapes the UI has always used.
+const setting = key => [usePreference(key), value => setPreference(key, value)];
 
 export function PreferencesProvider({ children }) {
-  const [keybinds, saveKeybinds] = useStored(keys.keybinds, storedKeybinds, JSON.stringify);
-  const [motion, setMotion] = useStored(keys.motion, () => choice(keys.motion, motionModes));
-  const [homeList, setHomeList] = useStored(keys.home, () => choice(keys.home, homeModes));
-  const [attentionSound, setAttentionSound] = useStored(keys.attentionSound, () => preference(keys.attentionSound) === 'on', on => on ? 'on' : 'off');
-  const [attentionVolume, setAttentionVolume] = useStored(keys.attentionVolume, () => clampVolume(preference(keys.attentionVolume)), String);
-  const [afterDispatch, setAfterDispatch] = useStored(keys.afterDispatch, () => choice(keys.afterDispatch, afterDispatchModes));
-  const [editor, setEditor] = useStored(keys.editor, () => preference(keys.editor));
-  const [layout, setLayout] = useStored(keys.layout, () => choice(keys.layout, layoutModes));
-  const [alerts, saveAlerts] = useStored(keys.alerts, storedAlerts, JSON.stringify);
+  const [savedKeybinds, saveKeybinds] = setting('keybinds'), keybinds = useMemo(() => readKeybinds(Object.keys(savedKeybinds).length ? savedKeybinds : null, preference(legacyFullScreenKey)), [savedKeybinds]);
+  const [motion, setMotion] = setting('appearance.motion'), [homeList, setHomeList] = setting('home.list'), [afterDispatch, setAfterDispatch] = setting('composer.afterDispatch');
+  const [sound, setSound] = setting('attention.sound'), [volume, setVolume] = setting('attention.volume'), [editor, setEditor] = setting('editor'), [layout, setLayout] = setting('runs.layout');
+  const [savedAlerts, saveAlerts] = setting('alerts'), alerts = useMemo(() => Object.fromEntries(alertKinds.map(kind => [kind, savedAlerts[kind] !== false])), [savedAlerts]);
   useEffect(() => { document.documentElement.dataset.motion = motion; }, [motion]);
   const value = {
-    keybinds, motion, setMotion, homeList, setHomeList, attentionSound, setAttentionSound, attentionVolume, setAttentionVolume, afterDispatch, setAfterDispatch, editor, setEditor, layout, setLayout, alerts,
+    keybinds, motion, setMotion, homeList, setHomeList, attentionSound: sound === 'on', setAttentionSound: on => setSound(on ? 'on' : 'off'), attentionVolume: clampVolume(volume), setAttentionVolume: next => setVolume(clampVolume(next)), afterDispatch, setAfterDispatch, editor, setEditor, layout, setLayout, alerts,
     setAlert: (kind, on) => saveAlerts({ ...alerts, [kind]: on }),
     setKeybind: (id, combo) => saveKeybinds({ ...keybinds, [id]: combo }),
     resetKeybinds: () => saveKeybinds(keybindDefaults),
