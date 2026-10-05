@@ -55,9 +55,11 @@ test('a plain folder round-trips without a base branch and never sends Git-only 
 });
 
 test('database settings load from both saved shapes and save an engine with its connection', () => {
-  assert.deepEqual(databaseForm({ envFile: '.env', variable: 'DATABASE_URL' }), { engine: '', source: 'env', connector: '', envFile: '.env', variable: 'DATABASE_URL', query: '', format: 'csv', nullMarker: '' });
+  assert.deepEqual(databaseForm({ envFile: '.env', variable: 'DATABASE_URL' }), { perTask: { on: false, provider: '', migrate: '', create: '', drop: '', env: '' }, engine: '', source: 'env', connector: '', envFile: '.env', variable: 'DATABASE_URL', query: '', format: 'csv', nullMarker: '' });
   const saved = { engine: 'commands', connection: { from: 'envFile', envFile: '.env', variables: ['DB_HOST', 'DB_USER'] }, commands: { query: { command: 'mysql', args: ['--batch', '-e', '{sql}'] }, format: 'tsv', null: 'NULL' } };
   assert.deepEqual(databasePayload(databaseForm(saved)), { engine: 'commands', connection: saved.connection, commands: { query: 'mysql --batch -e {sql}', format: 'tsv', null: 'NULL' } });
   assert.deepEqual(databasePayload(databaseForm({ source: 'connector', connector: 'ado' })), { engine: null, connection: { from: 'connector', connector: 'ado' } });
   assert.equal(databasePayload(databaseForm(null)), null);
+  const perTask = { provider: 'commands', migrate: { command: 'npm', args: ['run', 'db:migrate'] }, create: { command: 'createdb', args: ['-T', 'app', '{task}'] }, drop: { command: 'dropdb', args: ['--if-exists', '{task}'] }, env: { DATABASE_URL: 'postgres://127.0.0.1/{task}' } };
+  assert.deepEqual(databasePayload(databaseForm({ connection: { from: 'envFile', envFile: '.env', variables: ['DATABASE_URL'] }, perTask })).perTask, { provider: 'commands', migrate: 'npm run db:migrate', create: 'createdb -T app {task}', drop: 'dropdb --if-exists {task}', env: 'DATABASE_URL=postgres://127.0.0.1/{task}' });
 });

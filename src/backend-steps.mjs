@@ -3,6 +3,7 @@ const ownTools = {
   dispatch_http: { type: 'http', label: 'HTTP', title: input => `${input.method ?? 'GET'} ${input.url ?? ''}` },
   dispatch_service: { type: 'log', label: 'Service', title: input => input.service ? `${input.service} · ${input.action}` : input.action ?? '' },
   dispatch_sql: { type: 'table', label: 'SQL', title: input => String(input.query ?? '').trim().split('\n')[0].slice(0, 160) },
+  dispatch_database: { type: 'log', label: 'Database', title: input => input.action ?? '' },
   dispatch_ci: { type: 'checks', label: 'CI', title: input => `${input.action ?? 'status'} ${input.target ?? 'branch'}` },
 };
 

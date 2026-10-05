@@ -58,7 +58,7 @@ export class Services {
     const key = this.key(run, service);
     if (this.running.has(key)) return `${service.id} is already running.`;
     const logs = logBuffer(), stop = new AbortController();
-    const exited = this.execute(service.command, service.args, { cwd: service.workspace, signal: stop.signal, timeoutMs: 3_600_000, inheritEnv: false, env: localEnvironment({ CI: '1' }), maxOutput: 1000, onStdout: logs.add, onStderr: logs.add });
+    const exited = this.execute(service.command, service.args, { cwd: service.workspace, signal: stop.signal, timeoutMs: 3_600_000, inheritEnv: false, env: localEnvironment({ ...(service.repository ? {} : this.live.taskDatabases?.env(run)), CI: '1' }), maxOutput: 1000, onStdout: logs.add, onStderr: logs.add });
     this.running.set(key, { service, logs, stop, exited });
     exited.then(result => { logs.add(`\n[exited with code ${result.exitCode}]`); });
     this.live.log(run, 'service', `Started ${service.id}${service.repository ? ` in ${service.repository}` : ''}: ${[service.command, ...service.args].join(' ')}`);

@@ -31,6 +31,34 @@ function QueryCommands({ database, set }) {
   </>;
 }
 
+function TaskCommands({ perTask, set }) {
+  const field = (key, label, placeholder) => <div className="field"><Label htmlFor={`task-db-${key}`}>{label}</Label><Input id={`task-db-${key}`} className="mono-input" placeholder={placeholder} value={perTask[key]} onChange={event => set({ [key]: event.target.value })}/></div>;
+  return <>
+    {field('create', 'Create command', 'docker run -d --name app-{task} -p {port}:5432 postgres:16')}
+    {field('drop', 'Drop command', 'docker rm -f app-{task}')}
+    <div className="field"><Label htmlFor="task-db-env">Variables, one per line</Label><Textarea id="task-db-env" className="mono-input" rows={2} placeholder="DATABASE_URL=postgres://postgres@127.0.0.1:{port}/postgres" value={perTask.env} onChange={event => set({ env: event.target.value })}/></div>
+    <p className="muted">{'{task}'} is a name unique to the task and {'{port}'} a free local port. The commands run with the connection variables above set, so they can clone from the development database.</p>
+  </>;
+}
+
+function PerTaskDatabase({ form, update, connectors }) {
+  const perTask = form.database.perTask, set = change => update({ database: { ...form.database, perTask: { ...perTask, ...change } } });
+  const providers = [...connectors.filter(connector => connector.provisions).map(connector => [connector.id, connector.name]), ['commands', 'Commands']];
+  const choose = id => {
+    const connector = connectors.find(item => item.id === id), action = connector?.actions.find(item => item.hooks.includes('database.provision'));
+    update({ database: { ...form.database, perTask: { ...perTask, provider: id } }, ...(action ? { connectors: setAction(form.connectors, connector, action, true) } : {}) });
+  };
+  return <>
+    <ul className="row-list"><li><SwitchRow label="Give each task its own database" description="dispatch creates a database for each task, points the worktree at it and removes it with the worktree. Migrations and test data never reach the shared one." checked={perTask.on} onChange={on => set({ on })}/></li></ul>
+    {perTask.on && <>
+      <div className="field"><Label>Created by</Label><Choices label="Task database from" options={providers} value={perTask.provider} onChoose={choose}/></div>
+      {perTask.provider === 'commands' && <TaskCommands perTask={perTask} set={set}/>}
+      <div className="field"><Label htmlFor="task-db-migrate">Migrate command</Label><Input id="task-db-migrate" className="mono-input" placeholder="npm run db:migrate" value={perTask.migrate} onChange={event => set({ migrate: event.target.value })}/></div>
+      <p className="muted">The agent runs it with dispatch_database migrate after writing a migration, against the task's database only.</p>
+    </>}
+  </>;
+}
+
 function Database({ form, update, connectors }) {
   const database = form.database, set = change => update({ database: { ...database, ...change } });
   const engines = [...connectors.filter(connector => connector.queries).map(connector => [connector.id, connector.name]), ['commands', 'Commands']];
@@ -45,6 +73,7 @@ function Database({ form, update, connectors }) {
         <div className="field"><Label htmlFor="database-env-file">Env file</Label><Input id="database-env-file" className="mono-input" placeholder=".env.development" value={database.envFile} onChange={event => set({ envFile: event.target.value })}/></div>
         <div className="field"><Label htmlFor="database-variable">Variables</Label><Input id="database-variable" className="mono-input" placeholder="DATABASE_URL" value={database.variable} onChange={event => set({ variable: event.target.value })}/></div>
       </div>}
+    <PerTaskDatabase form={form} update={update} connectors={connectors}/>
   </section>;
 }
 

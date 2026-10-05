@@ -5,6 +5,7 @@ import { localEnvironment } from './local-tools.mjs';
 import { runProcess } from './process.mjs';
 import { tableView } from './views.mjs';
 
+const envLine = /^([A-Za-z_][A-Za-z0-9_]{0,63})=(.*)$/;
 const maxText = 24000, queryTimeoutMs = 20000, variable = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/, connectorId = /^[a-z][a-z0-9]{1,30}$/;
 
 export const sqlTool = {
@@ -34,6 +35,21 @@ function commandsSettings(value) {
   return { query: commandParts(value.query, 'The query command'), format: value.format === 'tsv' ? 'tsv' : 'csv', ...(typeof value.null === 'string' && value.null ? { null: value.null.slice(0, 20) } : {}) };
 }
 
+function envTemplate(lines) {
+  const listed = lines && typeof lines === 'object' && !Array.isArray(lines) ? Object.entries(lines).map(([name, value]) => `${name}=${value}`) : Array.isArray(lines) ? lines : String(lines ?? '').split('\n');
+  const entries = listed.map(line => line.trim()).filter(Boolean).map(line => line.match(envLine));
+  if (!entries.length || entries.some(entry => !entry)) throw new InputError('Commands give the task database’s variables one per line as NAME=value, for example DATABASE_URL=postgres://localhost:{port}/app_{task}.');
+  return Object.fromEntries(entries.map(([, name, value]) => [name, value]));
+}
+
+export function perTaskSettings(value) {
+  if (value === undefined || value === null || value === false) return null;
+  if (value.provider !== 'commands' && !connectorId.test(value.provider ?? '')) throw new InputError('A task database comes from a connector or from commands.');
+  const migrate = value.migrate ? commandParts(value.migrate, 'The migrate command') : null;
+  if (value.provider !== 'commands') return { provider: value.provider, migrate };
+  return { provider: 'commands', migrate, create: commandParts(value.create, 'The create command'), drop: commandParts(value.drop, 'The drop command'), env: envTemplate(value.env) };
+}
+
 // Older settings held only the connection ({ envFile, variable } or { source: 'connector', connector }); they keep working with the default engine.
 export function databaseSettings(value) {
   if (value === undefined || value === null) return null;
@@ -44,7 +60,8 @@ export function databaseSettings(value) {
   if (engine !== null && engine !== 'commands' && !connectorId.test(engine)) throw new InputError('The database engine is a connector id or commands.');
   const commands = commandsSettings(value.commands);
   if (engine === 'commands' && !commands) throw new InputError('The commands engine needs a query command.');
-  return { engine, connection, ...(commands ? { commands } : {}) };
+  const perTask = perTaskSettings(value.perTask);
+  return { engine, connection, ...(commands ? { commands } : {}), ...(perTask ? { perTask } : {}) };
 }
 
 export function envFileValues(workspace, envFile, names) {
@@ -101,16 +118,17 @@ export class Databases {
     throw new Error(engines.length ? 'Choose which database connector this repository uses under Extras › Database.' : 'No connector that runs database queries is loaded; add one or set query commands under Extras › Database.');
   }
 
-  async connectionEnv(run, signal) {
+  // source reads the operator's checkout: the worktree's copy of the env file points at the task's own database once it has one.
+  async connectionEnv(run, signal, { source = false } = {}) {
     const { connection } = databaseSettings(run.project.database);
-    if (connection.from === 'envFile') return envFileValues(run.workspace, connection.envFile, connection.variables);
+    if (connection.from === 'envFile') return envFileValues(source ? run.project.repositoryPath : run.workspace, connection.envFile, connection.variables);
     const url = String(await this.live.connectors.invoke(run.project, connection.connector, 'database.url', [], { signal }) ?? '').trim();
     if (!url) throw new Error(`The ${connection.connector} connector returned no connection.`);
     return { [connection.variable]: url };
   }
 
   async query(run, sql, signal) {
-    const env = await this.connectionEnv(run, signal), engine = this.engine(run.project);
+    const env = { ...await this.connectionEnv(run, signal), ...this.live.taskDatabases?.env(run) }, engine = this.engine(run.project);
     try {
       const { columns, rows } = engine === 'commands' ? await this.commandQuery(run, sql, env, signal) : await this.live.connectors.invoke(run.project, engine, 'database.query', [{ sql, env, workspace: run.workspace }], { signal });
       return { columns: (columns ?? []).map(String), rows: (rows ?? []).map(row => row.map(cell => cell === null || cell === undefined ? null : redacted(cell, env))) };

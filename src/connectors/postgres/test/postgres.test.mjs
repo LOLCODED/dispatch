@@ -21,3 +21,17 @@ test('the connection comes from the configured variable, or any postgres URL in 
   assert.equal(postgresUrl({ PG: url }, 'DATABASE_URL'), url);
   assert.throws(() => postgresUrl({ DATABASE_URL: 'mysql://x' }, 'DATABASE_URL'), /not a postgres/);
 });
+
+test('a task database is a template clone of the development one, or a dump and restore when the source is busy', async () => {
+  const calls = [], busy = { value: false };
+  const runProcess = async (command, args) => { calls.push([command, ...args].join(' ')); return busy.value && args.some(arg => /template/.test(arg)) ? { exitCode: 1, output: 'source database "app" is being accessed by other users' } : { exitCode: 0, output: '' }; };
+  const hooks = createPostgres(connectorApi({ runProcess })).actions.taskDatabases.hooks, ctx = { settings: { variable: 'DATABASE_URL' } }, task = { id: 'abc', name: 'dispatch_task_abc' };
+  assert.deepEqual(await hooks['database.provision']({ task, env: { DATABASE_URL: url } }, ctx), { env: { DATABASE_URL: 'postgres://dev:secret@localhost:5432/dispatch_task_abc' } });
+  assert.ok(calls.some(call => call.includes('create database "dispatch_task_abc" template "app"'))); assert.ok(calls.every(call => !call.startsWith('pg_dump')));
+  calls.length = 0; busy.value = true;
+  await hooks['database.provision']({ task, env: { DATABASE_URL: url } }, ctx);
+  assert.ok(calls.some(call => call.startsWith('pg_dump'))); assert.ok(calls.some(call => call.startsWith('pg_restore')));
+  calls.length = 0;
+  await hooks['database.release']({ task, env: { DATABASE_URL: 'postgres://dev:secret@localhost:5432/dispatch_task_abc' } }, ctx);
+  assert.ok(calls[0].includes('/postgres') && calls[0].includes('drop database if exists "dispatch_task_abc" with (force)'));
+});

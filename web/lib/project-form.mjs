@@ -95,7 +95,17 @@ export const localFileChoices = (info, form) => [...new Set([...(info?.localFile
 export function databaseForm(database) {
   const connection = database?.connection ?? (database?.source === 'connector' ? { from: 'connector', connector: database.connector } : { from: 'envFile', envFile: database?.envFile, variables: database?.variable ? [database.variable] : [] });
   const commands = database?.commands;
-  return { engine: database?.engine ?? '', source: connection.from === 'connector' ? 'connector' : 'env', connector: connection.connector ?? '', envFile: connection.envFile ?? '', variable: (connection.variables ?? [connection.variable]).filter(Boolean).join(', '), query: commands ? [commands.query.command, ...commands.query.args].join(' ') : '', format: commands?.format ?? 'csv', nullMarker: commands?.null ?? '' };
+  return { perTask: perTaskForm(database?.perTask), engine: database?.engine ?? '', source: connection.from === 'connector' ? 'connector' : 'env', connector: connection.connector ?? '', envFile: connection.envFile ?? '', variable: (connection.variables ?? [connection.variable]).filter(Boolean).join(', '), query: optionalCommand(commands?.query), format: commands?.format ?? 'csv', nullMarker: commands?.null ?? '' };
+}
+
+const optionalCommand = step => step ? commandLine(step) : '';
+function perTaskForm(perTask) {
+  return { on: Boolean(perTask), provider: perTask?.provider ?? '', migrate: optionalCommand(perTask?.migrate), create: optionalCommand(perTask?.create), drop: optionalCommand(perTask?.drop), env: Object.entries(perTask?.env ?? {}).map(([name, value]) => `${name}=${value}`).join('\n') };
+}
+function perTaskPayload(perTask) {
+  if (!perTask?.on || !perTask.provider) return null;
+  const migrate = perTask.migrate.trim() || null;
+  return perTask.provider === 'commands' ? { provider: 'commands', migrate, create: perTask.create.trim(), drop: perTask.drop.trim(), env: perTask.env } : { provider: perTask.provider, migrate };
 }
 
 export function databasePayload(database) {
@@ -103,7 +113,8 @@ export function databasePayload(database) {
   const connection = database?.source === 'connector' ? (database.connector ? { from: 'connector', connector: database.connector, ...(variables[0] ? { variable: variables[0] } : {}) } : null) : database?.envFile?.trim() && variables.length ? { from: 'envFile', envFile: database.envFile.trim(), variables } : null;
   if (!connection) return null;
   const commands = database.engine === 'commands' ? { query: database.query.trim(), format: database.format, ...(database.nullMarker ? { null: database.nullMarker } : {}) } : null;
-  return { engine: database.engine || null, connection, ...(commands ? { commands } : {}) };
+  const perTask = perTaskPayload(database.perTask);
+  return { engine: database.engine || null, connection, ...(commands ? { commands } : {}), ...(perTask ? { perTask } : {}) };
 }
 
 export const serviceLine = service => `${service.id}: ${[service.command, ...service.args].join(' ')}`;

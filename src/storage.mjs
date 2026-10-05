@@ -8,7 +8,7 @@ import { conversationKey } from './board-state.mjs';
 import { alive } from './live.mjs';
 import { purgeAges, purgeScopes, purgeTargets } from './storage-plan.mjs';
 
-const areas = { 'live-workspaces': 'worktrees', 'live-artifacts': 'evidence', 'task-images': 'evidence', 'live-logs': 'logs', 'live-steps': 'logs', 'browser-profiles': 'browser', shadow: 'snapshots', memory: 'records', 'state.json': 'records', 'server.lock': 'records' };
+const areas = { 'live-workspaces': 'worktrees', 'live-artifacts': 'evidence', 'task-images': 'evidence', 'live-logs': 'logs', 'live-steps': 'logs', 'browser-profiles': 'browser', shadow: 'snapshots', memory: 'records', 'task-databases': 'records', 'state.json': 'records', 'server.lock': 'records' };
 const areaLabels = { worktrees: 'Worktrees', evidence: 'Images and evidence', logs: 'Logs', browser: 'Browser profiles', snapshots: 'Folder snapshots', records: 'Task records and memory', other: 'Other' };
 const perRun = new Set(['live-workspaces', 'live-artifacts', 'live-logs', 'live-steps']);
 const runIdLength = 36;
