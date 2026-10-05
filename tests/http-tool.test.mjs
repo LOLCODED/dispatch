@@ -2,6 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { httpCall, httpTool } from '../src/http-tool.mjs';
 import { toolNames, toolSet } from '../src/dispatch-tools.mjs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { httpApps } from '../src/linked-repositories.mjs';
 import { completes, liveFixture, settle, workerDouble } from './live-double.mjs';
 
 const resolveUrl = async url => `http://127.0.0.1:5199${url.replace(/^app:[\w.-]*/i, '')}`;
@@ -36,4 +41,23 @@ test('the worker prompt names dispatch tools only when the provider receives the
   }
   assert.match(prompts[0], /dispatch_browser_\*/); assert.match(prompts[0], /dispatch_http/); assert.match(prompts[0], /dispatch_memory/); assert.match(prompts[0], /about dispatch itself .* dispatch_settings/);
   assert.doesNotMatch(prompts[1], /dispatch_[a-z]/);
+});
+
+test('dispatch_http reaches any app dispatch can start, with or without the browser', t => {
+  const withDev = mkdtempSync(join(tmpdir(), 'dispatch-http-')), plain = mkdtempSync(join(tmpdir(), 'dispatch-http-'));
+  t.after(() => { rmSync(withDev, { recursive: true, force: true }); rmSync(plain, { recursive: true, force: true }); });
+  writeFileSync(join(withDev, 'package.json'), JSON.stringify({ scripts: { dev: 'node server.mjs' } }));
+  assert.deepEqual(httpApps({ workspace: withDev, project: {}, linked: [{ name: 'Web', workspace: plain, project: { browser: { enabled: true } } }, { name: 'Docs', workspace: plain, project: {} }] }), ['app:/', 'app:web/']);
+  assert.deepEqual(httpApps({ workspace: plain, project: {} }), []);
+});
+
+test('a backend repository without the browser gets dispatch_http in its prompt when it has a dev script', async t => {
+  const prompts = [];
+  const { live, engine, project, repo } = await liveFixture(t, { adapter: { ...workerDouble(options => { prompts.push(options.prompt); return completes(options); }), contract: { tools: 'mcp' } } });
+  await settle(engine, await live.create({ projectId: project.id, input: 'No dev script yet' }));
+  writeFileSync(join(repo, 'package.json'), JSON.stringify({ scripts: { dev: 'node server.mjs' } }));
+  execFileSync('git', ['-C', repo, 'add', 'package.json']); execFileSync('git', ['-C', repo, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'dev script']);
+  await settle(engine, await live.create({ projectId: project.id, input: 'With a dev script' }));
+  assert.doesNotMatch(prompts[0], /dispatch_http/); assert.doesNotMatch(prompts[1], /dispatch_browser_/);
+  assert.match(prompts[1], /Exercise API changes with dispatch_http: app:\/ reaches the app/);
 });

@@ -7,6 +7,7 @@ import { changeFlags } from './flags.mjs';
 import { coAuthored, commitIdentity } from './commit-identity.mjs';
 import { commitMessage } from './conventional-commit.mjs';
 import { ensureShadow, isPlain, shadowDir, workspaceGit } from './plain-folder.mjs';
+import { startScripts } from './browser-smoke.mjs';
 
 export const maxLinked = 4;
 
@@ -46,6 +47,9 @@ export function memberWorkspace(root, runId, project, taken = new Set()) {
 // A task that starts in dispatch home and adds a web app as a linked repository still gets the browser for that app.
 export const browserApps = run => [...(run.project?.browser?.enabled === true ? ['app:/'] : []), ...(run.linked ?? []).filter(member => member.project?.browser?.enabled === true).map(member => `app:${appName(member.name)}/`)];
 export const usesBrowser = run => browserApps(run).length > 0;
+const servesApp = owner => owner.project?.browser?.enabled === true || startScripts.some(name => typeof workspaceScripts(owner.workspace ?? '')?.[name] === 'string');
+// Any app dispatch can start answers dispatch_http, so backend-only repositories get it without the browser.
+export const httpApps = run => [...(servesApp(run) ? ['app:/'] : []), ...(run.linked ?? []).filter(servesApp).map(member => `app:${appName(member.name)}/`)];
 export const changedMembers = run => (run.linked ?? []).filter(member => member.changedPaths?.length);
 export const committed = repository => Boolean(repository.headSha) && repository.headSha !== repository.baseSha;
 export const committedMember = committed;
