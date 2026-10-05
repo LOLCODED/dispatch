@@ -16,10 +16,10 @@ export function postgresUrl(env, variable) {
 function createPostgres(dispatch) {
   const psql = (args, { signal, env = {}, timeoutMs = queryTimeoutMs } = {}) => dispatch.runProcess('psql', ['-X', '-q', ...args], { cwd: tmpdir(), signal, timeoutMs, inheritEnv: false, env: dispatch.localEnvironment({ PGCONNECT_TIMEOUT: '5', ...env }) });
 
-  // The session is read-only with a statement limit, whatever the query says; changes go in migrations.
-  async function query({ sql, env }, ctx) {
+  // A read-only database gets a read-only session with a statement limit, whatever the query says.
+  async function query({ sql, env, readOnly = true }, ctx) {
     const url = postgresUrl(env, ctx.settings.variable);
-    const result = await psql([url, '--csv', '-v', 'ON_ERROR_STOP=1', '-P', 'pager=off', '-P', `null=${nullMarker}`, '-c', sql], { signal: ctx.signal, env: { PGOPTIONS: '-c default_transaction_read_only=on -c statement_timeout=15000' } });
+    const result = await psql([url, '--csv', '-v', 'ON_ERROR_STOP=1', '-P', 'pager=off', '-P', `null=${nullMarker}`, '-c', sql], { signal: ctx.signal, env: { PGOPTIONS: `${readOnly ? '-c default_transaction_read_only=on ' : ''}-c statement_timeout=15000` } });
     if (failed(result)) throw new Error(String(result.output ?? '').trim() || 'psql failed with no output.');
     const [columns = [], ...records] = dispatch.parseDelimited(String(result.output ?? ''));
     return { columns, rows: records.map(record => record.map(cell => cell === nullMarker ? null : cell)) };
@@ -66,7 +66,7 @@ function createPostgres(dispatch) {
       variable: { label: 'Connection variable', description: 'The variable holding the postgres:// connection string.', type: 'string', default: 'DATABASE_URL', pattern: '^[A-Za-z_][A-Za-z0-9_]{0,63}$' },
     },
     actions: {
-      query: { label: 'Run read-only queries', description: 'Read rows for the agent and show them in the run. The session is read-only with a 15 s statement limit.', access: 'read', hooks: { 'database.query': query } },
+      query: { label: 'Run queries', description: 'Run the agent’s queries and show the rows in the run, in a read-only session unless the repository gives that database write access; 15 s statement limit.', access: 'read', hooks: { 'database.query': query } },
       taskDatabases: { label: 'Give each task its own database', description: 'Clone the development database for each task on the same server, and drop the clone when the task’s worktree is removed. The development database itself is only read.', access: 'write', hooks: { 'database.provision': provision, 'database.release': release } },
     },
   };

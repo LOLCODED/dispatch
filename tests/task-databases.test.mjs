@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { Databases, databaseSettings } from '../src/database.mjs';
+import { Databases, databasesSettings } from '../src/database.mjs';
 import { TaskDatabases } from '../src/task-databases.mjs';
 
 const source = 'postgres://dev:secret@127.0.0.1:5432/app';
@@ -11,8 +11,8 @@ function fixture(t, perTask, { invoke = async () => ({}) } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'dispatch-taskdb-')); t.after(() => rmSync(dir, { recursive: true, force: true }));
   const checkout = join(dir, 'checkout'), workspace = join(dir, 'live-workspaces', '0f9e8d7c-1234'); mkdirSync(checkout); mkdirSync(workspace, { recursive: true });
   for (const root of [checkout, workspace]) writeFileSync(join(root, '.env'), `DATABASE_URL=${source}\nLOG_LEVEL=info\n`);
-  const project = { id: 'p1', repositoryPath: checkout, database: databaseSettings({ connection: { envFile: '.env', variables: ['DATABASE_URL'] }, perTask }) };
-  const run = { id: 'r1', workspace, project }, logs = [], calls = [], live = { engine: { dataDir: dir, runs: [run] }, log: (_, kind, message) => logs.push(message), stopDevServer: async () => {}, connectors: { invoke: async (...args) => { calls.push(args); return invoke(...args); }, registry: { get: () => ({ name: 'Example' }), withHook: () => [] } } };
+  const project = { id: 'p1', repositoryPath: checkout, databases: databasesSettings([{ name: 'local', access: 'write', connection: { envFile: '.env', variables: ['DATABASE_URL'] }, perTask }]) };
+  const run = { id: 'r1', workspace, project }, logs = [], calls = [], live = { engine: { dataDir: dir, runs: [run] }, log: (_, kind, message) => logs.push(message), stopDevServer: async () => {}, connectors: { invoke: async (...args) => { calls.push(args); return invoke(...args); }, registry: { get: () => ({ name: 'Example' }), withHook: () => [], hook: () => null } } };
   live.databases = new Databases(live);
   return { dir, run, live, logs, calls };
 }
@@ -47,7 +47,7 @@ test('queries use the task database, and a task database whose worktree is gone 
   const { run, live, calls, dir } = fixture(t, { provider: 'example' }, { invoke: async (project, id, hook) => hook === 'database.provision' ? { env: { DATABASE_URL: 'postgres://task' } } : hook === 'database.query' ? { columns: ['a'], rows: [] } : undefined });
   const databases = new TaskDatabases(live); live.taskDatabases = databases; live.connectors.registry.withHook = () => [{ connector: { id: 'pg' } }];
   await databases.create(run);
-  await live.databases.query(run, 'select 1');
+  await live.databases.call(run, { query: 'select 1' });
   assert.deepEqual(calls.find(call => call[2] === 'database.query')[3][0].env, { DATABASE_URL: 'postgres://task' });
   run.worktreeRemovedAt = 'now';
   const next = { ...run, id: 'r2', workspace: join(dir, 'live-workspaces', 'aaaa'), worktreeRemovedAt: undefined }; mkdirSync(next.workspace); writeFileSync(join(next.workspace, '.env'), `DATABASE_URL=${source}\n`); live.engine.runs.push(next);

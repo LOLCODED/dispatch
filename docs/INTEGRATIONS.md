@@ -88,6 +88,10 @@ export default function createConnector(dispatch) {
 
 Pairs that must come together: `ticket.detect` with `ticket.read`; `ticket.states` with `ticket.setState`; `delivery.openPullRequest` needs `delivery.push`. dispatch rejects a connector that breaks a rule, names an unknown hook, or puts one hook in two actions.
 
+### Database options
+
+A connector that reaches databases can declare `databaseOptions`, shaped like `settings`. A repository then sets them for each of its databases (**Extras → Databases**), so one connector can serve several, for example a staging and a production database in different vaults, and hooks read them as `ctx.database.options`.
+
 ### Permissions
 
 Each action resolves, in order: the repository's own switch (Repositories › a repository › Extras), the global switch (Settings › Connectors › the connector), then the default: **read actions on, write actions off**. A repository stores its own switch only while it differs from the global one, so changing the global default reaches every repository that has not overridden it.
@@ -115,7 +119,9 @@ Each call has 60 seconds. A hook that throws is reported on the run; throw an `E
 | Hook | Returns |
 |---|---|
 | `ticket.detect(input, { memory })` | A reference `{ id, sourceUrl?, organization?, project? }` when the pasted text is yours, else `null`. Synchronous, no I/O. Throw for a link that is yours but malformed. `memory` lets a bare id such as `PROJ-12` resolve after a first link. If you match a link inside prose, dispatch passes the whole typed text to the agent as an operator note beside the ticket you read. |
-| `database.url(ctx)` | A connection string for the repository's development database, for example read from a secret store using `ctx.settings`. Used when the repository picks this connector as its database connection; it becomes the connection variable the engine reads, and is never shown to the agent or the operator. |
+| `database.url(ctx)` | (`ctx.database` names the database and carries its options.) A connection string for the repository's development database, for example read from a secret store using `ctx.settings`. Used when the repository picks this connector as its database connection; it becomes the connection variable the engine reads, and is never shown to the agent or the operator. |
+| `database.connect({ run, workspace }, ctx)` | Opens a connection that needs setup, such as a tunnel through a bastion host, and returns `{ env }` with the variables the engine connects with. `ctx.database` is `{ name, options }`: the repository's name for this database and the options the connector declared in `databaseOptions` (for example a Key Vault and a jump host per environment). Called before the first query of a run; the connector keeps whatever it opened until `database.disconnect`. Takes precedence over `database.url`. |
+| `database.disconnect({ run }, ctx)` | Closes what `database.connect` opened for that run and database; called when the run's turn ends. |
 | `database.provision({ task, env, workspace }, ctx)` | Creates a database for one task and returns `{ env }`, the variables its processes should use (for example `{ DATABASE_URL: '…/dispatch_task_ab12' }`). `task` is `{ id, name }`, stable across the task's follow-ups; `env` holds the development database's connection to copy from. Called when the task's worktree is created and on `dispatch_database reset`; it may be called again for the same task, so replace what exists. The returned variables are kept in a private file, never in run state. |
 | `database.release({ task, env, workspace }, ctx)` | Removes the task's database; `env` is what provision returned. Called when the worktree is removed, and for a task whose worktree disappeared (a crash) the next time that repository creates one. |
 | `database.query({ sql, env, workspace }, ctx)` | Runs one query for `dispatch_sql` and returns `{ columns, rows }` (cells are strings or `null`). `env` holds the connection variables (from the env file, a `database.url` connector or the task's own database); connect with them and keep the session read-only where the engine allows. Throw an `Error` with the database's message on failure. dispatch redacts connection values from rows and errors and shows the rows as a table. |

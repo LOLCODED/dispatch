@@ -3,7 +3,7 @@ import { basename, join, resolve } from 'node:path';
 import { freePort } from './browser-smoke.mjs';
 import { localEnvironment } from './local-tools.mjs';
 import { runProcess } from './process.mjs';
-import { databaseSettings } from './database.mjs';
+import { projectDatabases } from './database.mjs';
 
 const commandTimeoutMs = 900_000, shownOutput = 6000;
 const envName = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
@@ -14,7 +14,8 @@ export const databaseTool = {
   inputSchema: { type: 'object', additionalProperties: false, required: ['action'], properties: { action: { type: 'string', enum: ['migrate', 'reset'] } } },
 };
 
-export const perTask = project => databaseSettings(project?.database)?.perTask ?? null;
+export const taskDatabaseEntry = project => projectDatabases(project).find(entry => entry.perTask) ?? null;
+export const perTask = project => taskDatabaseEntry(project)?.perTask ?? null;
 const fill = (text, values) => text.replaceAll('{task}', values.task).replaceAll('{port}', String(values.port ?? ''));
 const tail = text => text.length > shownOutput ? `… ${text.length - shownOutput} earlier characters\n${text.slice(-shownOutput)}` : text;
 const redact = (text, env) => Object.values(env).filter(value => value.length >= 8).reduce((output, secret) => output.split(secret).join('<database>'), String(text ?? ''));
@@ -29,7 +30,7 @@ export class TaskDatabases {
   saved(run) { try { return JSON.parse(readFileSync(this.path(run), 'utf8')); } catch { return null; } }
   env(run) { return run.workspace && perTask(run.project) ? this.saved(run)?.env ?? {} : {}; }
 
-  sourceEnv(run, signal) { return this.live.databases.connectionEnv(run, signal, { source: true }); }
+  sourceEnv(run, signal) { return this.live.databases.connectionEnv(run, taskDatabaseEntry(run.project), signal, { source: true }); }
 
   async create(run, signal) {
     const settings = perTask(run.project);
@@ -64,7 +65,7 @@ export class TaskDatabases {
 
   // Apps that read the env file themselves see the task database too; the copy is ignored by Git.
   pointEnvFile(run, env) {
-    const { connection } = databaseSettings(run.project.database);
+    const { connection } = taskDatabaseEntry(run.project);
     if (connection.from !== 'envFile') return;
     const path = join(run.workspace, connection.envFile);
     let text = existsSync(path) ? readFileSync(path, 'utf8') : '';

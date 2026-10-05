@@ -49,14 +49,14 @@ export class ConnectorService {
     if (!target || !values || typeof values !== 'object' || Array.isArray(values)) return;
     target.connectorMemory = { ...target.connectorMemory, [id]: { ...target.connectorMemory?.[id], ...values } }; this.save();
   }
-  context(project, connector, { signal, workspace } = {}) {
-    return { signal, settings: this.settings(project, connector), memory: this.memory(project, connector.id), remember: values => this.remember(project, connector.id, values), ...(workspace && { workspace }) };
+  context(project, connector, { signal, workspace, database } = {}) {
+    return { signal, settings: this.settings(project, connector), memory: this.memory(project, connector.id), remember: values => this.remember(project, connector.id, values), ...(workspace && { workspace }), ...(database && { database }) };
   }
-  async invoke(project, id, hook, args, { signal, check = true } = {}) {
+  async invoke(project, id, hook, args, { signal, check = true, database } = {}) {
     const found = this.registry.hook(id, hook);
     if (!found) throw new Error(`${this.registry.get(id)?.name ?? id} cannot ${hook}.`);
     if (check && !permitted(project, this.global, found.connector, found.action)) throw new ConnectorNotPermitted(found.connector, found.action);
-    return withTimeout(Promise.resolve(found.run(...args, this.context(project, found.connector, { signal }))), this.timeoutMs, `${found.connector.name} did not answer ${hook} within ${this.timeoutMs / 1000} s.`);
+    return withTimeout(Promise.resolve(found.run(...args, this.context(project, found.connector, { signal, database }))), this.timeoutMs, `${found.connector.name} did not answer ${hook} within ${this.timeoutMs / 1000} s.`);
   }
   // Agent tools need the same two things as automatic hooks: the repository uses the connector and the action is permitted.
   agentTools(project, { readOnly = false } = {}) {

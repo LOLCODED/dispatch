@@ -35,3 +35,10 @@ test('a task database is a template clone of the development one, or a dump and 
   await hooks['database.release']({ task, env: { DATABASE_URL: 'postgres://dev:secret@localhost:5432/dispatch_task_abc' } }, ctx);
   assert.ok(calls[0].includes('/postgres') && calls[0].includes('drop database if exists "dispatch_task_abc" with (force)'));
 });
+
+test('a database with write access gets a writable session; read access stays read-only', async () => {
+  const seen = [], runProcess = async (command, args, options) => { seen.push(options.env.PGOPTIONS); return { exitCode: 0, output: 'n\n1\n' }; };
+  const query = createPostgres(connectorApi({ runProcess })).actions.query.hooks['database.query'], ctx = { settings: { variable: 'DATABASE_URL' } };
+  await query({ sql: 'insert into x values (1)', env: { DATABASE_URL: url }, readOnly: false }, ctx); await query({ sql: 'select 1', env: { DATABASE_URL: url } }, ctx);
+  assert.doesNotMatch(seen[0], /read_only/); assert.match(seen[1], /default_transaction_read_only=on/);
+});

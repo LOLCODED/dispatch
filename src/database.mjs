@@ -10,8 +10,8 @@ const maxText = 24000, queryTimeoutMs = 20000, variable = /^[A-Za-z_][A-Za-z0-9_
 
 export const sqlTool = {
   name: 'dispatch_sql', kind: 'sql',
-  description: 'Run one query against this repository’s development database and see the rows. Use it to read data and check behaviour; schema and data changes belong in migration files. Results are shown to the operator.',
-  inputSchema: { type: 'object', additionalProperties: false, required: ['query'], properties: { query: { type: 'string', maxLength: 20000 } } },
+  description: 'Run one query against one of this repository’s databases and see the rows. Databases the operator marked read only refuse changes; schema changes belong in migration files. Results are shown to the operator.',
+  inputSchema: { type: 'object', additionalProperties: false, required: ['query'], properties: { query: { type: 'string', maxLength: 20000 }, database: { type: 'string', maxLength: 31, description: 'Which database, by the name in your instructions; may be left out when there is only one.' } } },
 };
 
 export function commandParts(value, what) {
@@ -50,19 +50,46 @@ export function perTaskSettings(value) {
   return { provider: 'commands', migrate, create: commandParts(value.create, 'The create command'), drop: commandParts(value.drop, 'The drop command'), env: envTemplate(value.env) };
 }
 
-// Older settings held only the connection ({ envFile, variable } or { source: 'connector', connector }); they keep working with the default engine.
-export function databaseSettings(value) {
-  if (value === undefined || value === null) return null;
-  if (typeof value !== 'object' || Array.isArray(value)) throw new InputError('Database settings must be an object.');
-  const legacy = !value.connection;
-  const connection = connectionSettings(legacy ? (value.source === 'connector' ? { from: 'connector', connector: value.connector } : value) : value.connection);
+export const accessLevels = ['none', 'read', 'write'];
+const databaseName = /^[a-z][a-z0-9-]{0,30}$/, optionValue = value => typeof value === 'boolean' || (typeof value === 'string' && value.length <= 500);
+
+function connectorOptions(value) {
+  if (value === undefined || value === null) return {};
+  if (typeof value !== 'object' || Array.isArray(value) || Object.keys(value).length > 30 || Object.entries(value).some(([key, entry]) => !/^[a-zA-Z][a-zA-Z0-9]{0,39}$/.test(key) || !optionValue(entry))) throw new InputError('Connector options are short text or on/off values.');
+  return { ...value };
+}
+
+function connectionOf(value, legacy) {
+  if (legacy) return connectionSettings(value.source === 'connector' ? { from: 'connector', connector: value.connector } : value);
+  const connection = connectionSettings(value.connection);
+  return connection.from === 'connector' ? { ...connection, options: connectorOptions(value.connection.options) } : connection;
+}
+
+function databaseEntry(value, fallbackName) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new InputError('Each database is an object.');
+  const legacy = !value.connection, name = value.name ?? fallbackName, access = value.access ?? 'read';
+  if (!databaseName.test(name ?? '')) throw new InputError('A database name is short lowercase letters, digits and dashes, such as local or staging.');
+  if (!accessLevels.includes(access)) throw new InputError('Database access is none, read or write.');
   const engine = value.engine === undefined || value.engine === null || value.engine === '' ? null : value.engine;
   if (engine !== null && engine !== 'commands' && !connectorId.test(engine)) throw new InputError('The database engine is a connector id or commands.');
   const commands = commandsSettings(value.commands);
   if (engine === 'commands' && !commands) throw new InputError('The commands engine needs a query command.');
   const perTask = perTaskSettings(value.perTask);
-  return { engine, connection, ...(commands ? { commands } : {}), ...(perTask ? { perTask } : {}) };
+  return { name, access, engine, connection: connectionOf(value, legacy), ...(commands ? { commands } : {}), ...(perTask ? { perTask } : {}) };
 }
+
+// A repository saved before named databases held one { engine, connection } (or only a connection); it becomes the read-only database "default".
+export function databasesSettings(value) {
+  if (value === undefined || value === null) return [];
+  const list = Array.isArray(value) ? value : [value];
+  if (list.length > 10) throw new InputError('A repository has at most 10 databases.');
+  const entries = list.map((entry, index) => databaseEntry(entry, index ? `db${index + 1}` : 'default'));
+  if (new Set(entries.map(entry => entry.name)).size !== entries.length) throw new InputError('Database names must be unique.');
+  if (entries.filter(entry => entry.perTask).length > 1) throw new InputError('Only one database can be copied for each task.');
+  return entries;
+}
+export const projectDatabases = project => databasesSettings(project?.databases ?? project?.database);
+export const databaseSettings = value => databasesSettings(value)[0] ?? null;
 
 export function envFileValues(workspace, envFile, names) {
   let text; try { text = readFileSync(join(workspace, envFile), 'utf8'); } catch { throw new Error(`${envFile} is not in this worktree. Add it under Copied from your checkout.`); }
@@ -106,37 +133,79 @@ export function textTable(columns, rows) {
 const redacted = (text, env) => Object.values(env).filter(value => value.length >= 8).reduce((output, secret) => output.split(secret).join('<database>'), String(text ?? ''));
 const capped = text => text.length > maxText ? `${text.slice(0, maxText)}\n… ${text.length - maxText} more characters` : text;
 
-// Routes a repository's database to the connector that speaks its engine, or to the operator's own commands; core knows no engine.
-export class Databases {
-  constructor(live, { execute = runProcess } = {}) { this.live = live; this.execute = execute; }
+const readable = entry => entry.access !== 'none';
+const describe = entry => `${entry.name} (${entry.access === 'write' ? 'read and write' : 'read only'}${entry.perTask ? '; this task’s own copy' : ''})`;
+export const databasesBrief = entries => entries.filter(readable).length ? ` Databases for dispatch_sql (pass database by name): ${entries.filter(readable).map(describe).join('; ')}. Never change a database you can only read.` : '';
 
-  engine(project) {
-    const chosen = databaseSettings(project.database)?.engine;
-    if (chosen) return chosen;
-    const engines = this.live.connectors.registry.withHook('database.query');
-    if (engines.length === 1) return engines[0].connector.id;
-    throw new Error(engines.length ? 'Choose which database connector this repository uses under Extras › Database.' : 'No connector that runs database queries is loaded; add one or set query commands under Extras › Database.');
+// Routes each of a repository's named databases to the connector that speaks its engine, or to the operator's own commands; core knows no engine.
+// A connector with database.connect may hold a tunnel open; it stays open for the run and closes when the run's turn ends.
+export class Databases {
+  constructor(live, { execute = runProcess } = {}) { this.live = live; this.execute = execute; this.connected = new Map(); }
+
+  available(project) { return projectDatabases(project).filter(readable); }
+
+  entry(project, name) {
+    const entries = this.available(project);
+    if (!entries.length) throw new Error('This repository has no database the agent may use.');
+    if (!name) { if (entries.length === 1) return entries[0]; throw new Error(`Name the database: ${entries.map(entry => entry.name).join(', ')}.`); }
+    const found = projectDatabases(project).find(entry => entry.name === name);
+    if (!found) throw new Error(`No database called ${name}. Use one of ${entries.map(entry => entry.name).join(', ')}.`);
+    if (!readable(found)) throw new Error(`The operator does not allow the agent to use ${name}.`);
+    return found;
   }
 
+  engine(entry) {
+    if (entry.engine) return entry.engine;
+    const engines = this.live.connectors.registry.withHook('database.query');
+    if (engines.length === 1) return engines[0].connector.id;
+    throw new Error(engines.length ? `Choose which database connector ${entry.name} uses under Extras › Databases.` : 'No connector that runs database queries is loaded; add one or set query commands under Extras › Databases.');
+  }
+
+  hookContext(entry) { return { name: entry.name, options: entry.connection.options ?? {} }; }
+
   // source reads the operator's checkout: the worktree's copy of the env file points at the task's own database once it has one.
-  async connectionEnv(run, signal, { source = false } = {}) {
-    const { connection } = databaseSettings(run.project.database);
+  async connectionEnv(run, entry, signal, { source = false } = {}) {
+    const { connection } = entry;
     if (connection.from === 'envFile') return envFileValues(source ? run.project.repositoryPath : run.workspace, connection.envFile, connection.variables);
-    const url = String(await this.live.connectors.invoke(run.project, connection.connector, 'database.url', [], { signal }) ?? '').trim();
-    if (!url) throw new Error(`The ${connection.connector} connector returned no connection.`);
+    if (this.live.connectors.registry.hook(connection.connector, 'database.connect')) return this.connect(run, entry, signal);
+    const url = String(await this.live.connectors.invoke(run.project, connection.connector, 'database.url', [], { signal, database: this.hookContext(entry) }) ?? '').trim();
+    if (!url) throw new Error(`The ${connection.connector} connector returned no connection for ${entry.name}.`);
     return { [connection.variable]: url };
   }
 
-  async query(run, sql, signal) {
-    const env = { ...await this.connectionEnv(run, signal), ...this.live.taskDatabases?.env(run) }, engine = this.engine(run.project);
+  async connect(run, entry, signal) {
+    const key = `${run.id}:${entry.name}`;
+    if (!this.connected.has(key)) {
+      const opening = this.live.connectors.invoke(run.project, entry.connection.connector, 'database.connect', [{ run: run.id, workspace: run.workspace }], { signal, database: this.hookContext(entry) }).then(result => {
+        const env = Object.fromEntries(Object.entries(result?.env ?? {}).filter(([name, value]) => variable.test(name) && typeof value === 'string'));
+        if (!Object.keys(env).length) throw new Error(`The ${entry.connection.connector} connector opened no connection for ${entry.name}.`);
+        this.live.log(run, 'database', `Connected to ${entry.name} through ${this.live.connectors.registry.get(entry.connection.connector)?.name ?? entry.connection.connector}.`);
+        return { env, entry, project: run.project };
+      });
+      this.connected.set(key, opening);
+      opening.catch(() => this.connected.delete(key));
+    }
+    return (await this.connected.get(key)).env;
+  }
+
+  async disconnect(run) {
+    for (const [key, opening] of [...this.connected].filter(([key]) => key.startsWith(`${run.id}:`))) {
+      this.connected.delete(key);
+      const open = await opening.catch(() => null);
+      if (open) await this.live.connectors.invoke(open.project, open.entry.connection.connector, 'database.disconnect', [{ run: run.id }], { database: this.hookContext(open.entry) }).catch(error => this.live.log(run, 'database', `Could not close ${open.entry.name}: ${error.message}`));
+    }
+  }
+
+  async query(run, entry, sql, signal) {
+    const taskEnv = entry.perTask ? this.live.taskDatabases?.env(run) ?? {} : {}, env = { ...await this.connectionEnv(run, entry, signal), ...taskEnv }, engine = this.engine(entry), readOnly = entry.access !== 'write';
     try {
-      const { columns, rows } = engine === 'commands' ? await this.commandQuery(run, sql, env, signal) : await this.live.connectors.invoke(run.project, engine, 'database.query', [{ sql, env, workspace: run.workspace }], { signal });
+      const { columns, rows } = engine === 'commands' ? await this.commandQuery(run, entry, sql, env, signal) : await this.live.connectors.invoke(run.project, engine, 'database.query', [{ sql, env, workspace: run.workspace, readOnly }], { signal, database: this.hookContext(entry) });
       return { columns: (columns ?? []).map(String), rows: (rows ?? []).map(row => row.map(cell => cell === null || cell === undefined ? null : redacted(cell, env))) };
     } catch (error) { throw new Error(redacted(error.message, env)); }
   }
 
-  async commandQuery(run, sql, env, signal) {
-    const { query, format, null: nullMarker } = databaseSettings(run.project.database).commands;
+  async commandQuery(run, entry, sql, env, signal) {
+    const { query, format, null: nullMarker } = entry.commands;
     const args = query.args.includes('{sql}') ? query.args.map(arg => arg === '{sql}' ? sql : arg) : [...query.args, sql];
     const result = await this.execute(query.command, args, { cwd: run.workspace, signal, timeoutMs: queryTimeoutMs, inheritEnv: false, env: localEnvironment(env) });
     if (result.exitCode !== 0 || result.timedOut) throw new Error(String(result.output ?? '').trim() || `${query.command} exited with ${result.exitCode}.`);
@@ -145,12 +214,13 @@ export class Databases {
   }
 
   async call(run, args, { signal } = {}) {
-    if (!run.project?.database) throw new Error('This repository has no database set up for queries.');
+    let entry;
     try {
-      const { columns, rows } = await this.query(run, args.query, signal);
-      return { content: [{ type: 'text', text: capped(textTable(columns, rows)) }], isError: false, view: { ...tableView(columns, rows, { query: args.query }), label: 'SQL' } };
+      entry = this.entry(run.project, args.database);
+      const { columns, rows } = await this.query(run, entry, args.query, signal);
+      return { content: [{ type: 'text', text: capped(textTable(columns, rows)) }], isError: false, view: { ...tableView(columns, rows, { query: args.query }), label: 'SQL', title: entry.name } };
     } catch (error) {
-      return { content: [{ type: 'text', text: capped(error.message) }], isError: true, view: { type: 'table', label: 'SQL', columns: [], rows: [], query: args.query, error: error.message } };
+      return { content: [{ type: 'text', text: capped(error.message) }], isError: true, view: { type: 'table', label: 'SQL', ...(entry ? { title: entry.name } : {}), columns: [], rows: [], query: args.query, error: error.message } };
     }
   }
 }

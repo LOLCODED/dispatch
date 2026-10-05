@@ -5,6 +5,11 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { useConnectorCatalog } from '@/components/Connections';
 import { effectiveAction, overridden, setAction, setSetting, setUsed, settingValue } from '@/lib/connectors.mjs';
+import { useState } from 'react';
+import { Ban, ChevronUp, Database, Eye, PenLine, Plus, Settings2, Trash2 } from 'lucide-react';
+import { Select } from '@/components/Select';
+import { IconButton } from '@/components/IconButton';
+import { newDatabase } from '@/lib/project-form.mjs';
 
 function Services({ form, update }) {
   const services = form.services ?? [];
@@ -15,65 +20,111 @@ function Services({ form, update }) {
   </section>;
 }
 
-const formats = [['csv', 'CSV'], ['tsv', 'Tab-separated']];
-function Choices({ label, options, value, onChoose }) {
-  return <div className="segmented" role="group" aria-label={label}>{options.map(([id, name]) => <Button key={id} type="button" variant="ghost" aria-pressed={value === id} onClick={() => onChoose(id)}>{name}</Button>)}</div>;
+const accessLevels = [['none', 'No access', Ban], ['read', 'Read only', Eye], ['write', 'Read and write', PenLine]];
+const field = (id, label, value, onChange, placeholder) => <div className="field"><Label htmlFor={id}>{label}</Label><Input id={id} className="mono-input" placeholder={placeholder} value={value} onChange={event => onChange(event.target.value)}/></div>;
+const choice = (id, label, value, onChange, options) => <div className="field"><Label htmlFor={id}>{label}</Label><Select id={id} value={value} onChange={event => onChange(event.target.value)}>{options.map(([key, name]) => <option key={key} value={key}>{name}</option>)}</Select></div>;
+
+function AccessToggle({ database, set }) {
+  return <div className="icon-toggle" role="group" aria-label={`${database.name} access for the agent`}>{accessLevels.map(([level, label, icon]) => <IconButton type="button" key={level} label={label} icon={icon} aria-pressed={database.access === level} onClick={() => set({ access: level })}/>)}</div>;
 }
 
-function QueryCommands({ database, set }) {
+function QueryCommands({ id, database, set }) {
   return <>
-    <div className="field"><Label htmlFor="database-query">Query command</Label><Input id="database-query" className="mono-input" placeholder="mysql --batch -e {sql}" value={database.query} onChange={event => set({ query: event.target.value })}/></div>
-    <p className="muted">Runs in the task's copy with the connection variables set; {'{sql}'} is replaced by the query, or it is added as the last argument. Print a header row, then one row per line. Use a read-only database user: dispatch cannot make an unknown engine read-only.</p>
+    {field(`${id}-query`, 'Query command', database.query, query => set({ query }), 'mysql --batch -e {sql}')}
     <div className="form-columns">
-      <div className="field"><Label id="database-format">Output</Label><Choices label="Output format" options={formats} value={database.format} onChoose={format => set({ format })}/></div>
-      <div className="field"><Label htmlFor="database-null">NULL is printed as</Label><Input id="database-null" className="mono-input" placeholder="NULL" value={database.nullMarker} onChange={event => set({ nullMarker: event.target.value })}/></div>
+      {choice(`${id}-format`, 'Output', database.format, format => set({ format }), [['csv', 'CSV'], ['tsv', 'Tab-separated']])}
+      {field(`${id}-null`, 'NULL is printed as', database.nullMarker, nullMarker => set({ nullMarker }), 'NULL')}
     </div>
+    <p className="muted">{'{sql}'} is replaced by the query. A read-only database needs a read-only user here.</p>
   </>;
 }
 
-function TaskCommands({ perTask, set }) {
-  const field = (key, label, placeholder) => <div className="field"><Label htmlFor={`task-db-${key}`}>{label}</Label><Input id={`task-db-${key}`} className="mono-input" placeholder={placeholder} value={perTask[key]} onChange={event => set({ [key]: event.target.value })}/></div>;
+function TaskCommands({ id, perTask, set }) {
   return <>
-    {field('create', 'Create command', 'docker run -d --name app-{task} -p {port}:5432 postgres:16')}
-    {field('drop', 'Drop command', 'docker rm -f app-{task}')}
-    <div className="field"><Label htmlFor="task-db-env">Variables, one per line</Label><Textarea id="task-db-env" className="mono-input" rows={2} placeholder="DATABASE_URL=postgres://postgres@127.0.0.1:{port}/postgres" value={perTask.env} onChange={event => set({ env: event.target.value })}/></div>
-    <p className="muted">{'{task}'} is a name unique to the task and {'{port}'} a free local port. The commands run with the connection variables above set, so they can clone from the development database.</p>
+    {field(`${id}-create`, 'Create', perTask.create, create => set({ create }), 'docker run -d --name app-{task} -p {port}:5432 postgres:16')}
+    {field(`${id}-drop`, 'Drop', perTask.drop, drop => set({ drop }), 'docker rm -f app-{task}')}
+    <div className="field"><Label htmlFor={`${id}-env`}>Variables</Label><Textarea id={`${id}-env`} className="mono-input" rows={2} placeholder="DATABASE_URL=postgres://postgres@127.0.0.1:{port}/postgres" value={perTask.env} onChange={event => set({ env: event.target.value })}/></div>
+    <p className="muted">{'{task}'} is unique to the task, {'{port}'} a free local port.</p>
   </>;
 }
 
-function PerTaskDatabase({ form, update, connectors }) {
-  const perTask = form.database.perTask, set = change => update({ database: { ...form.database, perTask: { ...perTask, ...change } } });
+function TaskCopy({ id, database, onChange, connectors, form, update }) {
+  const perTask = database.perTask, set = change => onChange({ ...database, perTask: { ...perTask, ...change } });
   const providers = [...connectors.filter(connector => connector.provisions).map(connector => [connector.id, connector.name]), ['commands', 'Commands']];
-  const choose = id => {
-    const connector = connectors.find(item => item.id === id), action = connector?.actions.find(item => item.hooks.includes('database.provision'));
-    update({ database: { ...form.database, perTask: { ...perTask, provider: id } }, ...(action ? { connectors: setAction(form.connectors, connector, action, true) } : {}) });
+  const choose = provider => {
+    const connector = connectors.find(item => item.id === provider), action = connector?.actions.find(item => item.hooks.includes('database.provision'));
+    onChange({ ...database, perTask: { ...perTask, provider } });
+    if (action) update({ connectors: setAction(form.connectors, connector, action, true) });
   };
   return <>
-    <ul className="row-list"><li><SwitchRow label="Give each task its own database" description="dispatch creates a database for each task, points the worktree at it and removes it with the worktree. Migrations and test data never reach the shared one." checked={perTask.on} onChange={on => set({ on })}/></li></ul>
-    {perTask.on && <>
-      <div className="field"><Label>Created by</Label><Choices label="Task database from" options={providers} value={perTask.provider} onChoose={choose}/></div>
-      {perTask.provider === 'commands' && <TaskCommands perTask={perTask} set={set}/>}
-      <div className="field"><Label htmlFor="task-db-migrate">Migrate command</Label><Input id="task-db-migrate" className="mono-input" placeholder="npm run db:migrate" value={perTask.migrate} onChange={event => set({ migrate: event.target.value })}/></div>
-      <p className="muted">The agent runs it with dispatch_database migrate after writing a migration, against the task's database only.</p>
-    </>}
+    <ul className="row-list"><li><SwitchRow label="Own copy for each task" description="Created with the worktree and removed with it." checked={perTask.on} onChange={on => set({ on })}/></li></ul>
+    {perTask.on && <div className="database-nested">
+      {choice(`${id}-copy`, 'Copied by', perTask.provider, choose, [['', 'Choose…'], ...providers])}
+      {perTask.provider === 'commands' && <TaskCommands id={id} perTask={perTask} set={set}/>}
+      {field(`${id}-migrate`, 'Migrate command', perTask.migrate, migrate => set({ migrate }), 'npm run db:migrate')}
+    </div>}
   </>;
 }
 
-function Database({ form, update, connectors }) {
-  const database = form.database, set = change => update({ database: { ...database, ...change } });
+function ConnectorOptions({ id, database, set, connector }) {
+  const options = connector?.databaseOptions ?? [];
+  if (!options.length) return <p className="muted">Set where {connector?.name ?? database.connector} reads it in that connector's settings below.</p>;
+  const value = option => database.options[option.key] ?? option.default, change = (option, next) => set({ options: { ...database.options, [option.key]: next } });
+  return <ul className="row-list">{options.map(option => option.type === 'boolean'
+    ? <li key={option.key}><SwitchRow label={option.label} description={option.description} checked={value(option)} onChange={next => change(option, next)}/></li>
+    : <li key={option.key} className="connector-setting"><label htmlFor={`${id}-${option.key}`}>{option.label}</label>{option.description && <small>{option.description}</small>}<Input id={`${id}-${option.key}`} className="mono-input" value={value(option)} onChange={event => change(option, event.target.value)} spellCheck={false}/></li>)}</ul>;
+}
+
+function databaseSummary(database, connectors) {
+  const named = id => connectors.find(connector => connector.id === id)?.name ?? id;
+  const engine = database.engine === 'commands' ? 'Commands' : database.engine ? named(database.engine) : connectors.filter(connector => connector.queries).length === 1 ? connectors.find(connector => connector.queries).name : 'No engine';
+  const connection = database.source === 'connector' ? named(database.connector) : database.envFile || 'No env file';
+  return [engine, connection, database.perTask.on && 'copy per task'].filter(Boolean).join(' · ');
+}
+
+function DatabaseDetails({ id, database, set, onChange, connectors, form, update, copyTaken }) {
   const engines = [...connectors.filter(connector => connector.queries).map(connector => [connector.id, connector.name]), ['commands', 'Commands']];
-  const engine = database.engine || (engines.length === 2 ? engines[0][0] : ''), sources = [['env', 'Env file'], ...connectors.filter(connector => connector.databases).map(connector => [`connector:${connector.id}`, connector.name])];
-  return <section className="tab-section"><h3>Database for queries</h3>
-    <p className="muted">Gives the agent dispatch_sql: queries against a development database, with results shown in the run as a table. A connector speaks the database's engine; with Commands you give your own client command instead. Connection strings are never shown.</p>
-    <div className="field"><Label>Engine</Label><Choices label="Database engine" options={engines} value={engine} onChoose={id => set({ engine: id })}/></div>
-    {engine === 'commands' && <QueryCommands database={database} set={set}/>}
-    <div className="field"><Label>Connection from</Label><Choices label="Connection from" options={sources} value={database.source === 'connector' ? `connector:${database.connector}` : 'env'} onChoose={id => set(id === 'env' ? { source: 'env' } : { source: 'connector', connector: id.slice('connector:'.length) })}/></div>
-    {database.source === 'connector' ? <p className="muted">{connectors.find(item => item.id === database.connector)?.name ?? database.connector} provides it; set where it reads from in that connector's settings below.</p>
+  const sources = [['env', 'Env file'], ...connectors.filter(connector => connector.databases).map(connector => [`connector:${connector.id}`, connector.name])];
+  return <div className="database-nested">
+    {field(`${id}-name`, 'Name', database.name, name => set({ name: name.toLowerCase() }), 'local')}
+    <div className="form-columns">
+      {choice(`${id}-engine`, 'Engine', database.engine || (engines.length === 2 ? engines[0][0] : ''), engine => set({ engine }), engines)}
+      {choice(`${id}-source`, 'Connection', database.source === 'connector' ? `connector:${database.connector}` : 'env', value => set(value === 'env' ? { source: 'env' } : { source: 'connector', connector: value.slice('connector:'.length) }), sources)}
+    </div>
+    {database.engine === 'commands' && <QueryCommands id={id} database={database} set={set}/>}
+    {database.source === 'connector' ? <ConnectorOptions id={id} database={database} set={set} connector={connectors.find(item => item.id === database.connector)}/>
       : <div className="form-columns">
-        <div className="field"><Label htmlFor="database-env-file">Env file</Label><Input id="database-env-file" className="mono-input" placeholder=".env.development" value={database.envFile} onChange={event => set({ envFile: event.target.value })}/></div>
-        <div className="field"><Label htmlFor="database-variable">Variables</Label><Input id="database-variable" className="mono-input" placeholder="DATABASE_URL" value={database.variable} onChange={event => set({ variable: event.target.value })}/></div>
+        {field(`${id}-env-file`, 'Env file', database.envFile, envFile => set({ envFile }), '.env.development')}
+        {field(`${id}-variable`, 'Variables', database.variable, variable => set({ variable }), 'DATABASE_URL')}
       </div>}
-    <PerTaskDatabase form={form} update={update} connectors={connectors}/>
+    {(!copyTaken || database.perTask.on) && <TaskCopy id={id} database={database} onChange={onChange} connectors={connectors} form={form} update={update}/>}
+  </div>;
+}
+
+function DatabaseRow({ index, database, open, onToggle, onChange, onRemove, connectors, form, update, copyTaken }) {
+  const id = `database-${index}`, set = change => onChange({ ...database, ...change }), label = database.name || 'database';
+  return <li className={`database-row${open ? ' is-open' : ''}${database.access === 'none' ? ' is-off' : ''}`}>
+    <div className="database-line">
+      <Database size={15} aria-hidden="true" className="database-icon"/>
+      <code className="database-title">{label}</code>
+      <span className="database-summary">{databaseSummary(database, connectors)}</span>
+      <AccessToggle database={database} set={set}/>
+      <IconButton type="button" label={open ? `Close ${label}` : `Edit ${label}`} icon={open ? ChevronUp : Settings2} aria-expanded={open} onClick={onToggle}/>
+      <IconButton type="button" label={`Remove ${label}`} icon={Trash2} onClick={onRemove}/>
+    </div>
+    {open && <DatabaseDetails id={id} database={database} set={set} onChange={onChange} connectors={connectors} form={form} update={update} copyTaken={copyTaken}/>}
+  </li>;
+}
+
+function Databases({ form, update, connectors }) {
+  const databases = form.databases ?? [], [open, setOpen] = useState(() => new Set()), change = next => update({ databases: next });
+  const replace = (index, next) => change(databases.map((item, position) => position === index ? next : item));
+  const toggle = index => setOpen(current => { const next = new Set(current); if (!next.delete(index)) next.add(index); return next; });
+  const add = () => { const name = ['local', 'staging', 'prod', 'test'].find(item => !databases.some(database => database.name === item)) ?? `db${databases.length + 1}`; change([...databases, newDatabase(name)]); setOpen(current => new Set(current).add(databases.length)); };
+  const remove = index => { change(databases.filter((_, position) => position !== index)); setOpen(new Set()); };
+  return <section className="tab-section"><div className="section-heading"><h3>Databases</h3><IconButton type="button" label="Add a database" icon={Plus} onClick={add}/></div>
+    <p className="muted">What the agent may query with dispatch_sql, per database. Connection strings stay hidden.</p>
+    {databases.length ? <ul className="row-list database-list">{databases.map((database, index) => <DatabaseRow key={index} index={index} database={database} open={open.has(index)} onToggle={() => toggle(index)} onChange={next => replace(index, next)} onRemove={() => remove(index)} connectors={connectors} form={form} update={update} copyTaken={databases.some((item, position) => position !== index && item.perTask.on)}/>)}</ul> : <p className="muted">No databases.</p>}
   </section>;
 }
 
@@ -118,7 +169,7 @@ export function ExtrasTab({ form, update }) {
       {form.git && <li><SwitchRow label="dispatch as co-author" description="Commits carry a Co-authored-by trailer for dispatch, so code hosts show it beside you." checked={form.dispatchCoAuthor} onChange={dispatchCoAuthor => update({ dispatchCoAuthor })}/></li>}
     </ul></section>
     <Network form={form} update={update}/>
-    <Database form={form} update={update} connectors={connectors}/>
+    <Databases form={form} update={update} connectors={connectors}/>
     {form.git !== false && <Services form={form} update={update}/>}
     {connectors.length > 0 && <section className="tab-section"><h3>Connectors</h3><ul className="row-list">
       {connectors.map(connector => <ConnectorRows key={connector.id} form={form} connector={connector} update={update}/>)}
