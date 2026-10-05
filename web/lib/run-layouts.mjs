@@ -1,16 +1,16 @@
 export const layoutModes = ['default', 'vibe', 'technical'];
 
 const policies = {
-  default: { order: ['chat', 'diff', 'checks', 'browser'], open: ['chat'], ratio: 0.56, diff: 'ready', browser: 'take', handBack: true, keepBrowser: false, question: 'chat', activity: true, games: false },
+  default: { order: ['chat', 'diff', 'checks', 'browser', 'backend'], open: ['chat'], ratio: 0.56, diff: 'ready', browser: 'take', handBack: true, keepBrowser: false, question: 'chat', activity: true, games: false },
   vibe: { order: ['browser', 'chat', 'games', 'checks', 'diff'], open: ['chat', 'games'], ratio: 0.6, diff: 'manual', browser: 'gentle', handBack: false, keepBrowser: true, question: 'bar', activity: false, games: true },
-  technical: { order: ['diff', 'chat', 'browser', 'checks'], open: ['chat'], ratio: 0.58, diff: 'changes', browser: 'stack', handBack: false, keepBrowser: false, question: 'chat', activity: true, games: false },
+  technical: { order: ['diff', 'chat', 'browser', 'backend', 'checks'], open: ['chat'], ratio: 0.58, diff: 'changes', browser: 'stack', handBack: false, keepBrowser: false, question: 'chat', activity: true, games: false },
 };
 
 export const managedTiles = ['diff', 'browser'];
 export const layoutPolicy = mode => policies[mode] ?? policies.default;
 
-export function relevantTiles(policy, { canDiff, hasChanges, checks, driving, browsed }) {
-  const relevant = { chat: true, diff: policy.diff === 'manual' ? canDiff : hasChanges, checks, browser: driving || (policy.keepBrowser && browsed), games: policy.games };
+export function relevantTiles(policy, { canDiff, hasChanges, checks, driving, browsed, backend = false }) {
+  const relevant = { chat: true, diff: policy.diff === 'manual' ? canDiff : hasChanges, checks, browser: driving || (policy.keepBrowser && browsed), backend, games: policy.games };
   return policy.order.filter(tile => relevant[tile]);
 }
 

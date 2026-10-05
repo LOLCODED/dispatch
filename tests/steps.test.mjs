@@ -20,7 +20,7 @@ test('steps get ids and sequence numbers, are bounded and redacted, and page by 
   log.append(run, { kind: 'tool.result', callId: 'c1', name: 'command', output: 'y'.repeat(100000), isError: false });
   assert.equal(first.seq, 1); assert.equal(second.seq, 2); assert.match(first.id, /^[0-9a-f-]{36}$/); assert.deepEqual(first.turn, { attempt: 1, role: 'worker' });
   assert.equal(second.input.command, 'echo [REDACTED]');
-  assert.equal(run.stepCount, 3); assert.deepEqual(run.stepSummary, { total: 3, browser: 0, tools: 1, turns: 1, bytes: 0 }); assert.equal(saves.length, 3);
+  assert.equal(run.stepCount, 3); assert.deepEqual(run.stepSummary, { total: 3, browser: 0, tools: 1, backend: 0, turns: 1, bytes: 0 }); assert.equal(saves.length, 3);
   const page = await log.read('run-1', { limit: 2 });
   assert.deepEqual(page.steps.map(step => step.seq), [1, 2]); assert.equal(page.next, 2); assert.equal(page.total, 3);
   const rest = await log.read('run-1', { after: 2 });

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { FileText, FlaskConical, Gamepad2, Globe, MessageSquare } from 'lucide-react';
+import { FileText, FlaskConical, Gamepad2, Globe, MessageSquare, Server } from 'lucide-react';
 import { RunHeader } from '@/components/run/RunHeader';
 import { TileLayout } from '@/components/run/TileLayout';
 import { ChatTile, hasPendingDecision } from '@/components/run/ChatTile';
@@ -9,6 +9,7 @@ import { DiffTile } from '@/components/run/DiffTile';
 import { ChecksTile } from '@/components/run/ChecksTile';
 import { TimelineTile } from '@/components/run/TimelineTile';
 import { BrowserTile } from '@/components/run/LiveBrowser';
+import { BackendTile } from '@/components/run/BackendTile';
 import { RunDrawer } from '@/components/run/RunDrawer';
 import { Lightbox } from '@/components/run/Artifacts';
 import { appendReference } from '@/components/run/RunComposer';
@@ -73,7 +74,7 @@ function RunWorkspace({ run, setRun, mode }) {
   const done = terminal.has(run.status), now = useNow(!done), compact = useMediaQuery('(max-width: 899px)');
   const browsed = (run.stepSummary?.browser ?? 0) > 0, driving = ['implementing', 'repairing'].includes(run.status) && browsed;
   const [hasChanges, setHasChanges] = useState(false), [playing, setPlaying] = useState(false);
-  const available = relevantTiles(policy, { canDiff: Boolean(run.baseSha), hasChanges, checks: Boolean(run.checks.length || run.artifacts.length || run.reviews?.length), driving, browsed });
+  const available = relevantTiles(policy, { canDiff: Boolean(run.baseSha), hasChanges, checks: Boolean(run.checks.length || run.artifacts.length || run.reviews?.length), driving, browsed, backend: (run.stepSummary?.backend ?? 0) > 0 });
   const layout = useTiles(available, mode), watchDiff = policy.diff !== 'manual' && !hasChanges;
   const live = useLiveDiff(run.id, run, Boolean(run.baseSha) && (watchDiff || layout.isOpen('diff')));
   useEffect(() => setHasChanges(Boolean(live.diff?.diff?.trim())), [live.diff]);
@@ -102,6 +103,7 @@ function RunWorkspace({ run, setRun, mode }) {
     diff: { title: 'Diff', icon: FileText, live: !done, render: () => <DiffTile run={run} live={live} onReference={referenceLine}/> },
     checks: { title: 'Checks', icon: FlaskConical, render: () => <ChecksTile run={run} onOpenArtifact={setPreview} onTimeline={hasTimeline ? openTimeline : undefined}/> },
     browser: { title: 'Browser', icon: Globe, live: true, bare: layout.full === 'browser', render: () => <BrowserTile run={run} full={layout.full === 'browser'} onFull={() => layout.toggleFull('browser')} onOpenArtifact={setPreview}/> },
+    backend: { title: 'Backend', icon: Server, live: !done, render: () => <BackendTile run={run}/> },
     games: { title: 'Games', icon: Gamepad2, render: () => <GamesTile paused={Boolean(decision)} onPlaying={setPlaying}/> },
   };
   return <main className={`run-page ${drawer ? 'has-drawer' : ''}`} data-run-id={run.id}>

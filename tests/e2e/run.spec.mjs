@@ -316,3 +316,17 @@ test('the dispatch browser drives the worktree app through recorded steps and ke
   const again = (await (await request.get(`/api/runs/${second.id}/steps?limit=500`)).json()).steps.filter(step => step.kind === 'browser.step');
   expect(again[0].title).toBe('Browser tool fixture visit 2');
 });
+
+test('backend tool calls appear in the Backend tile and filter by kind', { tag: '@run' }, async ({ page, request }) => {
+  const project = (await (await request.get('/api/projects')).json()).find(item => item.name === 'Browser tool repository');
+  const run = await (await request.post('/api/runs', { data: { mode: 'live', projectId: project.id, input: 'Call the task API' } })).json();
+  await expect.poll(async () => (await exportRun(request, run.id)).status, { timeout: 60000 }).toBe('ready');
+  await page.goto(`/runs/${run.id}`);
+  await view(page, 'Backend');
+  const tile = page.locator('.backend-tile'), rows = tile.locator('.check-result');
+  await expect(rows).toHaveCount(2);
+  await expect(rows.first()).toContainText('GET app:/'); await expect(rows.nth(1)).toContainText('logs app');
+  await rows.first().locator('summary').click(); await expect(rows.first().locator('pre')).toContainText('→ 200');
+  await tile.getByRole('button', { name: 'Logs only', exact: true }).click();
+  await expect(rows).toHaveCount(1); await expect(rows.first()).toContainText('logs app');
+});

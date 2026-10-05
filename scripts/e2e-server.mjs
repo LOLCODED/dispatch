@@ -56,6 +56,10 @@ const worker = {
       await call('dispatch_browser_screenshot', {});
       await call('dispatch_browser_console', {});
     }
+    if (options.prompt.includes('Call the task API') && options.tools) {
+      await options.tools.call('dispatch_http', { url: 'app:/' });
+      await options.tools.call('dispatch_service', { action: 'logs', service: 'app' });
+    }
     if (options.prompt.includes('Ask a scope question')) await options.onQuestion([{ id: 'scope', question: 'Which scope should I implement?', options: [{ label: 'Small', description: 'A focused change.' }, { label: 'Full', description: 'The whole task.' }] }]);
     try { await sleep(400, undefined, { signal: options.signal }); } catch { return { outcome: 'cancelled' }; }
     writeFileSync(join(options.workspace, 'value.txt'), 'changed');

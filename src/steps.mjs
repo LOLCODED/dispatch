@@ -2,6 +2,7 @@ import { appendFileSync, existsSync, mkdirSync, openSync, readSync, closeSync, s
 import { createInterface } from 'node:readline';
 import { join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { isBackendCall } from './backend-steps.mjs';
 
 export const stepKinds = ['turn.start', 'turn.end', 'message', 'tool.call', 'tool.result', 'browser.step', 'files', 'check.start', 'check.end', 'question', 'answer', 'delivery', 'status', 'dev-server', 'patch', 'model', 'risk', 'overflow'];
 export const limits = { line: 32_000, file: 64_000_000, page: 500, text: 16_000, output: 64_000, paths: 500 };
@@ -18,7 +19,7 @@ function bound(step) {
   if (Array.isArray(copy.paths)) copy.paths = copy.paths.slice(0, limits.paths);
   return copy;
 }
-const summarise = (summary = {}, step) => ({ total: (summary.total ?? 0) + 1, browser: (summary.browser ?? 0) + (step.kind === 'browser.step' ? 1 : 0), tools: (summary.tools ?? 0) + (step.kind === 'tool.call' ? 1 : 0), turns: (summary.turns ?? 0) + (step.kind === 'turn.start' ? 1 : 0), bytes: (summary.bytes ?? 0) + (step.bytes ?? 0) });
+const summarise = (summary = {}, step) => ({ total: (summary.total ?? 0) + 1, browser: (summary.browser ?? 0) + (step.kind === 'browser.step' ? 1 : 0), tools: (summary.tools ?? 0) + (step.kind === 'tool.call' ? 1 : 0), backend: (summary.backend ?? 0) + (isBackendCall(step) ? 1 : 0), turns: (summary.turns ?? 0) + (step.kind === 'turn.start' ? 1 : 0), bytes: (summary.bytes ?? 0) + (step.bytes ?? 0) });
 
 // Append-only per-run record of what happened, in order, with enough detail to replay it later.
 export class StepLog {
