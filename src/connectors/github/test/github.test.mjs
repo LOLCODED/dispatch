@@ -114,6 +114,23 @@ test('failing logs come from the Actions job or the check-run output, and an unr
   assert.deepEqual(logs.map(item => item.name), ['unit', 'lint', 'other']); assert.match(logs[0].log, /expected 2 to be 3/); assert.match(logs[1].log, /Log unavailable/); assert.match(logs[2].log, /No check-run id/);
 });
 
+test('an Actions log is read with escapes allowed, stripped of colours and timestamps, and ends at its last error', async () => {
+  const log = '2026-10-05T23:03:59.8876053Z \x1b[36;1mnpm test\x1b[0m\n2026-10-05T23:03:59.9058776Z expected 2 to be 3\n2026-10-05T23:03:59.9067491Z ##[error]Process completed with exit code 1.\n2026-10-05T23:04:00.1824322Z Cleaning up orphan processes\n';
+  const double = github((command, args) => has(args, 'repos/example/repo/actions/jobs/11/logs') ? { output: log } : undefined);
+  const [unit] = await double.hook('delivery.checkLogs')(change(), [{ id: 11, app: 'github-actions', name: 'unit', conclusion: 'failure' }], double.ctx(cached));
+  assert.ok(double.gh().at(-1).args.includes('--allow-escape-sequences'));
+  assert.equal(unit.log, 'npm test\nexpected 2 to be 3\n##[error]Process completed with exit code 1.\n');
+});
+
+test('a gh without the escape check reads the Actions log without the flag', async () => {
+  const double = github((command, args) => {
+    if (!has(args, 'repos/example/repo/actions/jobs/11/logs')) return undefined;
+    return args.includes('--allow-escape-sequences') ? { exitCode: 1, output: 'unknown flag: --allow-escape-sequences' } : { output: 'Error: expected 2 to be 3' };
+  });
+  const [unit] = await double.hook('delivery.checkLogs')(change(), [{ id: 11, app: 'github-actions', name: 'unit', conclusion: 'failure' }], double.ctx(cached));
+  assert.equal(unit.log, 'Error: expected 2 to be 3');
+});
+
 test('reviews return written feedback and leave approvals out', async () => {
   const double = github((command, args) => {
     if (args.some(arg => String(arg).includes('/pulls/3/reviews'))) return { output: JSON.stringify([{ author: 'a', state: 'APPROVED', body: 'ok', at: '2026-01-02' }, { author: 'b', state: 'CHANGES_REQUESTED', body: 'Rename it', at: '2026-01-02' }, { author: 'c', state: 'COMMENTED', body: '', at: '2026-01-02' }]) };

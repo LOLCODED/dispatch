@@ -39,6 +39,15 @@ export function pullRequestFromList(list) {
 }
 
 const reviewItems = parsed => Array.isArray(parsed) ? parsed.filter(item => typeof item?.body === 'string' && item.body.trim()) : [];
+const ansiEscape = /\x1b\[[0-9;]*[A-Za-z]/g, actionsTimestamp = /^\d{4}-\d\d-\d\dT[\d:.]+Z /gm;
+
+// An Actions job log ends in post-job cleanup; the failure is at its last ##[error] line.
+export function actionsLog(text) {
+  const clean = String(text).replace(ansiEscape, '').replace(actionsTimestamp, '');
+  const error = clean.lastIndexOf('##[error]');
+  return error < 0 ? clean : clean.slice(0, clean.indexOf('\n', error) + 1 || undefined);
+}
+
 const checkRun = check => ({ id: Number.isSafeInteger(check?.id) ? check.id : null, app: typeof check?.app === 'string' ? check.app : null, name: String(check?.name ?? ''), status: check?.status ?? null, conclusion: check?.conclusion ?? null });
 
 export function createGithub({ runProcess, localEnvironment, git, describeChange }) {
@@ -50,6 +59,13 @@ export function createGithub({ runProcess, localEnvironment, git, describeChange
     const result = await gh(args, options);
     if (failed(result)) throw ghFailure(step, result);
     return result.output;
+  };
+  // gh refuses output with terminal escapes, which Actions logs always have, unless allowed; versions without the check reject the flag.
+  const jobLog = async (path, options) => {
+    const allowed = await gh(['api', path, '--allow-escape-sequences'], options);
+    const result = failed(allowed) && /unknown flag/.test(allowed.output ?? '') ? await gh(['api', path], options) : allowed;
+    if (failed(result)) throw ghFailure('checks', result);
+    return actionsLog(result.output);
   };
   const withBody = async (body, use) => {
     const directory = mkdtempSync(join(tmpdir(), 'dispatch-pr-'));
@@ -101,7 +117,7 @@ export function createGithub({ runProcess, localEnvironment, git, describeChange
     const nameWithOwner = await repository(change, ctx);
     const log = check => {
       if (!check.id) return 'No check-run id; open the check on GitHub.';
-      if (check.app === 'github-actions') return ghText('checks', ['api', `repos/${nameWithOwner}/actions/jobs/${check.id}/logs`], options(change, ctx));
+      if (check.app === 'github-actions') return jobLog(`repos/${nameWithOwner}/actions/jobs/${check.id}/logs`, options(change, ctx));
       return ghText('checks', ['api', `repos/${nameWithOwner}/check-runs/${check.id}`, '--jq', '[.output.title, .output.summary, .output.text] | map(select(. != null)) | join("\n")'], options(change, ctx));
     };
     return Promise.all(failing.map(async check => {

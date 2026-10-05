@@ -13,7 +13,7 @@ export function deliveredHead(run, runs) {
   const seen = new Set();
   for (let current = run; current && !seen.has(current.id); current = current.previousRunId ? runs.find(item => item.id === current.previousRunId) : null) {
     seen.add(current.id);
-    if (current.delivery?.pushedAt && current.delivery.headSha) return { sha: current.delivery.headSha, remote: current.delivery.remote ?? 'origin', branch: current.delivery.branch };
+    if (current.delivery?.pushedAt && current.delivery.headSha) return { sha: current.delivery.headSha, remote: current.delivery.remote ?? 'origin', branch: current.delivery.branch, pr: current.delivery.pr ?? null };
   }
   return null;
 }
@@ -36,7 +36,8 @@ export class CiTool {
     const delivered = deliveredHead(run, this.live.engine.runs);
     if (which !== 'base') {
       if (!delivered) throw new Error('This task has not pushed a commit yet, so its branch has no CI. Use target base for the base branch.');
-      return { label: `Pushed branch ${delivered.branch}`, sha: delivered.sha };
+      const pr = delivered.pr?.number ? ` (pull request #${delivered.pr.number}${delivered.pr.url ? `, ${delivered.pr.url}` : ''})` : '';
+      return { label: `Pushed branch ${delivered.branch}${pr}`, sha: delivered.sha };
     }
     const remote = delivered?.remote ?? 'origin', base = run.baseBranch;
     const line = await git(run.workspace, ['ls-remote', '--heads', remote, `refs/heads/${base}`], { signal, timeoutMs: lsRemoteTimeoutMs }, this.execute);

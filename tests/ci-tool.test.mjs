@@ -28,6 +28,13 @@ test('a follow-up reads CI on the commit an earlier run of the task pushed and s
   assert.match(result, /local commits since that push/);
 });
 
+test('the branch label names the pull request, which a sandboxed agent cannot look up', async () => {
+  const { tool, run } = fixture();
+  const [first] = tool.live.engine.runs;
+  first.delivery = { ...first.delivery, pr: { number: 6, url: 'https://github.com/example/repo/pull/6' } };
+  assert.match(text(await tool.call(run, { action: 'status' })), /^Pushed branch dispatch\/r1 \(pull request #6, https:\/\/github\.com\/example\/repo\/pull\/6\) at head1: CI success\./);
+});
+
 test('the base target reads CI on the remote base head and logs come only for failing checks', async () => {
   const { forge, tool, run, gitCalls } = fixture({ checks: [{ name: 'unit', status: 'completed', conclusion: 'failure' }, { name: 'lint', status: 'completed', conclusion: 'success' }] });
   forge.logs.unit = 'assert failed at x.test.mjs:3';
