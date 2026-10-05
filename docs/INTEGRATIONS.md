@@ -88,6 +88,8 @@ export default function createConnector(dispatch) {
 
 Pairs that must come together: `ticket.detect` with `ticket.read`; `ticket.states` with `ticket.setState`; `delivery.openPullRequest` needs `delivery.push`. dispatch rejects a connector that breaks a rule, names an unknown hook, or puts one hook in two actions.
 
+A setting can add `secret: true` (a token, a password): dispatch stores it like any other but never reads it back through the settings API, the CLI or a task.
+
 ### Database options
 
 A connector that reaches databases can declare `databaseOptions`, shaped like `settings`. A repository then sets them for each of its databases (**Extras → Databases**), so one connector can serve several, for example a staging and a production database in different vaults, and hooks read them as `ctx.database.options`.

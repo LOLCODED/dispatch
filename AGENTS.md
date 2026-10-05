@@ -22,6 +22,7 @@ Verification status: Codex Auto runs (worktree, checks, local commit, repair, fo
 - **Non-goals:** see the list below. If a change touches one, stop and ask.
 - **Pipeline changes:** report real-run time, tokens and outcome before and after. Controlled doubles prove correctness, not performance.
 - **Verification status:** label a feature "live-verified" only after a real provider run. Otherwise it is "tested with doubles."
+- **Settings are reachable everywhere (hard rule):** every setting, existing or new, is declared in `src/settings.mjs` and so can be read and changed through the HTTP API (`/api/settings`), the CLI (`dispatch settings`) and a task, exactly as its settings page would. A change that adds or renames a setting registers it in the same change; `tests/settings.test.mjs` fails on any stored setting the registry does not know. Secrets are never readable.
 - **Connectors:** core never names a specific connector; `src/connectors/<name>/` must be deletable without breaking anything. A connector uses only the `dispatch` object it is given, keeps its tests in its own folder, and every action that writes outside dispatch starts off.
 
 ## Non-goals (for now)
@@ -29,7 +30,7 @@ Verification status: Codex Auto runs (worktree, checks, local commit, repair, fo
 - A custom agent loop or LLM API layer, including building on pi-ai/pi-agent-core unless a research spike finds a concrete, measured win.
 - Manager/CEO agents, role hierarchies, or model calls for routing or scheduling.
 - Game development and 3D workflows.
-- A full CLI front end. `bin/dispatch.mjs` only saves and lists tasks, saves and lists repositories, and manages connectors through the running server's HTTP API. Keep `src/` free of HTTP and React so more can be added later without a rewrite.
+- A full CLI front end. `bin/dispatch.mjs` saves and lists tasks, saves and lists repositories, manages connectors and reads and changes settings through the running server's HTTP API. Keep `src/` free of HTTP and React so more can be added later without a rewrite.
 - Splitting repositories or packages, a plugin runtime, vector databases, or SQLite unless durable claims demand it. The one exception: connectors (tickets, delivery, run events) loaded from folders, the built-in ones under `src/connectors/<name>/` and any the user adds explicitly (docs/INTEGRATIONS.md).
 - Hosted or multi-user operation.
 - Further UI polish passes before the golden path works end to end on real tickets.

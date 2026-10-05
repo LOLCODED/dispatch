@@ -23,6 +23,7 @@ function validateSetting(connector, key, spec) {
   if (!settingKey.test(key) || !isRecord(spec) || typeof spec.label !== 'string' || !spec.label.trim()) fail(connector, `setting ${key} needs a label.`);
   if (!['string', 'boolean'].includes(spec.type)) fail(connector, `setting ${key} must be a string or boolean.`);
   if (spec.default !== undefined && typeof spec.default !== spec.type) fail(connector, `setting ${key} has a default of the wrong type.`);
+  if (spec.secret !== undefined && typeof spec.secret !== 'boolean') fail(connector, `setting ${key} secret must be true or false.`);
   if (spec.pattern !== undefined) { if (typeof spec.pattern !== 'string') fail(connector, `setting ${key} pattern must be a string.`); try { new RegExp(spec.pattern); } catch { fail(connector, `setting ${key} pattern is not a valid regular expression.`); } }
 }
 
@@ -76,6 +77,6 @@ export function describeConnector(connector, { builtIn = false } = {}) {
   return {
     id: connector.id, name: connector.name, description: connector.description ?? null, icon: connector.icon ?? null, builtIn, delivers: delivers(connector), tickets: hooksOf(connector).includes('ticket.read'), databases: ['database.url', 'database.connect'].some(hook => hooksOf(connector).includes(hook)), databaseOptions: Object.entries(connector.databaseOptions ?? {}).map(([key, spec]) => ({ key, label: spec.label, description: spec.description ?? null, type: spec.type, default: spec.default ?? (spec.type === 'boolean' ? false : ''), pattern: spec.pattern ?? null })), queries: hooksOf(connector).includes('database.query'), provisions: hooksOf(connector).includes('database.provision'),
     actions: Object.entries(connector.actions).map(([id, action]) => ({ id, label: action.label, description: action.description ?? null, access: action.access, hooks: Object.keys(action.hooks ?? {}), tools: Object.keys(action.tools ?? {}).map(name => exposedToolName(connector, name)) })),
-    settings: Object.entries(connector.settings ?? {}).map(([key, spec]) => ({ key, label: spec.label, description: spec.description ?? null, type: spec.type, default: spec.default ?? (spec.type === 'boolean' ? false : ''), pattern: spec.pattern ?? null })),
+    settings: Object.entries(connector.settings ?? {}).map(([key, spec]) => ({ key, label: spec.label, description: spec.description ?? null, type: spec.type, default: spec.secret ? '' : spec.default ?? (spec.type === 'boolean' ? false : ''), pattern: spec.pattern ?? null, secret: spec.secret === true })),
   };
 }

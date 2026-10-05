@@ -79,6 +79,8 @@ Persistence is atomic file replacement, not a transactional distributed store. S
 | Endpoint | Behavior |
 | --- | --- |
 | `GET /api/workspace` | Compact live run/task summaries and project settings, without events/check output/artifacts |
+| `GET /api/settings[?repository=<name>]` | Every setting from `src/settings.mjs` (global, or one repository's) with its key, type, allowed values, description and current value; secret connector settings read as `<secret>` |
+| `POST /api/settings` | Change one setting `{key, value, repository?}` through the same setter as its settings page; text values are coerced to the setting's type |
 | `GET /api/tasks` | Persistent saved tasks with linked run/status |
 | `POST /api/tasks` | Save `{projectId or projectIds: [...] or "all",input,execution,sourceRunId?}` locally, without provider or tracker calls; `sourceRunId` must be a run in the same repository |
 | `POST /api/tasks/:id/start` | Explicit live start; repeated calls return the existing linked execution |

@@ -27,6 +27,10 @@ const usage = `Usage:
       worktree in this one. An already saved folder keeps its settings and is only linked.
   dispatch repo list
       List saved repositories and what each links.
+  dispatch settings [list] [--repo <name>] | get <key> [--repo <name>] | set <key> <value> [--repo <name>]
+      Every dispatch setting, the same ones the settings pages change: list them with their values and
+      what they do, read one, or change one. --repo reads a repository's settings. Values are text,
+      true/false, a number or JSON, as the setting's type says.
   dispatch connector add <folder> | remove <id> | list
       Load a tracker connector from a local folder (its package.json "dispatch.connector",
       else index.mjs), remove one, or list them. The connector runs inside dispatch with your
@@ -151,6 +155,30 @@ async function repo({ positionals: [action = 'list', ...rest], values }) {
   await repoCommands[action](rest, values);
 }
 
+const shown = value => typeof value === 'string' ? value : JSON.stringify(value);
+const scope = values => values.repo?.length ? `?repository=${encodeURIComponent(values.repo[0])}` : '';
+const settingsCommands = {
+  async list(rest, values) {
+    for (const setting of await api(`/api/settings${scope(values)}`)) console.log(`${setting.key} = ${shown(setting.value)}\n    ${setting.description}${setting.values ? ` (${setting.values.join(' | ')})` : ''}`);
+  },
+  async get([key], values) {
+    if (!key) throw new CliError('Give the setting: dispatch settings get <key>.');
+    const found = (await api(`/api/settings${scope(values)}`)).find(setting => setting.key === key);
+    if (!found) throw new CliError(`No setting ${key}. List them with dispatch settings${values.repo?.length ? ` --repo ${values.repo[0]}` : ''}.`);
+    console.log(shown(found.value));
+  },
+  async set([key, ...value], values) {
+    if (!key || !value.length) throw new CliError('Give the setting and its value: dispatch settings set <key> <value>.');
+    const result = await api('/api/settings', post({ key, value: value.join(' '), ...(values.repo?.length ? { repository: values.repo[0] } : {}) }));
+    console.log(`${result.key} = ${shown(result.value)}`);
+  },
+};
+
+async function settings({ positionals: [action = 'list', ...rest], values }) {
+  if (!settingsCommands[action]) throw new CliError('Use dispatch settings list, get <key> or set <key> <value>.');
+  await settingsCommands[action](rest, values);
+}
+
 const queue = {
   hold: seconds => api('/api/queue/hold', post({ seconds })).catch(error => { if (error instanceof CliError) return null; throw error; }),
   release: () => api('/api/queue/release', post({})).catch(() => {}),
@@ -179,7 +207,7 @@ async function open() {
 }
 
 const commands = {
-  open, add, tasks, connector, repo,
+  open, add, tasks, connector, repo, settings,
   kill: async ({ values }) => { await stopService({ force: values.force, runs: workingRuns }); console.log('dispatch stopped.'); },
   install: ({ values }) => install(values),
   update: updateInstall,

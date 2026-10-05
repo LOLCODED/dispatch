@@ -194,6 +194,8 @@ export function createServer(engine, { assetRoot = root, devFraming = false } = 
       }
       if (path.startsWith('/api/connectors/plugins')) { const result = await connectorPluginRoute(live, req, path); if (result) return json(res, ...result); }
       if (req.method === 'POST' && path === '/api/setup/complete') { await jsonBody(req); return json(res, 200, completeSetup(engine.store)); }
+      if (req.method === 'GET' && path === '/api/settings') { const repository = url.searchParams.get('repository'); return json(res, 200, live.settingsRegistry.describe(repository ? { repository } : {})); }
+      if (req.method === 'POST' && path === '/api/settings') { const input = await jsonBody(req); return json(res, 200, await live.settingsRegistry.set(input.key, input.value, input.repository ? { repository: input.repository } : {})); }
       if (req.method === 'POST' && path === '/api/access') {
         if (!req.headers['content-type']?.startsWith('application/json')) throw new InputError('Use application/json', 415);
         return json(res, 200, live.setAccess(await body(req)));
