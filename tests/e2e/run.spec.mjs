@@ -296,7 +296,9 @@ test('the dispatch browser drives the worktree app through recorded steps and ke
   const projects = await (await request.get('/api/projects')).json();
   const project = projects.find(item => item.name === 'Browser tool repository');
   const drive = async () => {
-    const run = await (await request.post('/api/runs', { data: { mode: 'live', projectId: project.id, input: 'Drive the dispatch browser' } })).json();
+    let run;
+    // A ready run still holds the ticket while it stops its dev server and browser, so a repeat dispatch is refused until then.
+    await expect.poll(async () => { const response = await request.post('/api/runs', { data: { mode: 'live', projectId: project.id, input: 'Drive the dispatch browser' } }); if (response.ok()) run = await response.json(); return response.status(); }, { timeout: 30000 }).toBe(201);
     await expect.poll(async () => (await exportRun(request, run.id)).status, { timeout: 60000 }).toBe('ready');
     return exportRun(request, run.id);
   };
