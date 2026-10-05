@@ -1,4 +1,5 @@
 import { httpTool } from './http-tool.mjs';
+import { sqlTool } from './sql-tool.mjs';
 export const questionTool = {
   name: 'dispatch_question', kind: 'question', description: 'Ask the operator 1–3 questions when a requirement or decision is unclear. Offer two or three concrete options with brief descriptions; dispatch adds an Other answer. Waits for the answer and returns it.',
   inputSchema: { type: 'object', properties: { questions: { type: 'array', minItems: 1, maxItems: 3, items: { type: 'object', properties: { id: { type: 'string' }, header: { type: 'string' }, question: { type: 'string' }, options: { type: 'array', maxItems: 4, items: { type: 'object', properties: { label: { type: 'string' }, description: { type: 'string' } }, required: ['label'], additionalProperties: false } } }, required: ['question'], additionalProperties: false } } }, required: ['questions'], additionalProperties: false },
@@ -64,11 +65,11 @@ export const browserReviewTool = {
   }, required: ['assessment', 'steps', 'screenshots'], additionalProperties: false },
 };
 
-export const dispatchTools = Object.fromEntries([questionTool, memoryTool, riskTool, repositoryTool, permissionTool, browserReviewTool, ...browserTools, httpTool].map(tool => [tool.name, tool]));
+export const dispatchTools = Object.fromEntries([questionTool, memoryTool, riskTool, repositoryTool, permissionTool, browserReviewTool, ...browserTools, httpTool, sqlTool].map(tool => [tool.name, tool]));
 export const bridgeTools = [questionTool, memoryTool];
 
-export function toolSet({ question = false, memory = false, browser = false, review = false, risk = false, repository = false, permission = false, http = false } = {}) {
-  return [...(question ? [questionTool] : []), ...(memory ? [memoryTool] : []), ...(browser ? browserTools : []), ...(browser && review ? [browserReviewTool] : []), ...(http ? [httpTool] : []), ...(risk ? [riskTool] : []), ...(repository ? [repositoryTool] : []), ...(permission ? [permissionTool] : [])];
+export function toolSet({ question = false, memory = false, browser = false, review = false, risk = false, repository = false, permission = false, http = false, sql = false } = {}) {
+  return [...(question ? [questionTool] : []), ...(memory ? [memoryTool] : []), ...(browser ? browserTools : []), ...(browser && review ? [browserReviewTool] : []), ...(http ? [httpTool] : []), ...(sql ? [sqlTool] : []), ...(risk ? [riskTool] : []), ...(repository ? [repositoryTool] : []), ...(permission ? [permissionTool] : [])];
 }
 export const toolNames = tools => tools.map(tool => tool.name);
 export const toolSchemaCharacters = tools => JSON.stringify(tools.map(({ name, description, inputSchema }) => ({ name, description, inputSchema }))).length;

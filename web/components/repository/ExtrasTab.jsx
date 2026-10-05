@@ -5,6 +5,17 @@ import { Textarea } from '@/components/ui/textarea';
 import { useConnectorCatalog } from '@/components/Connections';
 import { effectiveAction, overridden, setAction, setSetting, setUsed, settingValue } from '@/lib/connectors.mjs';
 
+function Database({ form, update }) {
+  const database = form.database ?? { envFile: '', variable: '' }, set = change => update({ database: { ...database, ...change } });
+  return <section className="tab-section"><h3>Database for read-only queries</h3>
+    <p className="muted">Gives the agent dispatch_sql: read-only queries against a development Postgres, with results shown in the run. dispatch reads the connection string from this env file in the task's copy (add the file under Copied from your checkout) and never shows it. Needs psql installed.</p>
+    <div className="form-columns">
+      <div className="field"><Label htmlFor="database-env-file">Env file</Label><Input id="database-env-file" className="mono-input" placeholder=".env.development" value={database.envFile} onChange={event => set({ envFile: event.target.value })}/></div>
+      <div className="field"><Label htmlFor="database-variable">Variable</Label><Input id="database-variable" className="mono-input" placeholder="DATABASE_URL" value={database.variable} onChange={event => set({ variable: event.target.value })}/></div>
+    </div>
+  </section>;
+}
+
 function Network({ form, update }) {
   const network = form.network ?? { hosts: [], localPorts: false }, set = change => update({ network: { ...network, ...change } });
   return <section className="tab-section"><h3>Network for the agent</h3>
@@ -46,6 +57,7 @@ export function ExtrasTab({ form, update }) {
       {form.git && <li><SwitchRow label="dispatch as co-author" description="Commits carry a Co-authored-by trailer for dispatch, so code hosts show it beside you." checked={form.dispatchCoAuthor} onChange={dispatchCoAuthor => update({ dispatchCoAuthor })}/></li>}
     </ul></section>
     <Network form={form} update={update}/>
+    <Database form={form} update={update}/>
     {connectors.length > 0 && <section className="tab-section"><h3>Connectors</h3><ul className="row-list">
       {connectors.map(connector => <ConnectorRows key={connector.id} form={form} connector={connector} update={update}/>)}
     </ul></section>}

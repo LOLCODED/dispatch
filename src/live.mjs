@@ -42,6 +42,7 @@ import { repositoryInsight } from './repository-insight.mjs';
 import { copyLocalFiles, localFileSettings } from './local-files.mjs';
 import { networkSettings, taskNetwork } from './network-access.mjs';
 import { httpCall } from './http-tool.mjs';
+import { databaseSettings } from './sql-tool.mjs';
 import { checkScope, projectScopes, recipeChange, recipeDiffers, recipeScopes, protectedPaths, savedRecipe } from './check-scope.mjs';
 import { changeFlags, sqlToRun } from './flags.mjs';
 import { RiskChecks } from './risk-checks.mjs';
@@ -291,11 +292,11 @@ export class LiveService {
     if (input.allowSensitiveFiles !== undefined && typeof input.allowSensitiveFiles !== 'boolean') throw new InputError('Allow sensitive files must be a boolean.');
     const access = input.access ?? old?.access ?? 'inherit';
     if (!['inherit', 'full'].includes(access)) throw new InputError('Project access must be inherit or full.');
-    const instructions = operatorInstructions(input.instructions ?? old?.instructions), protectedPaths = protectedPathSettings(input.protectedPaths ?? old?.protectedPaths), localFiles = plain ? [] : localFileSettings(input.localFiles ?? old?.localFiles), network = networkSettings(input.network ?? old?.network);
+    const instructions = operatorInstructions(input.instructions ?? old?.instructions), protectedPaths = protectedPathSettings(input.protectedPaths ?? old?.protectedPaths), localFiles = plain ? [] : localFileSettings(input.localFiles ?? old?.localFiles), network = networkSettings(input.network ?? old?.network), database = databaseSettings(input.database === undefined ? old?.database : input.database);
     if (input.trackRemote !== undefined && typeof input.trackRemote !== 'boolean') throw new InputError('Track remote must be a boolean.');
     const browser = browserSettings(input.browser ?? old?.browser), linked = linkedSettings(input.linked ?? old?.linked, this.projects, id), linkedEnv = linkedEnvSettings(input.linkedEnv ?? old?.linkedEnv, linked);
     let risk; try { risk = riskSettings(input.risk ?? old?.risk, validation); } catch (error) { throw new InputError(error.message); }
-    const project = { risk, browser, localFiles, network, review: input.review ?? old?.review ?? false, memory: input.memory ?? old?.memory ?? true, dispatchCoAuthor: !plain && (input.dispatchCoAuthor ?? old?.dispatchCoAuthor ?? true), allowSensitiveFiles: input.allowSensitiveFiles ?? old?.allowSensitiveFiles ?? false, access, connectors: integrations, id: id ?? randomUUID(), name: String(input.name || info.name).slice(0, 100), repositoryPath: info.repositoryPath, baseBranch: plain ? null : input.baseBranch, targetBranches: plain ? [] : targetBranchSettings(input.targetBranches, old?.targetBranches, info.branches, input.baseBranch), validation, setup, checkScopes, instructions, protectedPaths, linked, linkedEnv, trackRemote: !plain && (input.trackRemote ?? old?.trackRemote ?? true), provider: 'codex', maxRepairs: 1, ...(plain ? { git: false } : {}) };
+    const project = { risk, browser, localFiles, network, database, review: input.review ?? old?.review ?? false, memory: input.memory ?? old?.memory ?? true, dispatchCoAuthor: !plain && (input.dispatchCoAuthor ?? old?.dispatchCoAuthor ?? true), allowSensitiveFiles: input.allowSensitiveFiles ?? old?.allowSensitiveFiles ?? false, access, connectors: integrations, id: id ?? randomUUID(), name: String(input.name || info.name).slice(0, 100), repositoryPath: info.repositoryPath, baseBranch: plain ? null : input.baseBranch, targetBranches: plain ? [] : targetBranchSettings(input.targetBranches, old?.targetBranches, info.branches, input.baseBranch), validation, setup, checkScopes, instructions, protectedPaths, linked, linkedEnv, trackRemote: !plain && (input.trackRemote ?? old?.trackRemote ?? true), provider: 'codex', maxRepairs: 1, ...(plain ? { git: false } : {}) };
     if (old) { delete old.textOnly; delete old.git; Object.assign(old, project); } else this.projects.push(project);
     const saved = old ?? project;
     if (input.instructions !== undefined || !old) this.brain.replaceRules(saved, instructions);
