@@ -30,7 +30,7 @@ export function useProjectForm(id, project) {
   const save = () => perform(async () => {
     const result = await api(`/api/projects${id ? '/' + id : ''}`, projectPayload(form, info.repositoryPath));
     window.dispatchEvent(new Event('dispatch-refresh'));
-    if (!id) return navigate('/');
+    if (!id) return navigate('/admin/projects');
     const next = formFromProject(result);
     setForm(next); setSaved(next);
   });

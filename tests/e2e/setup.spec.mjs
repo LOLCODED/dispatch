@@ -19,7 +19,8 @@ test('registers a repository once with explicitly approved check commands', { ta
   await expect(page.getByLabel('If only these files change')).toHaveValue('*.md\ndocs/**');
   await page.getByRole('button', { name: 'node', exact: true }).click(); await expect(page.getByRole('button', { name: 'node', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: 'Save repository', exact: true }).click();
-  await expect(page.getByLabel('Ticket or instructions')).toHaveValue('Preserve this draft during setup');
+  await expect(page).toHaveURL(/\/admin\/projects$/); await expect(page.locator('.project-list')).toContainText('Second repository');
+  await page.goto('/'); await expect(page.getByLabel('Ticket or instructions')).toHaveValue('Preserve this draft during setup');
   await page.reload(); await expect(page.getByLabel('Ticket or instructions')).toHaveValue('Preserve this draft during setup');
   const saved = (await (await request.get('/api/projects')).json()).find(project => project.name === 'Second repository');
   expect(saved.validation.map(step => step.id)).toEqual(['node']); expect(saved.validation[0].args).toEqual(['-e', 'process.exit(0)']); expect(saved.checkScopes).toEqual([{ id: 'text-only', paths: ['*.md', 'docs/**'], checks: ['node'] }]);
