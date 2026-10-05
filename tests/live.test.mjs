@@ -301,6 +301,13 @@ test('text typed around a tracker link reaches the worker as an operator note; a
   assert.equal(bare.ticket.note, undefined); assert.doesNotMatch(prompts.at(-1), /OPERATOR NOTE/);
 });
 
+test('the brief keeps operator-only steps out of blocked options', async t => {
+  const prompts = [];
+  const { live, engine, project } = await fixture(t, async (options, turn) => { prompts.push(options.prompt); return completesWithFiles(options, turn); });
+  const run = await live.create({ projectId: project.id, input: 'Change the value' }); await settle(engine, run);
+  assert.match(prompts[0], /two or three numbered options you can act on \("1\. Option — why"\), recommended first; operator-only steps go above\./);
+});
+
 test('a worker question persists, releases its slot, and resumes with the snapshotted model and fresh checks', async t => {
   const seen = [];
   const { live, engine, project } = await fixture(t, async (options, turn) => {
@@ -533,7 +540,7 @@ test('the worker brief stays short and adds notes and browser guidance only when
   const prompts = [];
   const { live, engine, project } = await fixture(t, async options => { prompts.push(options.prompt); return completesWithFiles(options); });
   const run = await live.create({ projectId: project.id, input: 'Fix a typo' }); await settle(engine, run);
-  assert.equal(run.status, 'ready'); assert.ok(run.workerTurns[0].promptCharacters < 2400, String(run.workerTurns[0].promptCharacters));
+  assert.equal(run.status, 'ready'); assert.ok(run.workerTurns[0].promptCharacters < 2450, String(run.workerTurns[0].promptCharacters));
   assert.doesNotMatch(prompts[0], /Follow repository instructions|write outside the worktree/); assert.match(prompts[0], /Notes for next time/); assert.match(prompts[0], /own port/); assert.doesNotMatch(prompts[0], /browser checks/);
   await live.saveProject({ ...project, confirmed: true, memory: false, validation: [...project.validation, { id: 'e2e', command: process.execPath, args: ['-e', ''], browser: true }] }, project.id);
   const browser = await live.create({ projectId: project.id, input: 'Fix another typo' }); await settle(engine, browser);
