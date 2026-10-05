@@ -1,3 +1,5 @@
+import { InputError } from './engine.mjs';
+
 const types = { bug: 'bug', 'user story': 'story', story: 'story', task: 'task', feature: 'feature', epic: 'epic', issue: 'issue' };
 const tokens = ['type', 'ticketId', 'id', 'run', 'slug'];
 const unique = ['ticketId', 'id', 'run'];
@@ -22,10 +24,35 @@ export function validateTemplate(template) {
 export function renderBranch(template, values) {
   return template.replace(/\{([a-zA-Z]+)\}/g, (_, token) => String(values[token] ?? '')).replace(/-{2,}/g, '-');
 }
+// A connector may propose a branch for the tickets it reads; an unusable proposal is ignored rather than failing intake.
+const proposedBranch = ticket => { try { return ticket?.branch ? chosenBranch(ticket.branch) : null; } catch { return null; } };
+export const ticketTemplate = ticket => proposedBranch(ticket) ?? defaultTemplate;
+const branchValues = (ticket, runId) => ({ type: branchType(ticket?.type), ticketId: ticket?.id ? String(ticket.id) : runId, id: ticket?.id ? String(ticket.id) : runId.slice(0, 8), run: runId, slug: slug(ticket?.title) });
+
 export function branchName(template, { ticket, runId, baseBranch }) {
-  const id = ticket?.id ? String(ticket.id) : runId.slice(0, 8);
-  const values = { type: branchType(ticket?.type), ticketId: ticket?.id ? String(ticket.id) : runId, id, run: runId, slug: slug(ticket?.title) };
-  const name = renderBranch(template ?? defaultTemplate, values);
+  const values = branchValues(ticket, runId);
+  const name = renderBranch(template ?? ticketTemplate(ticket), values);
   if (!safeBranch(name) || name === baseBranch) return renderBranch(defaultTemplate, values);
   return name;
+}
+
+// Suggestions are templates so they can be offered before the run, and its id, exists; {run} shows as <run>.
+export function branchSuggestions(saved, ticket) {
+  const templates = [...new Set([saved, proposedBranch(ticket), defaultTemplate].filter(Boolean))];
+  return templates.map(template => ({ template, label: renderBranch(template, { ...branchValues(ticket, '<run>'), id: ticket?.id ? String(ticket.id) : '<run>' }) }));
+}
+export function chosenBranch(value) {
+  if (typeof value !== 'string' || !value.trim() || value.length > 120) throw new InputError('Choose a branch name under 120 characters.');
+  const trimmed = value.trim(), used = [...trimmed.matchAll(/\{([a-zA-Z]+)\}/g)].map(match => match[1]);
+  if (used.some(token => !tokens.includes(token))) throw new InputError(`Branch names can use {${tokens.join('}, {')}}.`);
+  if (!safeBranch(renderBranch(trimmed, { type: 'task', ticketId: '1', id: '1', run: 'abcdef', slug: 'sample' }))) throw new InputError('That is not a valid Git branch name.');
+  return trimmed;
+}
+
+export const branchModes = ['auto', 'ask'];
+export const branchMode = state => state.branchNaming === 'ask' ? 'ask' : 'auto';
+export function setBranchMode(store, mode) {
+  if (!branchModes.includes(mode)) throw new InputError('Choose auto or ask.');
+  store.state.branchNaming = mode; store.save();
+  return mode;
 }

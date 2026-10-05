@@ -30,7 +30,7 @@ import { ConnectorPlugins } from './connectors/plugins.mjs';
 import { builtinFolders } from './connectors/builtin.mjs';
 import { TicketActions } from './connectors/tickets.mjs';
 import { delivers, runEvents } from './connectors/contract.mjs';
-import { branchName, safeBranch, validateTemplate } from './branch.mjs';
+import { branchMode, branchName, branchSuggestions, chosenBranch, safeBranch, setBranchMode, validateTemplate } from './branch.mjs';
 import { runProcess } from './process.mjs';
 import { installedEditors, openPath, openTargets } from './open-path.mjs';
 import { Interactions } from './interactions.mjs';
@@ -98,6 +98,12 @@ function recipe(value, role = 'check') {
 function repositoryQuestion(text, candidates) {
   const error = new InputError(text, 409);
   error.question = { kind: 'repository', text, candidates: candidates.map(project => ({ id: project.id, name: project.name })) };
+  return error;
+}
+function branchQuestion(options) {
+  const text = 'Which branch should this task use?';
+  const error = new InputError(text, 409);
+  error.question = { kind: 'branch', text, options };
   return error;
 }
 function connectorQuestion(project, tracker, ref) {
@@ -247,6 +253,8 @@ export class LiveService {
   observeLimits(provider, limits) { if (limits.available) this.engine.store.state.providerLimits = { ...this.engine.store.state.providerLimits, [provider]: limits }; }
   get accessMode() { return accessMode(this.engine.store.state); }
   setAccess(input) { return { accessMode: setAccessMode(this.engine.store, input.mode) }; }
+  get branchNaming() { return branchMode(this.engine.store.state); }
+  setBranchNaming(input) { return { branchNaming: setBranchMode(this.engine.store, input.mode) }; }
   async inspect(path) {
     path = localPath(path);
     let root; try { root = realpathSync(path); } catch { throw new InputError('Repository directory does not exist.'); }
@@ -484,11 +492,13 @@ export class LiveService {
       const repository = this.primaryRepository(choice, text, candidates);
       if (!repository.project) throw repositoryQuestion(repository.question, repository.candidates ?? this.projects);
       const project = repository.project, memberIds = this.memberIds(choice, project);
+      const branch = this.branchChoice(input, project, ticket, taskId);
       if (ref) { this.identify(input.input, project); this.connectors.remember(project, ticket.tracker, ticket.remember); }
       delete ticket.remember;
       const learned = this.learnedModel(project.id), execution = this.selectExecution(input.execution, learned);
       this.exclude(ticket.key, [project.id, ...memberIds], this.excludeFolders(project, memberIds));
       const run = this.newRun(project, ticket, input.input);
+      if (branch && run.branch) run.branch = branchName(branch, { ticket, runId: run.id, baseBranch: project.baseBranch });
       if (input.kind !== undefined && !['change', 'answer'].includes(input.kind)) throw new InputError('Task kind must be change or answer.');
       if (input.kind === 'answer') { run.kind = 'answer'; run.workspace = project.repositoryPath; run.branch = null; }
       else run.linked = this.linked.snapshot(project, run.id, memberIds, { setup: choice.mode === 'agent' ? 'deferred' : 'before' });
@@ -592,9 +602,15 @@ export class LiveService {
     const id = randomUUID();
     return { id, kind: 'change', interactions: [], mode: 'live', provider: 'codex', projectId: project.id, project: structuredClone(project), ticket: structuredClone(ticket), ticketId: ticketIdFor(ticket, id), title: ticket.title, input, status: 'queued', createdAt: new Date().toISOString(), events: [], checks: [], artifacts: [], usage: { input: null, cachedInput: null, output: null, simulated: false }, usageReports: [], workerTurns: [], reviews: [], timings: {}, access: project.access === 'full' ? 'full' : this.accessMode, attempt: 0, maxRepairs: project.maxRepairs, sessionId: null, branch: isPlain(project) ? null : this.branchFor(project, ticket, id), workspace: isPlain(project) ? project.repositoryPath : join(this.workspaceRoot, id), shadow: isPlain(project) ? shadowDir(this.shadowRoot, project.id) : null, baseBranch: project.baseBranch, handoff: null, delivery: null };
   }
+  savedBranchTemplate(project) { return this.brain.lookup({ key: 'branch.template', projectId: project.id })?.value ?? null; }
   branchFor(project, ticket, runId) {
-    const template = this.brain.lookup({ key: 'branch.template', projectId: project.id })?.value ?? null;
-    return branchName(template, { ticket, runId, baseBranch: project.baseBranch });
+    return branchName(this.savedBranchTemplate(project), { ticket, runId, baseBranch: project.baseBranch });
+  }
+  // Saved tasks start without anyone at the composer, so only a composer dispatch is asked.
+  branchChoice(input, project, ticket, taskId) {
+    if (input.branch !== undefined) return chosenBranch(input.branch);
+    if (taskId || input.kind === 'answer' || isPlain(project) || this.branchNaming !== 'ask') return null;
+    throw branchQuestion(branchSuggestions(this.savedBranchTemplate(project), ticket));
   }
   async uniqueBranch(root, candidate, signal) {
     for (let suffix = 1; suffix <= 20; suffix++) {

@@ -10,6 +10,7 @@ import { RepositoryQuestion } from '@/components/work/RepositoryQuestion';
 import { FolderPicker, useFolderTarget, withLinked } from '@/components/work/ComposerTargets';
 import { ForgetCard } from '@/components/brain/ForgetCard';
 import { ConnectorQuestion } from '@/components/work/ConnectorQuestion';
+import { BranchQuestion } from '@/components/work/BranchQuestion';
 import { parseCommand } from '@/lib/commands.mjs';
 import { canAddProvider } from '@/lib/providers.mjs';
 import { useAction } from '@/lib/use-action';
@@ -46,10 +47,10 @@ function NewRepositoryOffer({ offer, busy, onChange, onCreate }) {
   </section>;
 }
 
-function Feedback({ notice, error, question, offer, forget, projects, busy, onChoose, onUsePath, onOfferChange, onCreate, onForgetDone, onConnector }) {
+function Feedback({ notice, error, question, offer, forget, projects, busy, onChoose, onUsePath, onOfferChange, onCreate, onForgetDone, onConnector, onBranch }) {
   return <div className="composer-feedback">
     {forget && <ForgetCard query={forget.query} matches={forget.matches} projects={projects} onDone={onForgetDone}/>}
-    <AnimatePresence mode="wait">{question?.kind === 'connector' && <ConnectorQuestion key="connector" question={question} busy={busy} onChoose={onConnector}/>}{question && question.kind !== 'connector' && !offer && <RepositoryQuestion key={question.text} question={question} busy={busy} onChoose={onChoose} onUsePath={onUsePath}/>}</AnimatePresence>
+    <AnimatePresence mode="wait">{question?.kind === 'connector' && <ConnectorQuestion key="connector" question={question} busy={busy} onChoose={onConnector}/>}{question?.kind === 'branch' && <BranchQuestion key="branch" question={question} busy={busy} onChoose={onBranch}/>}{question && !['connector', 'branch'].includes(question.kind) && !offer && <RepositoryQuestion key={question.text} question={question} busy={busy} onChoose={onChoose} onUsePath={onUsePath}/>}</AnimatePresence>
     {offer && <NewRepositoryOffer offer={offer} busy={busy} onChange={onOfferChange} onCreate={onCreate}/>}
     {notice && <p className="muted" role="status">{notice}</p>}
     {error && !question && <p className="error" role="alert">{error}</p>}
@@ -108,6 +109,7 @@ export function Composer({ taskRef, hints }) {
     const enable = () => choice === 'global' ? api('/api/brain', { kind: 'connector', scope: 'global', key: `connector.${question.tracker}` }) : api(`/api/projects/${question.projectId}/connectors`, { [question.tracker]: { enabled: true } });
     perform(async () => { await enable(); window.dispatchEvent(new Event('dispatch-refresh')); setQuestion(null); chooseProject(question.projectId); await dispatch({ projectId: question.projectId, projectIds: withLinked(question.projectId, state.projects) }); });
   };
+  const chooseBranch = branch => { setQuestion(null); dispatch({ branch }); };
   const saveTask = (text = input) => perform(async () => { const task = await api('/api/tasks', { ...request, input: text, ...savedTaskImages(attachments) }); await fileInto(task.id, folder.folderId); updateInput(''); attachments.clear(); setNotice('Task saved to Todo.'); window.dispatchEvent(new Event('dispatch-refresh')); });
   const openRepositoryPath = async (path, select = chooseProject) => {
     let info; try { info = await api('/api/projects/inspect', { repositoryPath: path }); } catch (failure) { if (/does not exist/.test(failure.message)) { setOffer({ path, access: true }); return; } throw failure; }
@@ -147,6 +149,6 @@ export function Composer({ taskRef, hints }) {
       {hints}
     </motion.div>
     <p className="sr-only" role="status">{announcement}</p>
-    <Feedback notice={notice} error={error} question={asksRepository ? question : null} offer={offer} forget={forget} projects={state.projects} busy={busy} onChoose={chooseProject} onUsePath={chooseRepositoryPath} onOfferChange={setOffer} onCreate={createRepository} onForgetDone={() => { setForget(null); updateInput(''); }} onConnector={chooseConnector}/>
+    <Feedback notice={notice} error={error} question={asksRepository ? question : null} offer={offer} forget={forget} projects={state.projects} busy={busy} onChoose={chooseProject} onUsePath={chooseRepositoryPath} onOfferChange={setOffer} onCreate={createRepository} onForgetDone={() => { setForget(null); updateInput(''); }} onConnector={chooseConnector} onBranch={chooseBranch}/>
   </>;
 }

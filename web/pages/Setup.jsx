@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Slider } from 'radix-ui';
-import { ArrowUpRight, Bell, BellOff, ChevronsDown, Code, Database, FolderOpen, HardDrive, House, Info, LayoutGrid, ScrollText, ListOrdered, Palette, ShieldCheck, MousePointer2, MousePointerClick, PanelBottomOpen, Square, SquareDashed, Volume1, Volume2 } from 'lucide-react';
+import { ArrowUpRight, Bell, BellOff, ChevronsDown, Code, Database, FolderOpen, GitBranch, MessageCircleQuestion, Sparkles, HardDrive, House, Info, LayoutGrid, ScrollText, ListOrdered, Palette, ShieldCheck, MousePointer2, MousePointerClick, PanelBottomOpen, Square, SquareDashed, Volume1, Volume2 } from 'lucide-react';
 import { SettingsLayout } from '@/components/SettingsLayout';
 import { SettingsTabs } from '@/components/SettingsTabs';
 import { StorageSettings } from '@/components/StorageSettings';
 import { ChangelogDialog } from '@/components/ChangelogDialog';
 import { IconButton } from '@/components/IconButton';
+import { Button } from '@/components/ui/button';
 import { Select } from '@/components/Select';
 import { LayoutPicker } from '@/components/LayoutDemo';
 import { MotionChoice, ThemeChoice } from '@/components/AppearanceChoices';
@@ -133,6 +134,19 @@ function AgentAccess({ busy, onChange }) {
   </div><p className={mode === 'full' ? 'error' : 'muted'}>{accessNotes[mode]}</p><p className="muted">Applies to runs started after the change. dispatch checks and commits only the worktree.</p></section>;
 }
 
+const branchNotes = {
+  auto: 'Branches are named dispatch/<run>, or what the ticket’s connector proposes when you turn that on in the connector’s settings. A branch.template preference in the Brain overrides both.',
+  ask: 'Before a task you send from the composer starts, dispatch suggests branch names and you pick one or type your own. Saved tasks started from the list use the automatic name.',
+};
+
+function Branches({ busy, onChange }) {
+  const { state } = useWorkspace(), mode = state.branchNaming ?? 'auto';
+  return <section className="panel" id="branches"><h2>Branch names</h2><div className="segmented" role="group" aria-label="Branch names">
+    <Button variant="ghost" aria-pressed={mode === 'auto'} disabled={busy} onClick={() => onChange('auto')}><Sparkles aria-hidden="true"/>Pick automatically</Button>
+    <Button variant="ghost" aria-pressed={mode === 'ask'} disabled={busy} onClick={() => onChange('ask')}><MessageCircleQuestion aria-hidden="true"/>Ask me each time</Button>
+  </div><p className="muted">{branchNotes[mode]}</p></section>;
+}
+
 function Queue({ busy, onChange }) {
   const { state } = useWorkspace();
   return <section className="panel" id="queue"><h2>Queue</h2>
@@ -152,11 +166,12 @@ export function Setup() {
     { value: 'tiles', label: 'Tiles', icon: LayoutGrid, content: <Tiles/> },
     { value: 'editor', label: 'Editor', icon: Code, content: <Editor/> },
     { value: 'access', label: 'Agent access', icon: ShieldCheck, content: <AgentAccess busy={busy} onChange={mode => perform(async () => { await api('/api/access', { mode }); window.dispatchEvent(new Event('dispatch-refresh')); })}/> },
+    { value: 'branches', label: 'Branches', icon: GitBranch, content: <Branches busy={busy} onChange={mode => perform(async () => { await api('/api/branch-naming', { mode }); window.dispatchEvent(new Event('dispatch-refresh')); })}/> },
     { value: 'queue', label: 'Queue', icon: ListOrdered, content: <Queue busy={busy} onChange={concurrency => perform(async () => { await api('/api/concurrency', { concurrency }); window.dispatchEvent(new Event('dispatch-refresh')); })}/> },
     { value: 'storage', label: 'Storage', icon: Database, content: <StorageSettings/> },
     { value: 'about', label: 'About', icon: Info, content: <About/> },
   ];
-  return <SettingsLayout title="Settings" description="Appearance, home, notifications, tiles, editor, agent access, queue and storage.">
+  return <SettingsLayout title="Settings" description="Appearance, home, notifications, tiles, editor, agent access, branches, queue and storage.">
     <SettingsTabs label="Settings sections" tabs={tabs}/>
     {error && <p role="alert" className="error">{error}</p>}
   </SettingsLayout>;

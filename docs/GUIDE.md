@@ -89,6 +89,8 @@ Open a connector in **Settings › Connectors** to see what it can do. Each acti
 
 Paste a ticket link into a repository that does not read that connector yet and the composer offers to turn it on for that repository, everywhere, or to paste the text instead. A connector can remember your organization so later tickets can be pasted as bare ids. Each connector decides what counts as its link; the built-in ones only treat a single line starting with `http://` or `https://` as a URL, and a connector may also find its one link inside a sentence. When it does, everything you typed around the link reaches the agent as an operator note under the ticket.
 
+Branches are named `dispatch/<run>`. A connector can propose its own names, such as `story/42-short-title`, when you turn that on in its settings. Settings → Branches → **Ask me each time** makes the composer suggest names before the task starts; pick one or type your own. A `branch.template` preference in the Brain replaces the automatic name.
+
 With its comment action on, each ready run posts one comment on the ticket with the outcome, branch, pull request, checks and any state move. Nothing else on the ticket changes. With its state action on, after a pull request opens the verdict offers to move the ticket to one of its allowed states. Answering teaches the preference ladder; "Never ask here" stops it. Every move is revision-checked and can be undone.
 
 ### Delivery

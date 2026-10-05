@@ -301,6 +301,25 @@ test('text typed around a tracker link reaches the worker as an operator note; a
   assert.equal(bare.ticket.note, undefined); assert.doesNotMatch(prompts.at(-1), /OPERATOR NOTE/);
 });
 
+test('a connector can propose the branch, and in ask mode the composer is asked before any run exists', async t => {
+  const tracker = exampleTracker(), read = tracker.read;
+  const { live, engine, project } = await fixture(t, undefined, tracker);
+  project.connectors = { example: { enabled: true } };
+  const plain = await live.create({ projectId: project.id, input: issueUrl('p', 4) }); await settle(engine, plain);
+  assert.equal(plain.branch, `dispatch/${plain.id}`);
+  tracker.read = async ref => ({ ...await read(ref), branch: 'bug/{ticketId}-{slug}' });
+  const proposed = await live.create({ projectId: project.id, input: issueUrl('p', 5) }); await settle(engine, proposed);
+  assert.match(proposed.branch, /^bug\/5-issue-5/);
+  live.setBranchNaming({ mode: 'ask' });
+  await assert.rejects(live.create({ projectId: project.id, input: issueUrl('p', 6) }), error => error.status === 409 && error.question.kind === 'branch' && error.question.options.map(option => option.label).join() === 'bug/6-issue-6,dispatch/<run>');
+  assert.equal(engine.runs.length, 2);
+  await assert.rejects(live.create({ projectId: project.id, input: issueUrl('p', 6), branch: 'a..b' }), /valid Git branch/);
+  const chosen = await live.create({ projectId: project.id, input: issueUrl('p', 6), branch: 'hotfix/{ticketId}' }); await settle(engine, chosen);
+  assert.match(chosen.branch, /^hotfix\/6/);
+  const saved = await live.create({ projectId: project.id, input: issueUrl('p', 7) }, { taskId: 'task-1' }); await settle(engine, saved);
+  assert.match(saved.branch, /^bug\/7-issue-7/);
+});
+
 test('the brief keeps operator-only steps out of blocked options', async t => {
   const prompts = [];
   const { live, engine, project } = await fixture(t, async (options, turn) => { prompts.push(options.prompt); return completesWithFiles(options, turn); });

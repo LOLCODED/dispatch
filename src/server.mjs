@@ -139,14 +139,14 @@ export function createServer(engine, { assetRoot = root, devFraming = false } = 
       if (req.method === 'POST' && path === '/api/queue/hold') return json(res, 200, engine.holdQueue((await jsonBody(req)).seconds));
       if (req.method === 'POST' && path === '/api/queue/release') { await jsonBody(req); return json(res, 200, engine.releaseQueue()); }
       if (req.method === 'GET' && path === '/api/workspace') { live.reconcileWorktrees(); live.pullRequests.watch(); }
-      if (req.method === 'GET' && path === '/api/workspace') return json(res, 200, { mode: 'local', modelCatalog: live.modelCatalog, autoTiers: live.autoTiers, modelSuggestions: live.modelSuggestions(), providerSettings: live.providers.settings, localEndpoints: live.localEndpoints, localAgent: live.localAgent, connectors: live.connectorList.map(({ id, name, delivers, tickets }) => ({ id, name, delivers, tickets })), providerContracts: live.providers.contracts(), traceViewer: traceViewer.size > 0, accessMode: live.accessMode, setupNeeded: setupNeeded(engine.store.state), concurrency: engine.concurrency, tasks: tasks.list().map(({ input, ...task }) => ({ ...task, request: cap(input, requestLength) })), labels, projects: live.projects, board: engine.store.state.board, runs: engine.runs.filter(run => run.mode === 'live').map(run => runSummary(run, live)) });
+      if (req.method === 'GET' && path === '/api/workspace') return json(res, 200, { mode: 'local', modelCatalog: live.modelCatalog, autoTiers: live.autoTiers, modelSuggestions: live.modelSuggestions(), providerSettings: live.providers.settings, localEndpoints: live.localEndpoints, localAgent: live.localAgent, connectors: live.connectorList.map(({ id, name, delivers, tickets }) => ({ id, name, delivers, tickets })), providerContracts: live.providers.contracts(), traceViewer: traceViewer.size > 0, accessMode: live.accessMode, branchNaming: live.branchNaming, setupNeeded: setupNeeded(engine.store.state), concurrency: engine.concurrency, tasks: tasks.list().map(({ input, ...task }) => ({ ...task, request: cap(input, requestLength) })), labels, projects: live.projects, board: engine.store.state.board, runs: engine.runs.filter(run => run.mode === 'live').map(run => runSummary(run, live)) });
       if (path.startsWith('/api/board/')) { const result = await boardRoute(board, req, path); if (result) return json(res, ...result); }
       const respondPath = path.match(/^\/api\/runs\/([a-f0-9-]+)\/respond$/);
       if (respondPath && req.method === 'POST') {
         if (!req.headers['content-type']?.startsWith('application/json')) throw new InputError('Use application/json', 415);
         return json(res, 200, live.interactions.answer(respondPath[1], await body(req, runBodyLimit)));
       }
-      if (req.method === 'GET' && path === '/api/state') return json(res, 200, { mode: 'local', modelCatalog: live.modelCatalog, autoTiers: live.autoTiers, providerSettings: live.providers.settings, accessMode: live.accessMode, labels, concurrency: engine.concurrency, runs: engine.runs.map(viewRun), projects: live.projects });
+      if (req.method === 'GET' && path === '/api/state') return json(res, 200, { mode: 'local', modelCatalog: live.modelCatalog, autoTiers: live.autoTiers, providerSettings: live.providers.settings, accessMode: live.accessMode, branchNaming: live.branchNaming, labels, concurrency: engine.concurrency, runs: engine.runs.map(viewRun), projects: live.projects });
       if (req.method === 'GET' && path === '/api/tasks') return json(res, 200, tasks.list());
       if (req.method === 'POST' && path === '/api/tasks') {
         if (!req.headers['content-type']?.startsWith('application/json')) throw new InputError('Use application/json', 415);
@@ -197,6 +197,10 @@ export function createServer(engine, { assetRoot = root, devFraming = false } = 
       if (req.method === 'POST' && path === '/api/access') {
         if (!req.headers['content-type']?.startsWith('application/json')) throw new InputError('Use application/json', 415);
         return json(res, 200, live.setAccess(await body(req)));
+      }
+      if (req.method === 'POST' && path === '/api/branch-naming') {
+        if (!req.headers['content-type']?.startsWith('application/json')) throw new InputError('Use application/json', 415);
+        return json(res, 200, live.setBranchNaming(await body(req)));
       }
       if (req.method === 'POST' && path === '/api/concurrency') {
         if (!req.headers['content-type']?.startsWith('application/json')) throw new InputError('Use application/json', 415);
