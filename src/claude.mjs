@@ -16,12 +16,13 @@ const aliases = [['fable', 'Fable', efforts], ['opus', 'Opus', efforts], ['sonne
 const unboundedToolTimeoutMs = 2 ** 31 - 1;
 const mutating = ['Bash', 'Edit', 'Write', 'NotebookEdit'];
 const excluded = ['AskUserQuestion', 'Agent', 'Task', 'WebFetch', 'WebSearch'];
-const sandbox = writableRoots => ({ sandbox: { enabled: true, autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: false, failIfUnavailable: true, ...(writableRoots.length ? { filesystem: { allowWrite: writableRoots } } : {}) } });
+const sandboxNetwork = network => network?.hosts?.length || network?.localPorts ? { network: { ...(network.hosts?.length ? { allowedDomains: network.hosts } : {}), ...(network.localPorts ? { allowLocalBinding: true } : {}) } } : {};
+const sandbox = (writableRoots, network) => ({ sandbox: { enabled: true, autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: false, failIfUnavailable: true, ...(writableRoots.length ? { filesystem: { allowWrite: writableRoots } } : {}), ...sandboxNetwork(network) } });
 
 // Owner turns write through Claude's OS sandbox unless the operator chose full access. Prompts go to dispatch's
 // permission tool when the turn has it (it approves sandboxed shell commands and file writes in the worktrees) and are refused otherwise.
 // Review turns cannot call mutating tools.
-export function claudeArgs({ sessionId, resume, execution, readOnly = false, mcpConfig, mcpTools = [], writableRoots = [], readableRoots = [], fullAccess = false, streamInput = false }) {
+export function claudeArgs({ sessionId, resume, execution, readOnly = false, mcpConfig, mcpTools = [], writableRoots = [], readableRoots = [], fullAccess = false, streamInput = false, network = null }) {
   const prompts = mcpConfig && !readOnly && mcpTools.includes(permissionTool.name) ? ['host', '--permission-prompt-tool', `mcp__dispatch__${permissionTool.name}`] : ['none'];
   const args = ['-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages', '--permission-prompts', ...prompts];
   if (streamInput) args.push('--input-format', 'stream-json');
@@ -31,7 +32,7 @@ export function claudeArgs({ sessionId, resume, execution, readOnly = false, mcp
   const allowed = [...(readOnly ? ['Read', 'Grep', 'Glob'] : []), ...(mcpConfig ? mcpTools.map(name => `mcp__dispatch__${name}`) : [])];
   const sandboxed = !readOnly && !fullAccess;
   args.push('--permission-mode', readOnly ? 'dontAsk' : fullAccess ? 'bypassPermissions' : 'acceptEdits', '--disallowedTools', ...excluded, ...(readOnly ? mutating : []));
-  if (sandboxed) args.push('--settings', JSON.stringify(sandbox(writableRoots)));
+  if (sandboxed) args.push('--settings', JSON.stringify(sandbox(writableRoots, readOnly ? null : network)));
   if (sandboxed && writableRoots.length) args.push('--add-dir', ...writableRoots);
   if (readOnly && readableRoots.length) args.push('--add-dir', ...readableRoots);
   if (allowed.length) args.push('--allowedTools', ...allowed);
@@ -128,14 +129,14 @@ export class ClaudeAdapter {
   async models() {
     return { available: true, models: aliases.map(([model, displayName, supportedReasoningEfforts]) => ({ model, displayName, isDefault: false, defaultReasoningEffort: null, supportedReasoningEfforts })), message: 'Claude Code model aliases; the CLI resolves each to the newest version your account can use.' };
   }
-  async run({ workspace, sessionId, prompt, images = [], signal, onEvent, onSession, onSpawn, timeoutMs = null, readOnly = false, interactive = false, execution, onQuestion, onMemory, tools, onTool, writableRoots = [], readableRoots = [], fullAccess = false, onProgress, onBrowser, onLimits }, providerEnv = {}) {
+  async run({ workspace, sessionId, prompt, images = [], signal, onEvent, onSession, onSpawn, timeoutMs = null, readOnly = false, interactive = false, execution, onQuestion, onMemory, tools, onTool, writableRoots = [], readableRoots = [], fullAccess = false, network = null, onProgress, onBrowser, onLimits }, providerEnv = {}) {
     const id = sessionId ?? randomUUID();
     const handlers = tools?.list?.length ? { tools: tools.list, call: tools.call } : interactive && !readOnly ? { onQuestion, onMemory } : null;
     const bridge = handlers ? await this.bridge(handlers) : null;
     try {
       const mcpConfig = bridge && await bridge.writeConfig('claude-mcp.json', { mcpServers: { dispatch: { type: 'stdio', ...bridge.mcp } } });
       const stream = claudeStream({ sessionId: id, onEvent, onProgress, onSession, onBrowser, onLimits, onTool });
-      const result = await runJsonLines(this.execute, this.command, claudeArgs({ sessionId: id, resume: Boolean(sessionId), execution, readOnly, mcpConfig, mcpTools: bridge?.names ?? [], writableRoots, readableRoots, fullAccess, streamInput: images.length > 0 }), { cwd: workspace, signal, timeoutMs, input: claudeInput(prompt, images), inheritEnv: false, env: localEnvironment({ MCP_TOOL_TIMEOUT: String(timeoutMs ?? unboundedToolTimeoutMs), ...providerEnv }), onSpawn, onEvent: stream.consume });
+      const result = await runJsonLines(this.execute, this.command, claudeArgs({ sessionId: id, resume: Boolean(sessionId), execution, readOnly, mcpConfig, mcpTools: bridge?.names ?? [], writableRoots, readableRoots, fullAccess, network, streamInput: images.length > 0 }), { cwd: workspace, signal, timeoutMs, input: claudeInput(prompt, images), inheritEnv: false, env: localEnvironment({ MCP_TOOL_TIMEOUT: String(timeoutMs ?? unboundedToolTimeoutMs), ...providerEnv }), onSpawn, onEvent: stream.consume });
       onProgress?.('');
       return claudeOutcome({ result, state: stream.state, sessionId: id });
     } finally { await bridge?.close(); }

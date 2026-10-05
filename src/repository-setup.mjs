@@ -3,6 +3,7 @@ import { stepFromLine } from './recipe-roles.mjs';
 export const installStep = () => ({ id: 'install', command: 'npm', args: ['ci'] });
 export const scriptCheck = script => ({ id: script, command: 'npm', args: ['run', script] });
 export const suggestedTextOnlyPaths = ['*.md', 'docs/**'];
+export const suggestedHosts = registries => ['registry.npmjs.org', ...registries];
 
 const textOnlyScopes = (paths, validation) => paths.length ? [{ id: 'text-only', paths, checks: validation.some(step => step.id === 'check') ? ['check'] : [] }] : [];
 
