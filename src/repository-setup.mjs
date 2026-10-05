@@ -8,7 +8,7 @@ const textOnlyScopes = (paths, validation) => paths.length ? [{ id: 'text-only',
 
 export function suggestedRecipe(info) {
   const validation = info.suggestedChecks.map(scriptCheck);
-  return { validation, setup: info.suggestInstall ? [installStep()] : [], browser: info.suggestBrowser === true, checkScopes: textOnlyScopes(suggestedTextOnlyPaths, validation) };
+  return { validation, setup: [...(info.suggestInstall ? [installStep()] : []), ...(info.suggestedSetup ?? [])], browser: info.suggestBrowser === true, checkScopes: textOnlyScopes(suggestedTextOnlyPaths, validation) };
 }
 
 const commandSteps = lines => {

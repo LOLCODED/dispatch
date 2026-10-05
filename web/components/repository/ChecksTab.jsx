@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { commandLine } from '@/lib/recipe-text.mjs';
 import { longRunningScript, npmScript } from '@/lib/recipe-roles.mjs';
 import { NoChoiceWarning } from '@/components/repository/RiskTab';
-import { checkIds, commandStep, editCommand, installStep, isInstall, scriptCheck, unusedScripts } from '@/lib/project-form.mjs';
+import { checkIds, commandStep, editCommand, installStep, isInstall, scriptCheck, scriptDescription, unsuitableScripts, unusedScripts } from '@/lib/project-form.mjs';
 
 const minutes = step => Math.round((step.timeoutSeconds ?? 300) / 60);
 
@@ -50,18 +50,36 @@ function Setup({ form, update, info }) {
   </section>;
 }
 
+function Unsuitable({ info }) {
+  const scripts = unsuitableScripts(info);
+  if (!scripts.length) return null;
+  return <details className="unsuitable-scripts"><summary>Not offered as checks ({scripts.length})</summary>
+    <ul className="row-list">{scripts.map(script => <li key={script}><div className="switch-text"><code>npm run {script}</code><small>{scriptDescription(info, script)}</small></div></li>)}</ul>
+  </details>;
+}
+
+function Findings({ info }) {
+  const notes = [
+    info.checksFrom === 'ci' && 'Checks are suggested from what this repository’s CI runs.',
+    info.registries?.length && `Packages come from ${info.registries.join(', ')}. Setup runs outside the sandbox with your own npm login; allow ${info.registries.length === 1 ? 'that host' : 'those hosts'} under Network access if the agent installs packages itself.`,
+  ].filter(Boolean);
+  return notes.length ? <ul className="muted repository-findings">{notes.map(note => <li key={note}>{note}</li>)}</ul> : null;
+}
+
 export function ChecksTab({ form, update, info }) {
   const setValidation = validation => update({ validation });
   return <>
     <section className="tab-section"><p className="muted">{form.risk?.mode === 'off' ? 'These checks must pass unless a check shortcut skips them.' : 'These are the checks the agent can select. Set required minimums on the Risk & tests tab.'} Commands run on your machine, in a separate copy of the repository.</p>
+      <Findings info={info}/>
       <NoChoiceWarning form={form}/>
       {!checkIds(form).length && <p className="muted" role="status">No checks yet. Adding at least one command that fails when the project breaks, such as its test runner, lets dispatch catch and repair broken changes.</p>}
       <ul className="row-list">
         <StepList steps={form.validation} onSteps={setValidation}/>
-        {unusedScripts(info, form).map(script => <li key={script}><SwitchRow label={<code>npm run {script}</code>} checked={false} onChange={() => setValidation([...form.validation, scriptCheck(script)])}/></li>)}
+        {unusedScripts(info, form).map(script => <li key={script}><SwitchRow label={<code>npm run {script}</code>} description={scriptDescription(info, script)} checked={false} onChange={() => setValidation([...form.validation, scriptCheck(script)])}/></li>)}
         <li><SwitchRow label="Browser smoke check" description="Starts the app, opens it in Chromium and fails on page errors." checked={Boolean(form.smoke)} onChange={on => update({ smoke: on ? { id: 'browser-smoke', kind: 'browser-smoke' } : null })}/></li>
       </ul>
       <AddCommand label="Add a check command" taken={checkIds(form)} onAdd={step => setValidation([...form.validation, step])}/>
+      <Unsuitable info={info}/>
     </section>
     <Setup form={form} update={update} info={info}/>
   </>;

@@ -52,10 +52,24 @@ export function editCommand(step, line) {
   return parsed && !smokeStep(parsed) ? { ...step, command: parsed.command, args: parsed.args } : step;
 }
 
+const neverChecks = new Set(['server', 'deploy', 'format-write']);
+const kindText = {
+  test: 'Runs tests', e2e: 'Runs end-to-end tests in a browser', 'service-test': 'Tests that need a database or another service',
+  lint: 'Lints the code', typecheck: 'Type-checks', format: 'Checks formatting', check: 'Runs several checks', build: 'Builds the app',
+  server: 'Starts a server and never finishes', deploy: 'Deploys, migrates or changes data', 'format-write': 'Rewrites files', other: '',
+};
+const detailOf = (info, script) => info?.scriptDetails?.[script] ?? { command: info?.scripts?.[script] ?? '', kind: longRunningScript(script) ? 'server' : 'other', ci: false };
+export function scriptDescription(info, script) {
+  const detail = detailOf(info, script);
+  return [kindText[detail.kind], detail.ci && 'CI runs this', detail.command].filter(Boolean).join(' · ');
+}
+// CI-run scripts first, then other checks; scripts that never finish or change things are listed apart and never offered.
 export function unusedScripts(info, form) {
   const used = new Set(form.validation.map(npmScript).filter(Boolean));
-  return Object.keys(info?.scripts ?? {}).filter(script => !used.has(script) && !longRunningScript(script));
+  const rank = script => { const detail = detailOf(info, script); return detail.ci ? 0 : detail.kind === 'other' || detail.kind === 'build' ? 2 : 1; };
+  return Object.keys(info?.scripts ?? {}).filter(script => !used.has(script) && !neverChecks.has(detailOf(info, script).kind)).sort((a, b) => rank(a) - rank(b));
 }
+export const unsuitableScripts = info => Object.keys(info?.scripts ?? {}).filter(script => neverChecks.has(detailOf(info, script).kind));
 
 export function newCommands(form, saved) {
   const known = new Set(saved ? [...saved.validation, ...saved.setup].map(commandLine) : []);

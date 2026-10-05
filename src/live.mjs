@@ -38,6 +38,7 @@ import { isHiddenModel, modelChoice, modelLabel, modelPreferenceKey, modelValue,
 import { agentPrimary, resolveRepository } from './repository.mjs';
 import { agentMembers, taskRepositories } from './repository-selection.mjs';
 import { longRunningScript, npmScript } from './recipe-roles.mjs';
+import { repositoryInsight } from './repository-insight.mjs';
 import { checkScope, projectScopes, recipeChange, recipeDiffers, recipeScopes, protectedPaths, savedRecipe } from './check-scope.mjs';
 import { changeFlags, sqlToRun } from './flags.mjs';
 import { RiskChecks } from './risk-checks.mjs';
@@ -151,7 +152,7 @@ function browserSettings(value) {
 }
 function scriptInfo(root) {
   const scripts = existsSync(join(root, 'package.json')) ? JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).scripts ?? {} : {};
-  return { scripts, suggestedChecks: Object.keys(scripts).filter(x => /^(check|test|test:unit|test:e2e)$/.test(x) && !longRunningScript(x)), longRunningScripts: Object.keys(scripts).filter(longRunningScript), suggestInstall: existsSync(join(root, 'package-lock.json')), suggestBrowser: startScripts.some(name => typeof scripts[name] === 'string') };
+  return { scripts, ...repositoryInsight(root, scripts), longRunningScripts: Object.keys(scripts).filter(longRunningScript), suggestInstall: existsSync(join(root, 'package-lock.json')), suggestBrowser: startScripts.some(name => typeof scripts[name] === 'string') };
 }
 function plainFolderInput(input) {
   if (input.trackRemote === true || (input.baseBranch !== undefined && input.baseBranch !== null) || input.targetBranches?.length) throw new InputError('A plain folder has no Git: branches and origin tracking do not apply.');
