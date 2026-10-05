@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
-import { ClaudeAdapter, claudeArgs, claudeUsage } from '../src/claude.mjs';
+import { ClaudeAdapter, claudeArgs, claudeMcpConfig, claudeUsage } from '../src/claude.mjs';
 
 const session = '11111111-2222-4333-8444-555555555555';
 const encode = events => events.map(event => JSON.stringify(event)).join('\n') + '\n';
@@ -121,4 +121,8 @@ test('Claude derives the MCP allow list from the supplied tools and reports tool
   assert.equal(result.outcome, 'completed');
   assert.deepEqual(seen.slice(seen.indexOf('--allowedTools'), seen.indexOf('--allowedTools') + 5), ['--allowedTools', 'Read', 'Grep', 'Glob', 'mcp__dispatch__dispatch_browser_snapshot']);
   assert.deepEqual(events.map(event => [event.id, event.name, event.phase, event.output ?? event.input.file_path]), [['t9', 'Read', 'started', 'a.js'], ['t9', 'Read', 'completed', 'contents']]);
+});
+
+test('the dispatch MCP server is always loaded so Claude Code sees tool schemas before the first call', () => {
+  assert.deepEqual(claudeMcpConfig({ command: '/node', args: ['bridge.mjs'], env: {} }), { mcpServers: { dispatch: { type: 'stdio', alwaysLoad: true, command: '/node', args: ['bridge.mjs'], env: {} } } });
 });

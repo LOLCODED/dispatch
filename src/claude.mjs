@@ -105,6 +105,9 @@ export function claudeOutcome({ result, state, sessionId }) {
   return { outcome: blockedOutcome(summary), sessionId, summary, usage };
 }
 
+// Claude Code defers MCP tools behind tool search by default; agents then call dispatch tools before loading their schemas and guess the arguments.
+export const claudeMcpConfig = mcp => ({ mcpServers: { dispatch: { type: 'stdio', alwaysLoad: true, ...mcp } } });
+
 export class ClaudeAdapter {
   constructor({ execute = runProcess, command = 'claude', bridge = openToolBridge } = {}) { this.execute = execute; this.command = command; this.bridge = bridge; }
   get contract() { return { questions: 'tool', tools: 'mcp', browserTools: 'mcp', sessions: true, modelSwitch: true, streaming: true, readOnlyTurns: true, readOnlyTools: true, writableRoots: true, permissionPrompts: 'tool' }; }
@@ -134,7 +137,7 @@ export class ClaudeAdapter {
     const handlers = tools?.list?.length ? { tools: tools.list, call: tools.call } : interactive && !readOnly ? { onQuestion, onMemory } : null;
     const bridge = handlers ? await this.bridge(handlers) : null;
     try {
-      const mcpConfig = bridge && await bridge.writeConfig('claude-mcp.json', { mcpServers: { dispatch: { type: 'stdio', ...bridge.mcp } } });
+      const mcpConfig = bridge && await bridge.writeConfig('claude-mcp.json', claudeMcpConfig(bridge.mcp));
       const stream = claudeStream({ sessionId: id, onEvent, onProgress, onSession, onBrowser, onLimits, onTool });
       const result = await runJsonLines(this.execute, this.command, claudeArgs({ sessionId: id, resume: Boolean(sessionId), execution, readOnly, mcpConfig, mcpTools: bridge?.names ?? [], writableRoots, readableRoots, fullAccess, network, streamInput: images.length > 0 }), { cwd: workspace, signal, timeoutMs, input: claudeInput(prompt, images), inheritEnv: false, env: localEnvironment({ MCP_TOOL_TIMEOUT: String(timeoutMs ?? unboundedToolTimeoutMs), ...providerEnv }), onSpawn, onEvent: stream.consume });
       onProgress?.('');
