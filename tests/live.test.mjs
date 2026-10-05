@@ -510,6 +510,17 @@ test('every in-scope check runs after a failure and one repair prompt carries al
   assert.match(prompts[1], /^Repair these failing mandatory checks[\s\S]*\n\nfirst: [\s\S]*\n\nsecond: /);
 });
 
+test('files a check rewrites are put back and named, and the run still fails as stale', async t => {
+  const { live, engine, project } = await fixture(t);
+  const rewrites = { id: 'snapshots', command: process.execPath, args: ['-e', 'const fs=require("fs");if(fs.readFileSync("value.txt","utf8")!=="changed")process.exit(1);fs.writeFileSync("value.txt","regenerated");fs.writeFileSync("report.txt","r");fs.rmSync("new.txt")'] };
+  await live.saveProject({ ...project, confirmed: true, validation: [rewrites] }, project.id);
+  const run = await live.create({ projectId: project.id, input: 'Change the value' }); await settle(engine, run);
+  assert.equal(run.status, 'failed'); assert.equal(run.handoff, null);
+  assert.match(run.events.at(-1).message, /Evidence is stale\. snapshots changed 3 files while it ran \(.*\); dispatch put them back\. A check must not change the code it tests/);
+  assert.equal(readFileSync(join(run.workspace, 'value.txt'), 'utf8'), 'changed');
+  assert.equal(existsSync(join(run.workspace, 'report.txt')), false); assert.equal(existsSync(join(run.workspace, 'new.txt')), true);
+});
+
 test('checks cannot be edited while a run is active', async t => {
   const { live, engine, project } = await fixture(t, async options => { await new Promise(resolve => options.signal.addEventListener('abort', resolve, { once: true })); return { outcome: 'cancelled' }; });
   const run = await live.create({ projectId: project.id, input: 'Still working' });

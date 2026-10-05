@@ -731,14 +731,35 @@ export class LiveService {
     if (kind !== 'raw') this.engine.event(run, kind, clean.slice(-6000));
   }
   async tree(run, signal, workspace = run.workspace) {
+    return this.withWorkspaceIndex(run, workspace, shadowOf(run, workspace) ? '--empty' : 'HEAD', signal, (git, options) => git(['write-tree'], options));
+  }
+  // Stages the whole workspace on top of base in a throwaway index, so the real index and HEAD are never touched.
+  async withWorkspaceIndex(run, workspace, base, signal, work) {
     const index = join(this.logRoot, `${run.id}-${randomUUID()}.index`);
     try { unlinkSync(index); } catch (error) { if (error.code !== 'ENOENT') throw error; }
     const options = { signal, env: localEnvironment({ GIT_INDEX_FILE: index, GIT_TERMINAL_PROMPT: '0' }) }, git = workspaceGit(run, workspace);
     try {
-      await git(['read-tree', shadowOf(run, workspace) ? '--empty' : 'HEAD'], options);
+      await git(['read-tree', base], options);
       await git(['add', '-A', '--', '.', ...excludePlaceholders(await sandboxPlaceholders(workspace, git, options))], options);
-      return await git(['write-tree'], options);
+      return await work(git, options);
     } finally { if (existsSync(index)) unlinkSync(index); }
+  }
+  async changedSince(run, workspace, revision, signal) {
+    const output = await this.withWorkspaceIndex(run, workspace, revision, signal, (git, options) => git(['diff', '--cached', '--no-renames', '--name-status', '-z', revision], options));
+    const fields = output.split('\0').filter(Boolean), changes = [];
+    for (let index = 0; index + 1 < fields.length; index += 2) changes.push({ status: fields[index], path: fields[index + 1] });
+    return changes;
+  }
+  // A check that changes what it tests proves nothing about the candidate, so the run still fails; restoring the files
+  // keeps the worktree on the candidate so the operator can fix the check and continue.
+  async restoreCheckWrites(run, target, name, signal) {
+    const changes = await this.changedSince(run, target.workspace, target.revision, signal);
+    if (!changes.length) return '';
+    const restored = changes.filter(change => change.status !== 'A').map(change => change.path), created = changes.filter(change => change.status === 'A').map(change => change.path);
+    if (restored.length) await workspaceGit(run, target.workspace)(['restore', `--source=${target.revision}`, '--worktree', '--', ...restored], { signal });
+    for (const path of created) rmSync(join(target.workspace, path), { force: true });
+    const shown = changes.slice(0, 5).map(change => change.path).join(', ') + (changes.length > 5 ? ` and ${changes.length - 5} more` : '');
+    return ` ${name} changed ${changes.length} file${changes.length === 1 ? '' : 's'} while it ran (${shown}); dispatch put them back. A check must not change the code it tests: have it write those files somewhere ignored, or change the checks, then continue.`;
   }
   packageScripts(run) { return workspaceScripts(run.workspace); }
   protectedRecipe(run) {
@@ -1074,7 +1095,7 @@ export class LiveService {
     Object.assign(record, check, { finishedAt: new Date().toISOString(), status: signal.aborted || check.cancelled ? 'cancelled' : check.exitCode === 0 && !check.timedOut ? 'passed' : 'failed' }); e.store.saveSoon();
     this.steps.append(run, { kind: 'check.end', name, status: record.status, durationMs: record.durationMs ?? null, exitCode: record.exitCode ?? null, output: record.output ?? '', artifactIds: run.artifacts.slice(before).map(item => item.id) });
     if (signal.aborted) return null;
-    if (!await target.current(signal)) throw new Error('Workspace changed during validation. Evidence is stale.');
+    if (!await target.current(signal)) throw new Error(`Workspace changed during validation. Evidence is stale.${await this.restoreCheckWrites(run, target, name, signal).catch(() => '')}`);
     this.log(run, 'check', `${name}: ${record.status}`);
     return record;
   }
