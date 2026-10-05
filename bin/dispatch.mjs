@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import { text } from 'node:stream/consumers';
 import { setTimeout as delay } from 'node:timers/promises';
 import { projectForPath, taskProject, taskProjects } from '../src/repository.mjs';
+import { missingSetting } from '../src/settings.mjs';
 import { InstallError, install, startService, stopService, update } from './install.mjs';
 
 const usage = `Usage:
@@ -164,7 +165,8 @@ const settingsCommands = {
   async get([key], values) {
     if (!key) throw new CliError('Give the setting: dispatch settings get <key>.');
     const found = (await api(`/api/settings${scope(values)}`)).find(setting => setting.key === key);
-    if (!found) throw new CliError(`No setting ${key}. List them with dispatch settings${values.repo?.length ? ` --repo ${values.repo[0]}` : ''}.`);
+    const global = !found && values.repo?.length && (await api('/api/settings')).some(setting => setting.key === key);
+    if (!found) throw new CliError(missingSetting(key, values.repo?.[0], global));
     console.log(shown(found.value));
   },
   async set([key, ...value], values) {

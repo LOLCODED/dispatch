@@ -24,6 +24,7 @@ test('settings read and change through the registry, with CLI text turned into t
   assert.deepEqual(await registry.set('queue.concurrency', '3'), { key: 'queue.concurrency', value: 3 });
   await assert.rejects(registry.set('branches.naming', 'sometimes'), /one of: auto, ask/);
   await assert.rejects(registry.set('no.such.setting', 1), /No setting no.such.setting/);
+  assert.throws(() => registry.get('access.mode', { repository: project.name }), /access.mode is a global setting, not one of .+ Leave out the repository/);
   assert.deepEqual(await registry.set('repository.review', 'true', { repository: project.name }), { key: 'repository.review', value: true });
   assert.deepEqual((await registry.set('repository.databases', '[{"name":"staging","access":"read","connection":{"from":"connector","connector":"ado","options":{"keyVault":"kv"}}}]', { repository: project.name })).value.map(entry => [entry.name, entry.access]), [['staging', 'read']]);
   assert.equal(live.projects[0].review, true);

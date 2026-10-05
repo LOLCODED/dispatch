@@ -105,7 +105,7 @@ export class SettingsRegistry {
 
   find(key, options) {
     const entry = this.entries(options).find(item => item.key === key);
-    if (!entry) throw new InputError(`No setting ${key}${options?.repository ? ` for ${options.repository}` : ''}. List them with dispatch settings${options?.repository ? ` --repo ${options.repository}` : ''}.`, 404);
+    if (!entry) throw new InputError(missingSetting(key, options?.repository, options?.repository && this.global().some(item => item.key === key)), 404);
     return entry;
   }
 
@@ -118,6 +118,11 @@ export class SettingsRegistry {
     await entry.set(coerce(entry, value));
     return { key, value: entry.get() };
   }
+}
+
+export function missingSetting(key, repository, global = false) {
+  if (global) return `${key} is a global setting, not one of ${repository}. Leave out the repository (--repo).`;
+  return `No setting ${key}${repository ? ` for ${repository}` : ''}. List them with dispatch settings${repository ? ` --repo ${repository}` : ''}.`;
 }
 
 // The CLI sends text; a typed setting takes the value its type needs.
