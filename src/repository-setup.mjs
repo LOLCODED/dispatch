@@ -4,6 +4,7 @@ export const installStep = () => ({ id: 'install', command: 'npm', args: ['ci'] 
 export const scriptCheck = script => ({ id: script, command: 'npm', args: ['run', script] });
 export const suggestedTextOnlyPaths = ['*.md', 'docs/**'];
 export const suggestedHosts = registries => ['registry.npmjs.org', ...registries];
+export const suggestedNetwork = info => ({ hosts: Object.keys(info.scripts ?? {}).length ? suggestedHosts(info.registries ?? []) : [], localPorts: false });
 
 const textOnlyScopes = (paths, validation) => paths.length ? [{ id: 'text-only', paths, checks: validation.some(step => step.id === 'check') ? ['check'] : [] }] : [];
 
@@ -26,6 +27,7 @@ export function repositoryInput(info, options = {}) {
     validation, setup: options.setup ? commandSteps(options.setup) : suggested.setup, checkScopes: textOnlyScopes(options.textOnlyPaths ?? suggestedTextOnlyPaths, validation),
     risk: { mode: 'agent', minimumChecks: { low: [], medium: [], high: [] }, guidance: '' }, browser: { enabled: options.browser ?? suggested.browser, headed: false },
     review: options.review ?? false, memory: true, instructions: options.instructions ?? [], trackRemote: git, dispatchCoAuthor: git,
+    localFiles: git ? info.suggestedLocalFiles ?? [] : [], network: suggestedNetwork(info),
   };
 }
 
@@ -37,6 +39,8 @@ export function setupSummary(input) {
     `Checks: ${commands(input.validation)}`, `Setup: ${commands(input.setup)}`,
     ...(input.checkScopes.length ? [`Text-only paths (${input.checkScopes[0].paths.join(', ')}) run: ${input.checkScopes[0].checks.join(', ') || 'no checks'}`] : []),
     `Browser preview: ${input.browser.enabled ? 'on' : 'off'}; independent review: ${input.review ? 'on' : 'off'}`,
+    ...(input.localFiles?.length ? [`Copied from the checkout: ${input.localFiles.join(', ')}`] : []),
+    ...(input.network?.hosts?.length ? [`Agent network: ${input.network.hosts.join(', ')}`] : []),
     ...(input.instructions.length ? [`Instructions: ${input.instructions.join(' | ')}`] : []),
   ];
 }

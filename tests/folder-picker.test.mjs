@@ -44,3 +44,10 @@ test('only one folder dialog opens at a time', async () => {
   assert.throws(() => pickFolder({ platform: 'darwin', spawnProcess: fakeSpawn({}) }), /already open/);
   assert.deepEqual(await first, { path: '/a' });
 });
+
+test('on macOS several folders can be picked at once', async () => {
+  const calls = [];
+  assert.match(folderPickerCommand({ platform: 'darwin', multiple: true }).args[1], /with multiple selections allowed/);
+  assert.deepEqual(await pickFolder({ platform: 'darwin', multiple: true, spawnProcess: fakeSpawn({ stdout: '/Users/me/code/api/\n/Users/me/code/web/\n' }, calls) }), { path: '/Users/me/code/api', paths: ['/Users/me/code/api', '/Users/me/code/web'] });
+  assert.deepEqual(await pickFolder({ platform: 'darwin', multiple: true, spawnProcess: fakeSpawn({ code: 1 }) }), { path: null, paths: [] });
+});

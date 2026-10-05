@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { motion } from 'motion/react';
 import { settle } from '@/lib/motion';
-import { Brain, Check, FlaskConical, Folder, FolderOpen, FolderPlus, GitBranch, GitPullRequest, Link2, Pencil, Plug, Plus, ScrollText, Search, ShieldCheck, SkipForward, Ticket, Undo2 } from 'lucide-react';
+import { Brain, Check, FlaskConical, Folder, FolderOpen, FolderPlus, FolderSearch, GitBranch, GitPullRequest, Link2, Pencil, Plug, Plus, ScrollText, Search, ShieldCheck, SkipForward, Ticket, Undo2 } from 'lucide-react';
 import { SettingsLayout } from '@/components/SettingsLayout';
 import { SettingsTabs } from '@/components/SettingsTabs';
 import { FolderBrowser } from '@/components/FolderBrowser';
@@ -18,6 +18,7 @@ import { ExtrasTab, extrasOn } from '@/components/repository/ExtrasTab';
 import { NotesTab } from '@/components/repository/NotesTab';
 import { LinkedTab } from '@/components/repository/LinkedTab';
 import { useProjectForm } from '@/components/repository/use-project-form';
+import { BatchAdd } from '@/components/repository/BatchAdd';
 import { branchChoices, checkIds, formChanged, newCommands } from '@/lib/project-form.mjs';
 import { api, Link, navigate, useWorkspace } from '@/lib/workspace';
 import { usedConnectors } from '@/lib/connectors.mjs';
@@ -41,9 +42,13 @@ function ProjectRow({ project, index }) {
 }
 
 export function Projects() {
-  const { state } = useWorkspace();
-  return <SettingsLayout title="Repositories" description="Local checkouts dispatch can work on, and the checks each result must pass." actions={<IconButton label="Add repository" icon={Plus} variant="outline" href="/admin/projects/new"/>}>
-    <section className="panel">{state.projects.length ? <ol className="project-list">{state.projects.map((project, index) => <ProjectRow key={project.id} project={project} index={index}/>)}</ol> : <p className="empty">Connect a local Git repository or a plain folder to start working on tickets.</p>}</section>
+  const { state } = useWorkspace(), [adding, setAdding] = useState(false), [notice, setNotice] = useState('');
+  const projects = state.projects.filter(project => project.id !== state.homeProjectId);
+  const actions = <><IconButton label="Add several repositories" icon={FolderPlus} variant="outline" aria-pressed={adding} onClick={() => setAdding(!adding)}/><IconButton label="Add repository" icon={Plus} variant="outline" href="/admin/projects/new"/></>;
+  return <SettingsLayout title="Repositories" description="Local checkouts dispatch can work on, and the checks each result must pass." actions={actions}>
+    {adding && <BatchAdd projects={state.projects} onAdded={count => { setAdding(false); setNotice(`Added ${count} ${count === 1 ? 'repository' : 'repositories'}. Open one to adjust its checks.`); }}/>}
+    {notice && <p className="muted" role="status">{notice}</p>}
+    <section className="panel">{projects.length ? <ol className="project-list">{projects.map((project, index) => <ProjectRow key={project.id} project={project} index={index}/>)}</ol> : <p className="empty">Connect a local Git repository or a plain folder to start working on tickets.</p>}</section>
   </SettingsLayout>;
 }
 
@@ -65,11 +70,16 @@ function TargetBranches({ form, update, branches }) {
   </div>;
 }
 
+// The system folder dialog when the server can show one; the in-page browser otherwise.
+async function chooseFolder(onPath, fallback) {
+  try { const { path } = await api('/api/folders/pick', {}); if (path) onPath(path); } catch { fallback(); }
+}
+
 function Basics({ state }) {
   const [browse, setBrowse] = useState(false), { form, update, info, busy, inspect, changePath, error } = state;
   return <section className="basics">
     <div className="field"><Label htmlFor="repo-path">Local repository path</Label>
-      <div className="inline-field"><Input id="repo-path" value={form.path} onChange={event => changePath(event.target.value)} placeholder="~/code/project" required/><IconButton type="button" label="Inspect" icon={Search} variant="outline" onClick={() => inspect()} disabled={busy}/><IconButton type="button" label="Browse folders" icon={FolderOpen} variant="outline" onClick={() => setBrowse(!browse)}/></div>
+      <div className="inline-field"><Input id="repo-path" value={form.path} onChange={event => changePath(event.target.value)} placeholder="~/code/project" required/><IconButton type="button" label="Inspect" icon={Search} variant="outline" onClick={() => inspect()} disabled={busy}/><IconButton type="button" label="Browse folders" icon={FolderOpen} variant="outline" onClick={() => setBrowse(!browse)}/><IconButton type="button" label="Choose folder in the system dialog" icon={FolderSearch} variant="outline" disabled={busy} onClick={() => chooseFolder(path => { changePath(path); inspect(path); }, () => setBrowse(true))}/></div>
       {browse && <FolderBrowser initialPath={form.path || '~'} onChoose={path => { setBrowse(false); inspect(path); }}/>}
       {/does not exist/.test(error) && form.path.trim() && <NewRepositoryRow path={form.path.trim()}/>}
     </div>

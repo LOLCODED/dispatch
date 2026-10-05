@@ -2,7 +2,7 @@ import { longRunningScript, npmScript } from './recipe-roles.mjs';
 import { commandLine, confirmLongRunning, parseRecipeText } from './recipe-text.mjs';
 import { landingChecks, riskSettings } from './risk-policy.mjs';
 import { projectScopes } from './check-scope.mjs';
-import { suggestedHosts, suggestedRecipe } from '../../src/repository-setup.mjs';
+import { suggestedNetwork, suggestedRecipe } from '../../src/repository-setup.mjs';
 
 export { installStep, scriptCheck, suggestedTextOnlyPaths } from '../../src/repository-setup.mjs';
 export const smokeStep = step => step.kind === 'browser-smoke';
@@ -26,7 +26,7 @@ export function blankForm(path = '') {
 
 export function formFromInspect(info) {
   const { validation, setup, browser, checkScopes } = suggestedRecipe(info);
-  return { ...blankForm(info.repositoryPath), name: info.name, base: info.baseBranch ?? '', git: info.git !== false, validation, setup, browser, scopes: checkScopes, localFiles: info.git === false ? [] : info.suggestedLocalFiles ?? [], network: { hosts: Object.keys(info.scripts ?? {}).length ? suggestedHosts(info.registries ?? []) : [], localPorts: false } };
+  return { ...blankForm(info.repositoryPath), name: info.name, base: info.baseBranch ?? '', git: info.git !== false, validation, setup, browser, scopes: checkScopes, localFiles: info.git === false ? [] : info.suggestedLocalFiles ?? [], network: suggestedNetwork(info) };
 }
 
 export const branchChoices = (info, form) => info.branches.filter(branch => branch === form.base || form.targets.includes(branch) || !info.taskBranches?.includes(branch));
