@@ -46,10 +46,10 @@ function LocalFiles({ form, update, info }) {
   const [path, setPath] = useState(''), chosen = form.localFiles ?? [];
   const toggle = (file, on) => update({ localFiles: on ? [...chosen, file] : chosen.filter(item => item !== file) });
   const add = () => { const file = path.trim(); if (file && !chosen.includes(file)) update({ localFiles: [...chosen, file] }); setPath(''); };
-  return <><h4>Copied from your checkout</h4><p className="muted">Files Git ignores, such as <code>.env.test</code>, never reach a fresh copy. dispatch copies these into each task's copy before setup; files Git would commit are skipped.</p>
+  return <section className="tab-section"><h3>Copied from your checkout</h3><p className="muted">Files Git ignores, such as <code>.env.test</code>, never reach a fresh copy. dispatch copies these into each task's copy before setup; files Git would commit are skipped.</p>
     <ul className="row-list">{localFileChoices(info, form).map(file => <li key={file}><SwitchRow label={<code>{file}</code>} checked={chosen.includes(file)} onChange={on => toggle(file, on)}/></li>)}</ul>
     <div className="add-row"><Input className="mono-input" aria-label="Add a file to copy" placeholder="Add a file to copy" value={path} onChange={event => setPath(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); add(); } }}/><IconButton type="button" label="Add a file to copy" icon={Plus} variant="outline" disabled={!path.trim()} onClick={add}/></div>
-  </>;
+  </section>;
 }
 
 function Setup({ form, update, info }) {
@@ -57,7 +57,6 @@ function Setup({ form, update, info }) {
   return <section className="tab-section"><h3>Before each run</h3><p className="muted">Prepares a fresh copy of the repository before the agent starts.</p>
     <ul className="row-list"><StepList steps={form.setup} onSteps={setup => update({ setup })}/>{offerInstall && <li><SwitchRow label={<code>npm ci</code>} description="Install packages" checked={false} onChange={() => update({ setup: [installStep(), ...form.setup] })}/></li>}</ul>
     <AddCommand label="Add a setup command" taken={form.setup.map(step => step.id)} onAdd={step => update({ setup: [...form.setup, step] })}/>
-    {form.git !== false && <LocalFiles form={form} update={update} info={info}/>}
   </section>;
 }
 
@@ -93,5 +92,6 @@ export function ChecksTab({ form, update, info }) {
       <Unsuitable info={info}/>
     </section>
     <Setup form={form} update={update} info={info}/>
+    {form.git !== false && <LocalFiles form={form} update={update} info={info}/>}
   </>;
 }
