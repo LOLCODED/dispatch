@@ -63,7 +63,7 @@ Turning a provider on is consent for dispatch to check its CLI and list its mode
 - **Codex:** `codex app-server` for owner turns (streamed messages, native questions), `codex exec --json` read-only for review. On by default.
 - **Claude Code:** `claude -p` stream-json. Owner turns use `acceptEdits` inside Claude Code's sandbox; review denies mutating tools; nothing may prompt. Off until you enable it under **Settings → Integrations → Providers**.
 
-**Settings → General → Agent access** decides what owner turns may write: **Home folder** (default) keeps the OS sandbox with network off; **Full access** removes it. Review turns stay read-only either way.
+**Settings → General → Agent access** decides what owner turns may write: **Home folder** (default) keeps the OS sandbox with network off; **Full access** removes it. Review turns stay read-only either way. The sandbox limits writes, not reads: as with each CLI on its own, an agent can read files elsewhere in your home folder, other tasks' worktrees included.
 
 dispatch's own tools (`dispatch_question`, `dispatch_memory`, `dispatch_repository`, `dispatch_browser_*`) are one registry served to both CLIs by a per-turn local MCP server. The MCP server name `dispatch` is reserved.
 
