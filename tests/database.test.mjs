@@ -22,6 +22,9 @@ test('older single-database settings become the read-only database "default"; na
   assert.deepEqual(databasesSettings({ source: 'connector', connector: 'ado' })[0].connection, { from: 'connector', connector: 'ado', variable: 'DATABASE_URL' });
   assert.deepEqual(databasesSettings([local, staging, prod]).map(entry => [entry.name, entry.access, entry.connection.options ?? null]), [['local', 'write', null], ['staging', 'read', { vault: 'kv-staging' }], ['prod', 'none', { vault: 'kv-prod' }]]);
   assert.deepEqual(projectDatabases({ database: { envFile: '.env', variable: 'A' } }).map(entry => entry.name), ['default']);
+  const commands = { provider: 'commands', create: 'createdb {task}', drop: 'dropdb {task}', env: 'DATABASE_URL=postgres:///{task}' };
+  assert.deepEqual(databasesSettings([{ ...local, perTask: { ...commands, snapshot: 'snap {snapshot}', changes: 'diff {snapshot}' } }])[0].perTask.changes, { command: 'diff', args: ['{snapshot}'] });
+  assert.throws(() => databasesSettings([{ ...local, perTask: { ...commands, snapshot: 'snap {snapshot}' } }]), /both a snapshot command and a changes command/);
   for (const value of [[local, local], [{ ...local, name: 'Local DB' }], [{ ...local, access: 'admin' }], [{ ...local, perTask: { provider: 'pg' } }, { ...staging, perTask: { provider: 'pg' } }], [{ ...staging, connection: { ...staging.connection, options: { 'bad key': 'x' } } }], { engine: 'commands', connection: { envFile: '.env', variable: 'A' } }]) assert.throws(() => databasesSettings(value), JSON.stringify(value));
 });
 

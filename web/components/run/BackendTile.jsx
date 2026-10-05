@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react';
-import { ArrowLeftRight, Braces, Check, Copy, FileText, ListChecks, LoaderCircle, ScrollText, Sheet, FileSpreadsheet, SquareTerminal, Table2 } from 'lucide-react';
+import { ArrowLeftRight, Braces, Check, Copy, Diff, FileText, ListChecks, LoaderCircle, ScrollText, Sheet, FileSpreadsheet, SquareTerminal, Table2 } from 'lucide-react';
 import { IconButton } from '@/components/IconButton';
 import { useRunSteps } from '@/lib/steps';
 import { useFollowLatest } from '@/lib/follow-latest';
 import { duration } from '@/lib/workspace';
 import { backendEntries, curlCommand, gridAs, logLines } from '../../../src/backend-steps.mjs';
+import { changeTotals } from '../../../src/table-changes.mjs';
 
-const typeIcons = { http: ArrowLeftRight, log: ScrollText, table: Table2, checks: ListChecks, text: FileText };
+const typeIcons = { http: ArrowLeftRight, log: ScrollText, table: Table2, checks: ListChecks, text: FileText, changes: Diff };
 
 function useCopy() {
   const [copied, setCopied] = useState(null);
@@ -117,6 +118,45 @@ function TextDetail({ entry, copier }) {
   </div>;
 }
 
+const changeMarks = { inserted: '+', updated: '~', deleted: '−' }, changeTones = { inserted: 'ok', updated: 'warn', deleted: 'bad' };
+function ChangeCounts({ counts }) {
+  const parts = Object.keys(changeMarks).filter(kind => counts[kind]);
+  return parts.length ? parts.map(kind => <span key={kind} className={`backend-pill tone-${changeTones[kind]}`}>{changeMarks[kind]}{counts[kind].toLocaleString()}</span>) : <span className="backend-pill tone-muted">no row changes</span>;
+}
+
+const cellText = cell => cell ?? 'NULL';
+function ChangedRows({ table }) {
+  return <div className="backend-grid-scroll">
+    <table className="backend-grid changes-grid">
+      <thead><tr><th aria-label="Change"/>{table.columns.map(column => <th key={column}>{column}</th>)}</tr></thead>
+      <tbody>{table.rows.map((row, rowIndex) => <tr key={rowIndex} className={`change-${row.change}`}><td className="backend-row-number" title={row.change}>{changeMarks[row.change]}</td>{row.cells.map((cell, index) => {
+        const changed = row.before && row.before[index] !== cell;
+        return <td key={index} className={changed ? 'is-changed' : cell === null ? 'is-null' : undefined}>{changed ? <><span className="change-before">{cellText(row.before[index])}</span> → {cellText(cell)}</> : cellText(cell)}</td>;
+      })}</tr>)}</tbody>
+    </table>
+  </div>;
+}
+
+function tableNotes(table) {
+  return [table.created && 'new table', table.dropped && 'dropped', table.countOnly && 'compared by row count', table.columnsAdded.length > 0 && `added ${table.columnsAdded.join(', ')}`, table.columnsRemoved.length > 0 && `removed ${table.columnsRemoved.join(', ')}`].filter(Boolean).join(' · ');
+}
+
+function ChangesDetail({ entry, copier }) {
+  const { tables, since, log } = entry.view;
+  return <div className="backend-detail">
+    <div className="backend-detail-bar"><span className="muted">Since {since}</span><span className="backend-spacer"/><CopyButton id={`${entry.id}:changes`} label="Copy as JSON" icon={Braces} text={JSON.stringify(tables, null, 2)} copier={copier}/></div>
+    {tables.length ? tables.map(table => {
+      const total = table.inserted + table.updated + table.deleted, notes = tableNotes(table);
+      return <section key={table.name} className="changes-table">
+        <div className="changes-table-head"><code>{table.name}</code><ChangeCounts counts={table}/>{notes && <small className="muted">{notes}</small>}</div>
+        {table.rows.length > 0 && <ChangedRows table={table}/>}
+        {table.rows.length > 0 && table.rows.length < total && <p className="muted">Showing {table.rows.length} of {total.toLocaleString()} changed rows.</p>}
+      </section>;
+    }) : <p className="muted">Nothing changed in the task database.</p>}
+    {log && <details className="changes-log"><summary>Output</summary><pre className="backend-code">{log}</pre></details>}
+  </div>;
+}
+
 const checkSummary = items => items.some(item => item.state === 'bad') ? 'bad' : items.some(item => item.state === 'pending') ? 'pending' : items.length ? 'ok' : 'muted';
 function Badge({ entry }) {
   const { view } = entry;
@@ -124,6 +164,7 @@ function Badge({ entry }) {
   if (view?.error || (entry.isError && !view)) return <span className="backend-pill tone-bad">error</span>;
   if (view?.type === 'http') return <span className={`backend-pill tone-${statusTone(view.response.status)}`}>{view.response.status}</span>;
   if (view?.type === 'table') return <span className="backend-pill tone-muted">{view.rowCount} row{view.rowCount === 1 ? '' : 's'}</span>;
+  if (view?.type === 'changes') return <span className="backend-pills"><ChangeCounts counts={changeTotals(view.tables)}/></span>;
   if (view?.type === 'checks') { const tone = checkSummary(view.items); return <span className={`backend-pill tone-${tone === 'pending' ? 'muted' : tone}`}>{{ ok: 'passing', bad: 'failing', pending: 'running', muted: 'no checks' }[tone]}</span>; }
   return null;
 }
@@ -135,7 +176,7 @@ function Title({ entry }) {
   return <><Icon size={13} className="backend-kind-icon" aria-hidden="true"/><span className={`backend-kind method-${method.toLowerCase()}`}>{method}</span><code className="backend-title">{rest.join(' ').replace(/^app:/, '')}</code></>;
 }
 
-const details = { http: HttpDetail, table: TableDetail, log: LogDetail, checks: ChecksDetail, text: TextDetail };
+const details = { http: HttpDetail, table: TableDetail, log: LogDetail, checks: ChecksDetail, text: TextDetail, changes: ChangesDetail };
 function EntryRow({ entry, open, onToggle, copier }) {
   const Detail = details[entry.type], structured = !entry.pending && (entry.view || entry.type === 'log');
   return <div className={`backend-entry type-${entry.type}${open ? ' is-open' : ''}`}>
@@ -154,6 +195,6 @@ export function BackendTile({ run }) {
   return <div className="timeline-tile backend-tile">
     <div className="timeline-toolbar"><span className="timeline-filters">{labels.length > 1 && labels.map(([label, type]) => <IconButton key={label} label={`${label} only`} icon={typeIcons[type] ?? FileText} aria-pressed={only === label} onClick={() => setOnly(only === label ? null : label)}/>)}</span></div>
     {error && <p className="error" role="alert">{error}</p>}
-    <div ref={list.ref} className="timeline-feed" onScroll={list.onScroll}>{shown.length ? shown.map(entry => <EntryRow key={entry.id} entry={entry} open={opened.has(entry.id)} onToggle={() => toggle(entry.id)} copier={copier}/>) : <p className="muted">HTTP calls, logs, query results and checks appear here as the agent makes them, from dispatch's tools and from connectors.</p>}</div>
+    <div ref={list.ref} className="timeline-feed" onScroll={list.onScroll}>{shown.length ? shown.map(entry => <EntryRow key={entry.id} entry={entry} open={opened.has(entry.id)} onToggle={() => toggle(entry.id)} copier={copier}/>) : <p className="muted">HTTP calls, logs, query results, database changes and checks appear here as the agent makes them, from dispatch's tools and from connectors.</p>}</div>
   </div>;
 }

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { connectorApi } from '../../api.mjs';
 import { validateConnector } from '../../contract.mjs';
 import createPostgres, { postgresUrl } from '../index.mjs';
+import { keptTables, rowsSql } from '../changes.mjs';
 
 const url = 'postgres://dev:secret@localhost:5432/app';
 
@@ -41,4 +42,27 @@ test('a database with write access gets a writable session; read access stays re
   const query = createPostgres(connectorApi({ runProcess })).actions.query.hooks['database.query'], ctx = { settings: { variable: 'DATABASE_URL' } };
   await query({ sql: 'insert into x values (1)', env: { DATABASE_URL: url }, readOnly: false }, ctx); await query({ sql: 'select 1', env: { DATABASE_URL: url } }, ctx);
   assert.doesNotMatch(seen[0], /read_only/); assert.match(seen[1], /default_transaction_read_only=on/);
+});
+
+test('changes read the task database in a read-only session and compare it with the snapshot’s rows', async () => {
+  const tables = [{ name: 'public.orders', columns: ['id', 'status'], key: ['id'], count: 2 }, { name: 'public."Events"', columns: ['id'], key: ['id'], count: 30_000 }];
+  let status = 'pending';
+  const calls = [], runProcess = async (command, args, options) => {
+    calls.push({ args, options }); const sql = args.at(-1);
+    return { exitCode: 0, output: JSON.stringify(sql.includes('pg_class') ? tables : { 'public.orders': [{ id: 1, status }, { id: 2, status: 'paid' }] }) };
+  };
+  const hooks = createPostgres(connectorApi({ runProcess })).actions.changes.hooks, ctx = { settings: { variable: 'DATABASE_URL' } };
+  const { snapshot } = await hooks['database.snapshot']({ env: { DATABASE_URL: url } }, ctx);
+  assert.deepEqual(snapshot.tables, [{ name: 'public.orders', columns: ['id', 'status'], key: ['id'], rows: [[1, 'pending'], [2, 'paid']] }, { name: 'public."Events"', count: 30_000 }]);
+  assert.ok(calls.every(call => /default_transaction_read_only=on/.test(call.options.env.PGOPTIONS) && call.options.maxOutput > 1_000_000));
+  assert.match(calls[1].args.at(-1), /select 'public.orders' as name, \(select coalesce\(json_agg\(t\), '\[\]'\) from public.orders t\)/);
+  status = 'expired'; tables[1].count = 30_005;
+  const { tables: changes } = await hooks['database.changes']({ env: { DATABASE_URL: url }, snapshot }, ctx);
+  assert.deepEqual(changes.map(change => [change.name, change.inserted, change.updated, change.countOnly ?? false]), [['public.orders', 0, 1, false], ['public."Events"', 5, 0, true]]);
+});
+
+test('the largest tables give up their rows first so a snapshot stays within its row budget', () => {
+  assert.deepEqual([...keptTables([{ name: 'a', count: 60_000 }, { name: 'b', count: 15_000 }, { name: 'c', count: 19_000 }, { name: 'd', count: 10 }])].sort(), ['b', 'c', 'd']);
+  assert.deepEqual([...keptTables(Array.from({ length: 8 }, (_, index) => ({ name: `t${index}`, count: 15_000 })))].length, 6);
+  assert.match(rowsSql([{ name: 'public."it\'s"' }]), /select 'public."it''s"' as name/);
 });

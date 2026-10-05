@@ -55,7 +55,7 @@ test('a plain folder round-trips without a base branch and never sends Git-only 
 });
 
 test('databases load from both saved shapes and save with their names, access and connector options', () => {
-  assert.deepEqual(databasesForm({ envFile: '.env', variable: 'DATABASE_URL' }), [{ name: 'default', access: 'read', options: {}, perTask: { on: false, provider: '', migrate: '', create: '', drop: '', env: '' }, engine: '', source: 'env', connector: '', envFile: '.env', variable: 'DATABASE_URL', query: '', format: 'csv', nullMarker: '' }]);
+  assert.deepEqual(databasesForm({ envFile: '.env', variable: 'DATABASE_URL' }), [{ name: 'default', access: 'read', options: {}, perTask: { on: false, provider: '', migrate: '', create: '', drop: '', snapshot: '', changes: '', env: '' }, engine: '', source: 'env', connector: '', envFile: '.env', variable: 'DATABASE_URL', query: '', format: 'csv', nullMarker: '' }]);
   const saved = [
     { name: 'local', access: 'write', engine: 'commands', connection: { from: 'envFile', envFile: '.env', variables: ['DB_HOST', 'DB_USER'] }, commands: { query: { command: 'mysql', args: ['--batch', '-e', '{sql}'] }, format: 'tsv', null: 'NULL' }, perTask: { provider: 'commands', migrate: { command: 'npm', args: ['run', 'db:migrate'] }, create: { command: 'createdb', args: ['-T', 'app', '{task}'] }, drop: { command: 'dropdb', args: ['--if-exists', '{task}'] }, env: { DATABASE_URL: 'postgres://127.0.0.1/{task}' } } },
     { name: 'staging', access: 'read', engine: null, connection: { from: 'connector', connector: 'ado', variable: 'DATABASE_URL', options: { keyVault: 'kv-staging' } } },

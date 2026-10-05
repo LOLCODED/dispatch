@@ -53,3 +53,21 @@ test('the form writes services as id: command lines', async () => {
   assert.deepEqual(servicesPayload(['worker: npm run worker', '', '  mock:node mock.js --port 4001 ']), [{ id: 'worker', command: 'npm', args: ['run', 'worker'] }, { id: 'mock', command: 'node', args: ['mock.js', '--port', '4001'] }]);
   assert.equal(serviceLine({ id: 'worker', command: 'npm', args: ['run', 'worker'] }), 'worker: npm run worker');
 });
+
+test('a service of the task’s repository takes a snapshot when it starts and shows the task database’s changes when it stops', async () => {
+  const { execute } = fakeProcess(), snapshots = [];
+  const changes = { supported: () => true, baseline: async (run, since) => { snapshots.push(since); return true; }, changes: async () => ({ since: 'worker started', tables: [{ name: 'orders', inserted: 0, updated: 2, deleted: 0, columnsAdded: [], columnsRemoved: [], key: ['id'], columns: ['id'], rows: [] }] }) };
+  const live = { log: () => {}, databaseChanges: changes, taskDatabases: { saved: () => ({ task: { id: 't' } }), env: () => ({}) } };
+  const services = new Services(live, { execute });
+  const run = { id: 'run-1', workspace: '/work', project: { services: [{ id: 'worker', command: 'npm', args: ['run', 'worker'] }] }, linked: [{ name: 'api', workspace: '/work-api', project: { services: [{ id: 'queue', command: 'node', args: ['queue.js'] }] } }] };
+  assert.match(textOf(await services.call(run, { action: 'start', service: 'worker' })), /Stopping it shows what it changed/);
+  await services.call(run, { action: 'start', service: 'api:queue' });
+  assert.deepEqual(snapshots, ['worker started']);
+  const stopped = await services.call(run, { action: 'stop', service: 'worker' });
+  assert.match(textOf(stopped), /^Stopped worker\.[\s\S]*Database changes since worker started:\norders: ~2$/);
+  assert.deepEqual([stopped.view.type, stopped.view.label, stopped.view.title], ['changes', 'Service', 'worker · stop']);
+  assert.equal((await services.call(run, { action: 'stop', service: 'api:queue' })).view.type, 'log');
+  changes.changes = async () => { throw new Error('psql missing'); };
+  await services.call(run, { action: 'start', service: 'worker' });
+  assert.match(textOf(await services.call(run, { action: 'stop', service: 'worker' })), /Could not read the task database's changes: psql missing/);
+});

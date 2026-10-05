@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { Databases, databasesSettings } from '../src/database.mjs';
 import { TaskDatabases } from '../src/task-databases.mjs';
+import { DatabaseChanges } from '../src/database-changes.mjs';
 
 const source = 'postgres://dev:secret@127.0.0.1:5432/app';
 function fixture(t, perTask, { invoke = async () => ({}) } = {}) {
@@ -12,7 +13,7 @@ function fixture(t, perTask, { invoke = async () => ({}) } = {}) {
   const checkout = join(dir, 'checkout'), workspace = join(dir, 'live-workspaces', '0f9e8d7c-1234'); mkdirSync(checkout); mkdirSync(workspace, { recursive: true });
   for (const root of [checkout, workspace]) writeFileSync(join(root, '.env'), `DATABASE_URL=${source}\nLOG_LEVEL=info\n`);
   const project = { id: 'p1', repositoryPath: checkout, databases: databasesSettings([{ name: 'local', access: 'write', connection: { envFile: '.env', variables: ['DATABASE_URL'] }, perTask }]) };
-  const run = { id: 'r1', workspace, project }, logs = [], calls = [], live = { engine: { dataDir: dir, runs: [run] }, log: (_, kind, message) => logs.push(message), stopDevServer: async () => {}, connectors: { invoke: async (...args) => { calls.push(args); return invoke(...args); }, registry: { get: () => ({ name: 'Example' }), withHook: () => [], hook: () => null } } };
+  const run = { id: 'r1', workspace, project }, logs = [], calls = [], live = { engine: { dataDir: dir, runs: [run] }, log: (_, kind, message) => logs.push(message), stopDevServer: async () => {}, connectors: { invoke: async (...args) => { calls.push(args); return invoke(...args); }, registry: { get: () => ({ name: 'Example' }), withHook: () => [], hook: () => null }, allows: (project, id, hook) => hook === 'database.snapshot' && id === 'example' } };
   live.databases = new Databases(live);
   return { dir, run, live, logs, calls };
 }
@@ -53,4 +54,44 @@ test('queries use the task database, and a task database whose worktree is gone 
   const next = { ...run, id: 'r2', workspace: join(dir, 'live-workspaces', 'aaaa'), worktreeRemovedAt: undefined }; mkdirSync(next.workspace); writeFileSync(join(next.workspace, '.env'), `DATABASE_URL=${source}\n`); live.engine.runs.push(next);
   await databases.create(next);
   assert.equal(calls.filter(call => call[2] === 'database.release').length, 1); assert.equal(existsSync(databases.path(run)), false);
+});
+
+test('a connector task database is snapshotted when created; changes compare with the latest snapshot and are forgotten on release', async t => {
+  const states = [[{ name: 'orders', columns: ['id', 'status'], key: ['id'], rows: [[1, 'pending']] }]];
+  const { run, live, calls, logs } = fixture(t, { provider: 'example' }, { invoke: async (project, id, hook, [input]) => hook === 'database.provision' ? { env: { DATABASE_URL: 'postgres://task' } } : hook === 'database.snapshot' ? { snapshot: { tables: states[0] } } : hook === 'database.changes' ? { tables: [{ name: 'orders', updated: 1, columns: ['id', 'status'], key: ['id'], rows: [{ change: 'updated', cells: [1, 'expired'], before: [1, input.snapshot.tables[0].rows[0][1]] }] }] } : undefined });
+  const databases = new TaskDatabases(live); live.taskDatabases = databases; live.databaseChanges = new DatabaseChanges(live);
+  await databases.create(run);
+  assert.deepEqual(calls.find(call => call[2] === 'database.snapshot')[3][0], { task: { id: '0f9e8d7c1234', name: 'dispatch_task_0f9e8d7c1234' }, env: { DATABASE_URL: 'postgres://task' }, workspace: run.workspace });
+  const result = await databases.call(run, { action: 'changes' });
+  assert.match(result.content[0].text, /^Database changes since the task database was created:\norders: ~1\n {2}~ id=1 status=pending→expired$/);
+  assert.equal(result.view.type, 'changes'); assert.equal(result.view.tables[0].rows[0].before[1], 'pending');
+  states[0] = [{ name: 'orders', columns: ['id', 'status'], key: ['id'], rows: [[1, 'paid']] }];
+  await databases.call(run, { action: 'snapshot' });
+  assert.match((await databases.call(run, { action: 'changes' })).content[0].text, /since your snapshot:[\s\S]*status=paid→expired/);
+  const file = live.databaseChanges.file('0f9e8d7c1234');
+  assert.equal(existsSync(file), true); assert.equal(JSON.stringify(run).includes('pending'), false); assert.deepEqual(logs.filter(line => /snapshot/.test(line)), []);
+  await databases.release(run);
+  assert.equal(existsSync(file), false);
+  await assert.rejects(databases.call(run, { action: 'changes' }), /no database of its own/);
+});
+
+test('without the changes action a task database is not snapshotted and changes says how to turn it on', async t => {
+  const { run, live, calls } = fixture(t, { provider: 'other' }, { invoke: async (project, id, hook) => hook === 'database.provision' ? { env: { DATABASE_URL: 'postgres://task' } } : undefined });
+  const databases = new TaskDatabases(live); live.taskDatabases = databases; live.databaseChanges = new DatabaseChanges(live);
+  await databases.create(run);
+  assert.equal(calls.some(call => call[2] === 'database.snapshot'), false);
+  await assert.rejects(databases.call(run, { action: 'changes' }), /cannot show changes; the operator can turn them on/);
+});
+
+test('the commands provider snapshots into a private {snapshot} folder and reads the changes command’s JSON', async t => {
+  const executed = [], execute = async (command, args) => { executed.push([command, ...args]); return { exitCode: 0, output: command === 'changes' ? JSON.stringify({ tables: [{ name: 'orders', inserted: 2 }] }) : '' }; };
+  const { run, live } = fixture(t, { provider: 'commands', create: 'createdb {task}', drop: 'dropdb {task}', env: 'DATABASE_URL=postgres://127.0.0.1/{task}', snapshot: 'snap {task} {snapshot}', changes: 'changes {snapshot}' });
+  const databases = new TaskDatabases(live, { execute }); live.taskDatabases = databases; live.databaseChanges = new DatabaseChanges(live);
+  await databases.create(run);
+  const folder = live.databaseChanges.folder('0f9e8d7c1234');
+  assert.deepEqual(executed.find(call => call[0] === 'snap'), ['snap', 'dispatch_task_0f9e8d7c1234', folder]); assert.equal(existsSync(folder), true);
+  assert.match((await databases.call(run, { action: 'changes' })).content[0].text, /orders: \+2/);
+  assert.deepEqual(executed.at(-1), ['changes', folder]);
+  await databases.release(run);
+  assert.equal(existsSync(folder), false);
 });

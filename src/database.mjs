@@ -47,7 +47,9 @@ export function perTaskSettings(value) {
   if (value.provider !== 'commands' && !connectorId.test(value.provider ?? '')) throw new InputError('A task database comes from a connector or from commands.');
   const migrate = value.migrate ? commandParts(value.migrate, 'The migrate command') : null;
   if (value.provider !== 'commands') return { provider: value.provider, migrate };
-  return { provider: 'commands', migrate, create: commandParts(value.create, 'The create command'), drop: commandParts(value.drop, 'The drop command'), env: envTemplate(value.env) };
+  if (Boolean(value.snapshot) !== Boolean(value.changes)) throw new InputError('Database changes need both a snapshot command and a changes command.');
+  const changes = value.snapshot ? { snapshot: commandParts(value.snapshot, 'The snapshot command'), changes: commandParts(value.changes, 'The changes command') } : {};
+  return { provider: 'commands', migrate, create: commandParts(value.create, 'The create command'), drop: commandParts(value.drop, 'The drop command'), env: envTemplate(value.env), ...changes };
 }
 
 export const accessLevels = ['none', 'read', 'write'];

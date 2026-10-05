@@ -100,12 +100,12 @@ export function databaseForm(database) {
 
 const optionalCommand = step => step ? commandLine(step) : '';
 function perTaskForm(perTask) {
-  return { on: Boolean(perTask), provider: perTask?.provider ?? '', migrate: optionalCommand(perTask?.migrate), create: optionalCommand(perTask?.create), drop: optionalCommand(perTask?.drop), env: Object.entries(perTask?.env ?? {}).map(([name, value]) => `${name}=${value}`).join('\n') };
+  return { on: Boolean(perTask), provider: perTask?.provider ?? '', migrate: optionalCommand(perTask?.migrate), create: optionalCommand(perTask?.create), drop: optionalCommand(perTask?.drop), snapshot: optionalCommand(perTask?.snapshot), changes: optionalCommand(perTask?.changes), env: Object.entries(perTask?.env ?? {}).map(([name, value]) => `${name}=${value}`).join('\n') };
 }
 function perTaskPayload(perTask) {
   if (!perTask?.on || !perTask.provider) return null;
   const migrate = perTask.migrate.trim() || null;
-  return perTask.provider === 'commands' ? { provider: 'commands', migrate, create: perTask.create.trim(), drop: perTask.drop.trim(), env: perTask.env } : { provider: perTask.provider, migrate };
+  return perTask.provider === 'commands' ? { provider: 'commands', migrate, create: perTask.create.trim(), drop: perTask.drop.trim(), env: perTask.env, ...(perTask.snapshot.trim() || perTask.changes.trim() ? { snapshot: perTask.snapshot.trim(), changes: perTask.changes.trim() } : {}) } : { provider: perTask.provider, migrate };
 }
 
 // Repositories saved before named databases held one database object; it loads as the database called default.

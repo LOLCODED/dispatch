@@ -1,6 +1,7 @@
 import { InputError } from './engine.mjs';
 import { localEnvironment } from './local-tools.mjs';
 import { runProcess } from './process.mjs';
+import { changesResult } from './table-changes.mjs';
 
 const maxServices = 10, logLimit = 40_000, shownLimit = 8_000, serviceId = /^[a-z][a-z0-9-]{0,30}$/;
 
@@ -46,7 +47,15 @@ export class Services {
     if (!args.service) throw new Error(`${args.action} needs a service.`);
     if (args.action === 'logs') return logView(await this.logs(run, args.service, signal), args.service);
     const service = this.find(run, args.service);
-    return args.action === 'start' ? text(this.start(run, service)) : logView(await this.stop(run, service), service.id);
+    return args.action === 'start' ? text(await this.start(run, service, signal)) : this.stopped(run, service, await this.stop(run, service), signal);
+  }
+
+  // A service of the task's own repository changes the task database; stopping it shows what changed since it started.
+  async stopped(run, service, output, signal) {
+    const changes = this.live.databaseChanges;
+    if (service.repository || !changes?.supported(run.project) || !this.live.taskDatabases?.saved(run)) return logView(output, service.id);
+    try { return changesResult(await changes.changes(run, signal), { label: 'Service', title: `${service.id} · stop`, prefix: output, log: output }); }
+    catch (error) { return logView(`${output}\n\nCould not read the task database's changes: ${error.message}`, service.id); }
   }
 
   list(run) {
@@ -54,15 +63,17 @@ export class Services {
     return ['app: this worktree’s dev server (logs only; dispatch starts it for app:/)', ...lines].join('\n');
   }
 
-  start(run, service) {
+  async start(run, service, signal) {
     const key = this.key(run, service);
+    if (this.running.has(key)) return `${service.id} is already running.`;
+    const snapshot = !service.repository && await this.live.databaseChanges?.baseline(run, `${service.id} started`, signal);
     if (this.running.has(key)) return `${service.id} is already running.`;
     const logs = logBuffer(), stop = new AbortController();
     const exited = this.execute(service.command, service.args, { cwd: service.workspace, signal: stop.signal, timeoutMs: 3_600_000, inheritEnv: false, env: localEnvironment({ ...(service.repository ? {} : this.live.taskDatabases?.env(run)), CI: '1' }), maxOutput: 1000, onStdout: logs.add, onStderr: logs.add });
     this.running.set(key, { service, logs, stop, exited });
     exited.then(result => { logs.add(`\n[exited with code ${result.exitCode}]`); });
     this.live.log(run, 'service', `Started ${service.id}${service.repository ? ` in ${service.repository}` : ''}: ${[service.command, ...service.args].join(' ')}`);
-    return `Started ${service.id}. Read its output with logs.`;
+    return `Started ${service.id}. Read its output with logs.${snapshot ? ' Stopping it shows what it changed in the task database.' : ''}`;
   }
 
   async stop(run, service) {

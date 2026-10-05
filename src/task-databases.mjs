@@ -4,19 +4,20 @@ import { freePort } from './browser-smoke.mjs';
 import { localEnvironment } from './local-tools.mjs';
 import { runProcess } from './process.mjs';
 import { projectDatabases } from './database.mjs';
+import { changesResult } from './table-changes.mjs';
 
 const commandTimeoutMs = 900_000, shownOutput = 6000;
 const envName = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
 
 export const databaseTool = {
   name: 'dispatch_database', kind: 'database',
-  description: 'Manage this task’s own database, outside the sandbox. migrate runs the repository’s migrate command against it; reset recreates it from the development database. The dev server, services, checks and dispatch_sql already use it; the shared development database is never changed.',
-  inputSchema: { type: 'object', additionalProperties: false, required: ['action'], properties: { action: { type: 'string', enum: ['migrate', 'reset'] } } },
+  description: 'Manage this task’s own database, outside the sandbox. migrate runs the repository’s migrate command against it; reset recreates it from the development database. changes shows the rows inserted, updated and deleted since the last snapshot, which dispatch takes when the database is created and when a service starts; snapshot takes one now, before you run something yourself. The dev server, services, checks and dispatch_sql already use it; the shared development database is never changed.',
+  inputSchema: { type: 'object', additionalProperties: false, required: ['action'], properties: { action: { type: 'string', enum: ['migrate', 'reset', 'snapshot', 'changes'] } } },
 };
 
 export const taskDatabaseEntry = project => projectDatabases(project).find(entry => entry.perTask) ?? null;
 export const perTask = project => taskDatabaseEntry(project)?.perTask ?? null;
-const fill = (text, values) => text.replaceAll('{task}', values.task).replaceAll('{port}', String(values.port ?? ''));
+const fill = (text, values) => text.replaceAll('{task}', values.task ?? '').replaceAll('{port}', String(values.port ?? '')).replaceAll('{snapshot}', values.snapshot ?? '');
 const tail = text => text.length > shownOutput ? `… ${text.length - shownOutput} earlier characters\n${text.slice(-shownOutput)}` : text;
 const redact = (text, env) => Object.values(env).filter(value => value.length >= 8).reduce((output, secret) => output.split(secret).join('<database>'), String(text ?? ''));
 
@@ -41,6 +42,7 @@ export class TaskDatabases {
     writeFileSync(this.path(run), JSON.stringify({ provider: settings.provider, task, port, env, projectId: run.project.id, workspace: run.workspace }), { mode: 0o600 });
     this.pointEnvFile(run, env);
     this.live.log(run, 'database', `This task has its own database (${task.name}) from ${settings.provider === 'commands' ? 'your create command' : this.live.connectors.registry.get(settings.provider)?.name ?? settings.provider}; the shared development database is not changed.`);
+    await this.live.databaseChanges?.baseline(run, 'the task database was created', signal);
   }
 
   async provisionWithConnector(run, id, task, env, signal) {
@@ -87,6 +89,8 @@ export class TaskDatabases {
 
   async call(run, args, { signal } = {}) {
     if (!perTask(run.project)) throw new Error('This repository does not give tasks their own database.');
+    if (args.action === 'snapshot') { await this.live.databaseChanges.snapshot(run, 'your snapshot', signal); return text('Took a snapshot of the task database; changes now compares with it.', 'snapshot'); }
+    if (args.action === 'changes') return changesResult(await this.live.databaseChanges.changes(run, signal), { label: 'Database' });
     if (args.action === 'reset') { await this.live.stopDevServer(run); await this.release(run); await this.create(run, signal); return text('Recreated this task’s database from the development database. Run migrate to apply this task’s migrations.', 'reset'); }
     return text(await this.migrate(run, signal), 'migrate');
   }
@@ -97,6 +101,7 @@ export class TaskDatabases {
     try { await this.releaseSaved(run.project, saved, run.workspace); }
     catch (error) { this.live.log(run, 'database', `Could not remove the task database: ${error.message}`); }
     rmSync(this.path(run), { force: true });
+    this.live.databaseChanges?.forget(saved.task.id);
   }
 
   async releaseSaved(project, saved, workspace) {
@@ -113,6 +118,7 @@ export class TaskDatabases {
       if (saved.projectId !== project.id || live.has(saved.workspace)) continue;
       await this.releaseSaved(project, saved, saved.workspace).catch(() => {});
       rmSync(join(this.root, file), { force: true });
+      if (saved.task?.id) this.live.databaseChanges?.forget(saved.task.id);
     }
   }
 }

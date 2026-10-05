@@ -4,7 +4,7 @@ export const runEvents = ['run.ready', 'run.blocked', 'run.failed', 'run.cancell
 
 export const hookNames = new Set([
   'ticket.detect', 'ticket.read', 'ticket.revision', 'ticket.comment', 'ticket.states', 'ticket.setState',
-  'database.url', 'database.connect', 'database.disconnect', 'database.query', 'database.provision', 'database.release',
+  'database.url', 'database.connect', 'database.disconnect', 'database.query', 'database.provision', 'database.release', 'database.snapshot', 'database.changes',
   'delivery.push', 'delivery.findPullRequest', 'delivery.openPullRequest', 'delivery.describe', 'delivery.checks', 'delivery.checkLogs', 'delivery.reviews',
   ...runEvents,
 ]);
@@ -66,6 +66,7 @@ export function validateConnector(connector) {
   for (const [key, spec] of Object.entries(connector.databaseOptions ?? {})) validateSetting(connector, key, spec);
   if (hooks.has('ticket.detect') !== hooks.has('ticket.read')) fail(connector, 'ticket.detect and ticket.read come together.');
   if (hooks.has('ticket.setState') !== hooks.has('ticket.states')) fail(connector, 'ticket.states and ticket.setState come together.');
+  if (hooks.has('database.snapshot') !== hooks.has('database.changes')) fail(connector, 'database.snapshot and database.changes come together.');
   if (hooks.has('delivery.openPullRequest') && !hooks.has('delivery.push')) fail(connector, 'delivery.openPullRequest needs delivery.push.');
   return connector;
 }
@@ -75,7 +76,7 @@ export const delivers = connector => hooksOf(connector).includes('delivery.push'
 
 export function describeConnector(connector, { builtIn = false } = {}) {
   return {
-    id: connector.id, name: connector.name, description: connector.description ?? null, icon: connector.icon ?? null, builtIn, delivers: delivers(connector), tickets: hooksOf(connector).includes('ticket.read'), databases: ['database.url', 'database.connect'].some(hook => hooksOf(connector).includes(hook)), databaseOptions: Object.entries(connector.databaseOptions ?? {}).map(([key, spec]) => ({ key, label: spec.label, description: spec.description ?? null, type: spec.type, default: spec.default ?? (spec.type === 'boolean' ? false : ''), pattern: spec.pattern ?? null })), queries: hooksOf(connector).includes('database.query'), provisions: hooksOf(connector).includes('database.provision'),
+    id: connector.id, name: connector.name, description: connector.description ?? null, icon: connector.icon ?? null, builtIn, delivers: delivers(connector), tickets: hooksOf(connector).includes('ticket.read'), databases: ['database.url', 'database.connect'].some(hook => hooksOf(connector).includes(hook)), databaseOptions: Object.entries(connector.databaseOptions ?? {}).map(([key, spec]) => ({ key, label: spec.label, description: spec.description ?? null, type: spec.type, default: spec.default ?? (spec.type === 'boolean' ? false : ''), pattern: spec.pattern ?? null })), queries: hooksOf(connector).includes('database.query'), provisions: hooksOf(connector).includes('database.provision'), changes: hooksOf(connector).includes('database.changes'),
     actions: Object.entries(connector.actions).map(([id, action]) => ({ id, label: action.label, description: action.description ?? null, access: action.access, hooks: Object.keys(action.hooks ?? {}), tools: Object.keys(action.tools ?? {}).map(name => exposedToolName(connector, name)) })),
     settings: Object.entries(connector.settings ?? {}).map(([key, spec]) => ({ key, label: spec.label, description: spec.description ?? null, type: spec.type, default: spec.secret ? '' : spec.default ?? (spec.type === 'boolean' ? false : ''), pattern: spec.pattern ?? null, secret: spec.secret === true })),
   };

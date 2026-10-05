@@ -45,6 +45,9 @@ function TaskCommands({ id, perTask, set }) {
     {field(`${id}-drop`, 'Drop', perTask.drop, drop => set({ drop }), 'docker rm -f app-{task}')}
     <div className="field"><Label htmlFor={`${id}-env`}>Variables</Label><Textarea id={`${id}-env`} className="mono-input" rows={2} placeholder="DATABASE_URL=postgres://postgres@127.0.0.1:{port}/postgres" value={perTask.env} onChange={event => set({ env: event.target.value })}/></div>
     <p className="muted">{'{task}'} is unique to the task, {'{port}'} a free local port.</p>
+    {field(`${id}-snapshot`, 'Snapshot', perTask.snapshot, snapshot => set({ snapshot }), 'scripts/db-snapshot {snapshot}')}
+    {field(`${id}-changes`, 'Changes', perTask.changes, changes => set({ changes }), 'scripts/db-changes {snapshot}')}
+    <p className="muted">Optional, to show what a run changed in the data. Snapshot saves the database's state into the folder {'{snapshot}'}; changes prints its differences from it as JSON.</p>
   </>;
 }
 

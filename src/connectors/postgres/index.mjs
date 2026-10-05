@@ -1,9 +1,10 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { databaseChanges } from './changes.mjs';
 
 const failed = result => result.exitCode !== 0 || result.timedOut || result.cancelled;
-const nullMarker = '\\N', queryTimeoutMs = 20000, adminTimeoutMs = 120_000, copyTimeoutMs = 900_000;
+const nullMarker = '\\N', queryTimeoutMs = 20000, adminTimeoutMs = 120_000, copyTimeoutMs = 900_000, snapshotTimeoutMs = 120_000, snapshotOutput = 64_000_000;
 const withDatabase = (url, name) => { const target = new URL(url); target.pathname = `/${name}`; return target.href; };
 const identifier = name => `"${name.replaceAll('"', '""')}"`;
 
@@ -14,7 +15,7 @@ export function postgresUrl(env, variable) {
 }
 
 function createPostgres(dispatch) {
-  const psql = (args, { signal, env = {}, timeoutMs = queryTimeoutMs } = {}) => dispatch.runProcess('psql', ['-X', '-q', ...args], { cwd: tmpdir(), signal, timeoutMs, inheritEnv: false, env: dispatch.localEnvironment({ PGCONNECT_TIMEOUT: '5', ...env }) });
+  const psql = (args, { signal, env = {}, timeoutMs = queryTimeoutMs, maxOutput } = {}) => dispatch.runProcess('psql', ['-X', '-q', ...args], { cwd: tmpdir(), signal, timeoutMs, maxOutput, inheritEnv: false, env: dispatch.localEnvironment({ PGCONNECT_TIMEOUT: '5', ...env }) });
 
   // A read-only database gets a read-only session with a statement limit, whatever the query says.
   async function query({ sql, env, readOnly = true }, ctx) {
@@ -54,6 +55,12 @@ function createPostgres(dispatch) {
     await admin(postgresUrl(env, ctx.settings.variable), `drop database if exists ${identifier(task.name)} with (force)`, ctx.signal);
   }
 
+  async function readJson(sql, ctx, env) {
+    const result = await psql([postgresUrl(env, ctx.settings.variable), '-A', '-t', '-v', 'ON_ERROR_STOP=1', '-c', sql], { signal: ctx.signal, timeoutMs: snapshotTimeoutMs, maxOutput: snapshotOutput, env: { PGOPTIONS: '-c default_transaction_read_only=on' } });
+    if (failed(result)) throw new Error(String(result.output ?? '').trim() || 'psql failed with no output.');
+    return String(result.output ?? '');
+  }
+
   async function status() {
     const version = await dispatch.runProcess('psql', ['--version'], { cwd: tmpdir(), timeoutMs: 10000, inheritEnv: false, env: dispatch.localEnvironment() });
     return failed(version) ? { available: false, authenticated: false, detail: 'Install the PostgreSQL client (psql) to query a development database.' } : { available: true, authenticated: true, version: version.output.trim(), detail: 'psql is installed.' };
@@ -67,6 +74,7 @@ function createPostgres(dispatch) {
     },
     actions: {
       query: { label: 'Run queries', description: 'Run the agent’s queries and show the rows in the run, in a read-only session unless the repository gives that database write access; 15 s statement limit.', access: 'read', hooks: { 'database.query': query } },
+      changes: { label: 'Show a task’s database changes', description: 'Keep a copy of the task database’s rows when it is created, when a service starts or when the agent asks, and show the rows inserted, updated and deleted since. Tables over 20,000 rows are compared by row count.', access: 'read', hooks: databaseChanges(dispatch, readJson) },
       taskDatabases: { label: 'Give each task its own database', description: 'Clone the development database for each task on the same server, and drop the clone when the task’s worktree is removed. The development database itself is only read.', access: 'write', hooks: { 'database.provision': provision, 'database.release': release } },
     },
   };

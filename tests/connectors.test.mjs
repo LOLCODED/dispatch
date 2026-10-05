@@ -33,6 +33,7 @@ test('the contract validates ids, actions, hooks and settings', () => {
     minimal('ok', { actions: { read: { label: 'Read', access: 'read', hooks: { 'ticket.read': () => {} } } } }),
     minimal('ok', { actions: { a: { label: 'A', access: 'read', hooks: { 'run.ready': () => {} } }, b: { label: 'B', access: 'write', hooks: { 'run.ready': () => {} } } } }),
     minimal('ok', { actions: { push: { label: 'PR', access: 'write', hooks: { 'delivery.openPullRequest': () => {} } } } }),
+    minimal('ok', { actions: { changes: { label: 'Changes', access: 'read', hooks: { 'database.snapshot': () => {} } } } }),
     minimal('ok', { settings: { remote: { label: 'Remote', type: 'number' } } }), minimal('ok', { settings: { remote: { label: 'Remote', type: 'string', pattern: '(' } } })];
   for (const connector of bad) assert.throws(() => validateConnector(connector));
   assert.deepEqual(describeConnector(exampleTracker().connector).actions.map(action => [action.id, action.access]), [['read', 'read'], ['comment', 'write'], ['state', 'write'], ['notify', 'write']]);

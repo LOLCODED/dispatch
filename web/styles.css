@@ -1187,6 +1187,16 @@ legend { font-size:12px; font-weight:600; margin-bottom:8px; }
 .backend-entry { --kind:var(--muted-foreground); box-shadow:inset 2px 0 0 color-mix(in srgb, var(--kind) 70%, transparent); }
 .backend-entry.type-http { --kind:var(--active); } .backend-entry.type-table { --kind:var(--syntax-keyword); } .backend-entry.type-log { --kind:var(--attention); } .backend-entry.type-checks { --kind:var(--syntax-property); }
 .backend-spacer { flex:1; }
+.backend-entry.type-changes { --kind:var(--success); }
+.backend-pills { display:flex; gap:4px; flex:none; }
+.changes-table + .changes-table { margin-top:10px; }
+.changes-table-head { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:4px; font-size:11.5px; }
+.changes-table-head code { font-family:var(--mono); }
+.changes-grid tr.change-inserted .backend-row-number { color:var(--success); } .changes-grid tr.change-updated .backend-row-number { color:var(--attention); } .changes-grid tr.change-deleted .backend-row-number { color:var(--danger); }
+.changes-grid tr.change-deleted td:not(.backend-row-number) { color:var(--muted-foreground); text-decoration:line-through; }
+.changes-grid td.is-changed { background:color-mix(in srgb, var(--attention) 10%, transparent); }
+.change-before { color:var(--muted-foreground); text-decoration:line-through; }
+.changes-log { margin-top:8px; font-size:11px; } .changes-log summary { cursor:pointer; color:var(--muted-foreground); }
 .backend-checks li.tone-pending small { color:var(--active); }
 .backend-row { padding-left:10px; }
 .backend-kind-icon { flex:none; color:var(--kind); }
