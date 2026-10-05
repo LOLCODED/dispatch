@@ -130,7 +130,7 @@ Delivery hooks receive `change`, the facts of one tested change: `id`, `title`, 
 | `delivery.findPullRequest(change, ctx)` | The branch's existing pull request, or `null` |
 | `delivery.openPullRequest(change, ctx)` | The new pull request |
 | `delivery.describe(change, ctx)` | Nothing; rewrites the open pull request's description (used to link related pull requests) |
-| `delivery.checks(change, ctx)` | `[{ name, status, conclusion, id?, app? }]` for `change.delivery.headSha` |
+| `delivery.checks(change, ctx)` | `[{ name, status, conclusion, id?, app? }]` for `change.delivery.headSha`. The agent's `dispatch_ci` tool also calls it, with `headSha` set to the task's last pushed commit or the base branch head. |
 | `delivery.checkLogs(change, failing, ctx)` | `[{ name, conclusion, log }]` for the failing checks (at most three); dispatch bounds them into one repair prompt |
 | `delivery.reviews(change, ctx)` | `[{ author, body, at, path?, line?, state? }]`; dispatch keeps items written after the push and turns them into one follow-up |
 

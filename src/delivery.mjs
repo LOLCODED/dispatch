@@ -50,6 +50,7 @@ export async function fetchBase(run, remote, base, signal) {
 }
 
 const deliveryView = (run, options) => changeFacts(run, options);
+const atCommit = (run, sha) => { const view = deliveryView(run); return { ...view, delivery: { ...view.delivery, headSha: sha } }; };
 const hookSteps = { 'delivery.push': 'push', 'delivery.findPullRequest': 'pr', 'delivery.openPullRequest': 'pr', 'delivery.describe': 'pr', 'delivery.checks': 'ci', 'delivery.checkLogs': 'ci', 'delivery.reviews': 'review' };
 const checkRuns = list => { if (!Array.isArray(list)) throw new DeliveryError('ci', 'failed', 'The connector returned no list of checks.'); return list; };
 const ciRecord = (sha, checks) => ({ sha, state: ciState(checks), checks, checkedAt: new Date().toISOString() });
@@ -99,11 +100,18 @@ export class Delivery {
     if (!this.can(project, connector, 'delivery.describe')) throw new Error(`Updating pull requests is switched off for ${connector.name}.`);
     await this.call(project, connector, 'delivery.describe', [deliveryView(run, extras)], signal);
   }
+  // Reads CI for any commit of the run's repository without touching the run's delivery record.
+  async ciFor(run, project, sha, { signal } = {}) {
+    const connector = this.connector(project);
+    if (!this.can(project, connector, 'delivery.checks')) throw new DeliveryError('ci', 'off', `Reading CI checks is switched off for ${connector.name}.`);
+    return ciRecord(sha, checkRuns(await this.call(project, connector, 'delivery.checks', [atCommit(run, sha)], signal)));
+  }
+  failureLogs(run, project, options = {}) { return this.ciLogs(run, project, run.delivery.ci, options); }
   // A log that cannot be read becomes a note, not a refusal.
-  async failureLogs(run, project, { signal } = {}) {
-    const connector = this.connector(project), failing = failingChecks(run.delivery.ci).slice(0, maxCiLogs);
+  async ciLogs(run, project, ci, { signal } = {}) {
+    const connector = this.connector(project), failing = failingChecks(ci).slice(0, maxCiLogs);
     if (!this.can(project, connector, 'delivery.checkLogs')) return failing.map(check => ({ name: check.name, conclusion: check.conclusion, log: `Reading CI logs is switched off for ${connector.name}.` }));
-    const logs = await this.call(project, connector, 'delivery.checkLogs', [deliveryView(run), failing], signal);
+    const logs = await this.call(project, connector, 'delivery.checkLogs', [atCommit(run, ci.sha), failing], signal);
     return Array.isArray(logs) ? logs.slice(0, maxCiLogs).map(item => ({ name: String(item?.name ?? ''), conclusion: item?.conclusion ?? null, log: String(item?.log ?? '') })) : [];
   }
   // Feedback written since the delivered head was pushed; older reviews were about code that has since changed.
