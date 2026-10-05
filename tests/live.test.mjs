@@ -7,7 +7,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { Engine } from '../src/engine.mjs';
 import { LiveService } from '../src/live.mjs';
 import { git, plainText } from '../src/local-tools.mjs';
-import { exampleTracker, issueUrl } from './tracker-double.mjs';
+import { exampleTracker, issueUrl, parseIssueRef } from './tracker-double.mjs';
 import { completesWithFiles, liveFixture, settle, until } from './live-double.mjs';
 import { Tasks } from '../src/tasks.mjs';
 import { taskState } from '../src/board-state.mjs';
@@ -286,6 +286,19 @@ test('Auto resolves tracker ticket text after read-only intake rather than guess
   project.connectors = { example: { enabled: true } };
   const run = await live.create({ projectId: 'auto', input: issueUrl('p', 5) }); await settle(engine, run);
   assert.equal(run.projectId, project.id); assert.equal(run.repositorySelection.mode, 'auto'); assert.equal(run.status, 'ready');
+});
+
+test('text typed around a tracker link reaches the worker as an operator note; a bare link adds none', async t => {
+  const tracker = exampleTracker();
+  tracker.connector.actions.read.hooks['ticket.detect'] = (input, ctx) => parseIssueRef(String(input).match(/https:\/\/tracker\.example\/\S+/)?.[0] ?? input, ctx);
+  const prompts = [];
+  const { live, engine, project } = await fixture(t, async (options, turn) => { prompts.push(options.prompt); return completesWithFiles(options, turn); }, tracker);
+  project.connectors = { example: { enabled: true } };
+  const noted = await live.create({ projectId: project.id, input: `Please take this one\n${issueUrl('p', 5)}\nKeep the old header` }); await settle(engine, noted);
+  assert.equal(noted.ticket.title, 'Issue 5');
+  assert.match(prompts[0], /TICKET:\nIssue 5[\s\S]*OPERATOR NOTE \(typed with the ticket link\):\nPlease take this one\nhttps:\/\/tracker\.example\/p\/issues\/5\nKeep the old header/);
+  const bare = await live.create({ projectId: project.id, input: issueUrl('p', 6) }); await settle(engine, bare);
+  assert.equal(bare.ticket.note, undefined); assert.doesNotMatch(prompts.at(-1), /OPERATOR NOTE/);
 });
 
 test('a worker question persists, releases its slot, and resumes with the snapshotted model and fresh checks', async t => {
