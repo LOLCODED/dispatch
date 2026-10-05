@@ -22,7 +22,7 @@ Verification status: Codex Auto runs (worktree, checks, local commit, repair, fo
 - **Non-goals:** see the list below. If a change touches one, stop and ask.
 - **Pipeline changes:** report real-run time, tokens and outcome before and after. Controlled doubles prove correctness, not performance.
 - **Verification status:** label a feature "live-verified" only after a real provider run. Otherwise it is "tested with doubles."
-- **Settings are reachable everywhere (hard rule):** every setting, existing or new, is declared in `src/settings.mjs` and so can be read and changed through the HTTP API (`/api/settings`), the CLI (`dispatch settings`) and a task, exactly as its settings page would. A change that adds or renames a setting registers it in the same change; `tests/settings.test.mjs` fails on any stored setting the registry does not know. Secrets are never readable.
+- **Settings are reachable everywhere (hard rule):** every setting, existing or new, is declared in `src/settings.mjs` and so can be read and changed through the HTTP API (`/api/settings`), the CLI (`dispatch settings`) and a task (`dispatch_settings`, each change approved by the operator), exactly as its settings page would. A change that adds or renames a setting registers it in the same change; `tests/settings.test.mjs` fails on any stored setting the registry does not know. Secrets are never readable.
 - **Connectors:** core never names a specific connector; `src/connectors/<name>/` must be deletable without breaking anything. A connector uses only the `dispatch` object it is given, keeps its tests in its own folder, and every action that writes outside dispatch starts off.
 
 ## Non-goals (for now)

@@ -787,7 +787,7 @@ test('a ready run leaves an ordered step log, a patch artifact that outlives the
   const call = steps.find(step => step.kind === 'tool.call'), result = steps.find(step => step.kind === 'tool.result');
   assert.equal(call.callId, 'c1'); assert.equal(result.callId, 'c1'); assert.deepEqual(call.input, { command: 'ls' });
   assert.ok(!steps.some(step => step.kind === 'tool.call' && step.name === 'dispatch_memory'));
-  assert.deepEqual(steps.find(step => step.kind === 'turn.start').tools, ['dispatch_memory', 'dispatch_repository']);
+  assert.deepEqual(steps.find(step => step.kind === 'turn.start').tools, ['dispatch_memory', 'dispatch_settings', 'dispatch_repository']);
   assert.ok(steps.find(step => step.kind === 'check.end').artifactIds.length === 0);
   const patch = run.artifacts.find(item => item.check === 'patch');
   assert.equal(patch.name, 'turn-1.patch'); assert.equal(patch.stepId, steps.find(step => step.kind === 'files').id);
@@ -810,7 +810,7 @@ test('the dispatch browser is off unless the repository enables it; on, tool cal
   });
   live.browserSession = browserSession;
   const off = await live.create({ projectId: project.id, input: 'Change the value' }); await settle(engine, off);
-  assert.equal(off.status, 'ready'); assert.deepEqual(events, [['dispatch_memory', 'dispatch_repository']]); assert.equal(sessions.length, 0);
+  assert.equal(off.status, 'ready'); assert.deepEqual(events, [['dispatch_memory', 'dispatch_settings', 'dispatch_repository']]); assert.equal(sessions.length, 0);
   writeFileSync(join(project.repositoryPath, 'package.json'), JSON.stringify({ scripts: { dev: `${process.execPath} -e "require('node:http').createServer((q,r)=>r.end('ok')).listen(process.env.PORT,'127.0.0.1');setInterval(()=>{},1000)"` } }));
   await git(project.repositoryPath, ['add', '.']); await git(project.repositoryPath, ['-c', 'user.name=T', '-c', 'user.email=t@localhost', 'commit', '-m', 'dev script']);
   await live.saveProject({ ...project, confirmed: true, browser: { enabled: true, headed: false } }, project.id);

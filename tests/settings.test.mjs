@@ -61,3 +61,18 @@ test('preferences are validated settings, stored on the server and read back wit
   await assert.rejects(registry.set('attention.volume', 400), /does not take that value/);
   assert.equal(fromCache('attention.volume', '35'), 35); assert.equal(fromCache('appearance.theme', 'purple'), undefined); assert.equal(cacheText('keybinds', { a: 'B' }), '{"a":"B"}');
 });
+
+test('dispatch_settings reads freely and changes a setting only when the operator approves', async t => {
+  const { live, project } = await liveFixture(t);
+  const asked = [], answer = { value: 'Change it' }, run = { id: 'r1', project, events: [] };
+  live.interactions = { request: async (target, request) => { asked.push(request.questions[0].question); return { answers: { setting: { answers: [answer.value] } } }; } };
+  const call = args => live.settingsTool.call(run, args).then(result => JSON.parse(result.content[0].text.startsWith('The operator') ? JSON.stringify(result.content[0].text) : result.content[0].text));
+  assert.deepEqual((await call({ action: 'list', search: 'theme' })).map(entry => entry.key), ['appearance.theme']);
+  assert.deepEqual(await call({ action: 'get', key: 'appearance.theme' }), { key: 'appearance.theme', value: 'system' });
+  assert.deepEqual(await call({ action: 'set', key: 'appearance.theme', value: 'dark' }), { key: 'appearance.theme', value: 'dark' });
+  assert.deepEqual(asked, ['Change appearance.theme from system to dark?']);
+  answer.value = 'Leave it';
+  assert.match(await call({ action: 'set', key: 'repository.review', value: true, repository: project.name }), /kept repository.review/);
+  assert.equal(live.projects[0].review, false); assert.equal(live.settingsRegistry.get('appearance.theme'), 'dark');
+  await assert.rejects(live.settingsTool.call(run, { action: 'set', key: 'appearance.theme' }), /set needs a value/);
+});

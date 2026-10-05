@@ -34,6 +34,6 @@ test('the worker prompt names dispatch tools only when the provider receives the
     const { live, engine, project } = await liveFixture(t, { adapter: record(tools), project: { browser: { enabled: true } } });
     await settle(engine, await live.create({ projectId: project.id, input: `Prompt with tools ${tools}` }));
   }
-  assert.match(prompts[0], /dispatch_browser_\*/); assert.match(prompts[0], /dispatch_http/); assert.match(prompts[0], /dispatch_memory/);
+  assert.match(prompts[0], /dispatch_browser_\*/); assert.match(prompts[0], /dispatch_http/); assert.match(prompts[0], /dispatch_memory/); assert.match(prompts[0], /about dispatch itself .* dispatch_settings/);
   assert.doesNotMatch(prompts[1], /dispatch_[a-z]/);
 });

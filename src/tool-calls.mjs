@@ -19,7 +19,7 @@ export class DispatchToolCalls {
   tools(run, contract, { readOnly = false } = {}) {
     const browser = usesBrowser(run) && Boolean(this.live.browserCall);
     const connectors = readOnly && contract.readOnlyTools !== true ? [] : this.live.connectors?.agentTools(run.project, { readOnly: readOnly || run.kind === 'answer' }) ?? [];
-    return [...toolSet({ risk: !readOnly && riskEnabled(run.project), question: contract.questions === 'tool' && !readOnly, memory: run.project?.memory !== false && !readOnly, browser: browser && (!readOnly || contract.readOnlyTools === true), http: browser && !readOnly && run.kind !== 'answer', sql: Boolean(this.live.databases?.available(run.project).length) && (!readOnly || contract.readOnlyTools === true), service: !readOnly && run.kind !== 'answer' && Boolean(this.live.services) && (browser || [run, ...(run.linked ?? [])].some(owner => owner.project?.services?.length)), ci: !readOnly && Boolean(this.live.ci?.available(run)), database: !readOnly && run.kind === 'change' && Boolean(this.live.taskDatabases) && Boolean(perTask(run.project)), review: !readOnly && run.kind !== 'answer', repository: !readOnly && run.kind === 'change' && Boolean(this.live.repositories), permission: !readOnly && run.kind !== 'answer' && contract.permissionPrompts === 'tool' && Boolean(this.live.sensitiveWrites) }), ...connectors];
+    return [...toolSet({ risk: !readOnly && riskEnabled(run.project), question: contract.questions === 'tool' && !readOnly, memory: run.project?.memory !== false && !readOnly, browser: browser && (!readOnly || contract.readOnlyTools === true), http: browser && !readOnly && run.kind !== 'answer', sql: Boolean(this.live.databases?.available(run.project).length) && (!readOnly || contract.readOnlyTools === true), service: !readOnly && run.kind !== 'answer' && Boolean(this.live.services) && (browser || [run, ...(run.linked ?? [])].some(owner => owner.project?.services?.length)), ci: !readOnly && Boolean(this.live.ci?.available(run)), settings: !readOnly && Boolean(this.live.settingsTool), database: !readOnly && run.kind === 'change' && Boolean(this.live.taskDatabases) && Boolean(perTask(run.project)), review: !readOnly && run.kind !== 'answer', repository: !readOnly && run.kind === 'change' && Boolean(this.live.repositories), permission: !readOnly && run.kind !== 'answer' && contract.permissionPrompts === 'tool' && Boolean(this.live.sensitiveWrites) }), ...connectors];
   }
   async call(run, name, args, { tools, signal, readOnly = false } = {}) {
     const tool = tools.find(item => item.name === name);
@@ -52,6 +52,7 @@ export class DispatchToolCalls {
     if (tool.kind === 'service') return this.live.services.call(run, args, options);
     if (tool.kind === 'ci') return this.live.ci.call(run, args, options);
     if (tool.kind === 'database') return this.live.taskDatabases.call(run, args, options);
+    if (tool.kind === 'settings') return this.live.settingsTool.call(run, args, options);
     if (tool.kind === 'sql') return this.live.databases.call(run, args, options);
     if (tool.kind === 'connector') return this.live.connectors.callTool(run.project, tool.name, args, { signal: options.signal, workspace: run.workspace, readOnly: options.readOnly || run.kind === 'answer', ...taskDatabaseOf(this.live, run) });
     throw new InputError('Unknown dispatch tool kind.');
