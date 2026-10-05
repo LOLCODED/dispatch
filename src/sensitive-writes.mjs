@@ -17,14 +17,22 @@ export function writeTarget(run, args) {
   return root ? { path: target, inner: relative(root, target) } : null;
 }
 
+export function sandboxedShell(run, args) {
+  if (run.access !== 'home') return deny('dispatch only approves commands that run inside the sandbox.');
+  if (args.input?.dangerouslyDisableSandbox === true) return deny('dispatch keeps every command in the sandbox. Run it without dangerouslyDisableSandbox; if it cannot work there, tell the operator what it needs (for example network access) instead of retrying.');
+  return allow(args.input);
+}
+
 export const needsOperator = ({ inner }) => inner.split(sep).some(part => alwaysAsk.includes(part));
 
-// Answers Claude Code's permission prompts for a run: only file writes inside the task's worktrees can pass,
-// either because the repository allows sensitive files or because the operator approves this path for the run.
+// Answers Claude Code's permission prompts for a run. Shell commands pass while the OS sandbox contains them: Claude Code
+// also asks about commands it cannot parse (inline variables, compound commands), and refusing those only made agents rephrase in a loop.
+// File writes pass inside the task's worktrees, when the repository allows sensitive files or the operator approves the path.
 export class SensitiveWrites {
   constructor(live) { this.live = live; }
 
   async call(run, args, { signal } = {}) {
+    if (args?.tool_name === 'Bash') return sandboxedShell(run, args);
     const target = writeTarget(run, args);
     if (!target) return deny('dispatch only approves file edits inside this task\'s worktrees; nobody can approve anything else during a run.');
     if ((run.sensitiveApprovals ?? []).includes(target.path)) return allow(args.input);

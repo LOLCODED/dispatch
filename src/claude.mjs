@@ -19,7 +19,7 @@ const excluded = ['AskUserQuestion', 'Agent', 'Task', 'WebFetch', 'WebSearch'];
 const sandbox = writableRoots => ({ sandbox: { enabled: true, autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: false, failIfUnavailable: true, ...(writableRoots.length ? { filesystem: { allowWrite: writableRoots } } : {}) } });
 
 // Owner turns write through Claude's OS sandbox unless the operator chose full access. Prompts go to dispatch's
-// permission tool when the turn has it (it approves only sensitive-file writes in the worktrees) and are refused otherwise.
+// permission tool when the turn has it (it approves sandboxed shell commands and file writes in the worktrees) and are refused otherwise.
 // Review turns cannot call mutating tools.
 export function claudeArgs({ sessionId, resume, execution, readOnly = false, mcpConfig, mcpTools = [], writableRoots = [], readableRoots = [], fullAccess = false, streamInput = false }) {
   const prompts = mcpConfig && !readOnly && mcpTools.includes(permissionTool.name) ? ['host', '--permission-prompt-tool', `mcp__dispatch__${permissionTool.name}`] : ['none'];

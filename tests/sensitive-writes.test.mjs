@@ -84,3 +84,16 @@ test('only providers that route prompts to a tool get the permission tool, and n
   assert.equal(result.isError, false);
   assert.equal(JSON.parse(result.content[0].text).behavior, 'allow');
 });
+
+test('shell commands Claude Code asks about pass while the sandbox contains them, never with the sandbox off', async () => {
+  const { run, asked, writes } = harness();
+  const shell = (command, extra = {}) => ({ tool_name: 'Bash', input: { command, ...extra } });
+  assert.equal((await writes.call(run, shell('W=/work/run-1; git -C $W status'))).behavior, 'deny');
+  run.access = 'home';
+  assert.deepEqual(await writes.call(run, shell('VITE_OUTDIR=dist vite build')), { behavior: 'allow', updatedInput: { command: 'VITE_OUTDIR=dist vite build' } });
+  const escape = await writes.call(run, shell('npm view left-pad', { dangerouslyDisableSandbox: true }));
+  assert.equal(escape.behavior, 'deny'); assert.match(escape.message, /tell the operator what it needs/);
+  run.access = 'full';
+  assert.equal((await writes.call(run, shell('ls'))).behavior, 'deny');
+  assert.equal(asked.length, 0);
+});
