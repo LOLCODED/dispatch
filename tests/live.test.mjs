@@ -548,7 +548,7 @@ test('repository memory records ready runs, injects notes on the first turn only
     return { outcome: 'completed', sessionId: 'session-1', summary: 'Done.\n\nNotes for next time:\n- Balance labels come from the shared formatter\n- Run the unit check from the worktree root\n- Third note\n- Fourth note is dropped' };
   });
   const first = await live.create({ projectId: project.id, input: 'Fix the balance label' }); await settle(engine, first);
-  assert.equal(first.status, 'ready'); assert.deepEqual(first.memory, { injectedCharacters: 0, sourceLines: 0, notesBytes: 0 }); assert.doesNotMatch(prompts[0], /Repository notes/); assert.match(prompts[0], /Notes for next time/);
+  assert.equal(first.status, 'ready'); assert.deepEqual(first.memory, { injectedCharacters: 0, sourceLines: 0, notesBytes: 0, used: [] }); assert.doesNotMatch(prompts[0], /Repository notes/); assert.match(prompts[0], /Notes for next time/);
   const notesPath = join(engine.dataDir, 'memory', project.id, 'notes.md'), notes = readFileSync(notesPath, 'utf8');
   assert.match(notes, /## Gotchas\n- Balance labels come from the shared formatter\n- Run the unit check from the worktree root\n- Third note\n/); assert.doesNotMatch(notes, /Fourth/); assert.match(notes, /## Recent tasks\n- \d{4}-\d{2}-\d{2} Fix the balance label — ready, 1 files\n/);
   assert.ok(!notesPath.startsWith(first.workspace)); assert.equal(existsSync(join(first.workspace, 'notes.md')), false); assert.equal(await git(first.workspace, ['status', '--porcelain']), '');

@@ -69,6 +69,26 @@ test('notes are projected from notes.md, can be disabled to leave the injected s
   assert.equal(brain.catalog({ projectId: 'p1', kind: 'note' }).find(entry => entry.text === 'Seed the database first').source, 'agent');
 });
 
+test('a note that replaces a similar one drops the older entry, and operator notes are kept from ageing out', t => {
+  const repo = project('p1');
+  const { brain, memory } = fixture(t, [repo]);
+  const old = brain.add({ kind: 'note', scope: 'project:p1', text: 'The browser type and click tools reject f1e style refs after navigating, so fields on those snapshots cannot be typed into', source: 'agent' });
+  brain.add({ kind: 'note', scope: 'project:p1', text: 'The browser can click f1e style refs after navigating; only typing into fields is refused' });
+  assert.equal(brain.find(old.id), null);
+  assert.deepEqual(brain.catalog({ projectId: 'p1', kind: 'note' }).map(entry => entry.text), ['The browser can click f1e style refs after navigating; only typing into fields is refused']);
+  assert.doesNotMatch(memory.readNotes('p1'), /rejects f1e/);
+  assert.equal(brain.keptNotes('p1').size, 1);
+});
+
+test('note entries whose line is no longer in notes.md are dropped when the brain loads', t => {
+  const repo = project('p1');
+  const { store, memory, brain } = fixture(t, [repo]);
+  brain.add({ kind: 'note', scope: 'project:p1', text: 'Still in the notes file' });
+  store.state.brain.push(entrySchema({ kind: 'note', scope: 'project:p1', text: 'Pruned from the notes file long ago', source: 'agent' }));
+  const reloaded = new Brain(store, { memory });
+  assert.deepEqual(reloaded.entries.filter(entry => entry.kind === 'note').map(entry => entry.text), ['Still in the notes file']);
+});
+
 test('connectors project from project settings and global connector entries become defaults', t => {
   const { brain } = fixture(t, [project('p1'), project('p2')]);
   const connectors = brain.catalog({ projectId: 'p1', kind: 'connector' });

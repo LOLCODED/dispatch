@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { InputError } from './engine.mjs';
 import { digest } from './local-tools.mjs';
-import { parseNotes, tokens } from './memory.mjs';
+import { noteId, parseNotes, tokens } from './memory.mjs';
 
 export const ladder = { suggest: 2, auto: 4, history: 10 };
 export const kinds = ['rule', 'note', 'preference', 'connector'];
@@ -74,7 +74,7 @@ export function entryLabel(entry) {
 const matches = (entry, words, raw) => { const label = entryLabel(entry).toLowerCase(); return label.includes(raw) || [...tokens(label)].some(word => words.has(word)); };
 
 export class Brain {
-  constructor(store, { memory, connectorIds = () => [] } = {}) { this.store = store; this.memory = memory; this.connectorIds = connectorIds; this.importRules(); }
+  constructor(store, { memory, connectorIds = () => [] } = {}) { this.store = store; this.memory = memory; this.connectorIds = connectorIds; this.importRules(); this.reconcileNotes(); }
   get entries() { return this.store.state.brain; }
   get projects() { return this.store.state.projects; }
   save() { this.store.save(); }
@@ -86,6 +86,18 @@ export class Brain {
       this.entries.push(entrySchema({ kind: 'rule', scope: projectScope(project.id), text: line, origin: { via: 'import' } })); imported = true;
     }
     if (imported) this.save();
+  }
+  // notes.md is the source of truth; entries for lines pruned from it would list notes no task is ever given.
+  reconcileNotes() {
+    if (!this.memory) return;
+    const present = new Map();
+    const kept = entry => {
+      const projectId = entry.scope.replace(/^project:/, '');
+      if (!present.has(projectId)) present.set(projectId, this.memory.noteIds(projectId));
+      return present.get(projectId).has(noteId(entry.text));
+    };
+    const entries = this.entries.filter(entry => entry.kind !== 'note' || kept(entry));
+    if (entries.length !== this.entries.length) { this.store.state.brain = entries; this.save(); }
   }
   rules(projectId) { return this.entries.filter(entry => entry.kind === 'rule' && entry.scope === projectScope(projectId)); }
   syncRules(project) { project.instructions = this.rules(project.id).filter(entry => entry.enabled).map(entry => entry.text).slice(0, 20); }
@@ -115,9 +127,17 @@ export class Brain {
     const projectId = entry.scope.replace(/^project:/, '');
     const existing = this.entries.find(item => item.kind === 'note' && item.scope === entry.scope && item.key === entry.key);
     if (existing) { existing.enabled = true; existing.updatedAt = now(); this.save(); return existing; }
-    this.memory?.addLine(projectId, entry.section, entry.text);
+    const written = this.memory?.addLine(projectId, entry.section, entry.text);
+    this.forgetNotes(projectId, written?.forgotten ?? []);
     this.entries.push(entry); this.save(); return entry;
   }
+  forgetNotes(projectId, lines) {
+    const gone = new Set(lines.map(noteKey));
+    if (!gone.size) return;
+    this.store.state.brain = this.entries.filter(item => !(item.kind === 'note' && item.scope === projectScope(projectId) && gone.has(item.key)));
+    this.save();
+  }
+  keptNotes(projectId) { return new Set(this.entries.filter(entry => entry.kind === 'note' && entry.scope === projectScope(projectId) && (entry.source === 'operator' || entry.pinned)).map(entry => noteId(entry.text))); }
   recordNotes(run, lines) {
     for (const line of lines) if (!this.entries.some(item => item.kind === 'note' && item.scope === projectScope(run.projectId) && item.key === noteKey(line))) {
       this.entries.push(entrySchema({ kind: 'note', scope: projectScope(run.projectId), text: line, source: 'agent', section: /\b(convention|style|prefer|naming|pattern|format|lint)\b/i.test(line) ? 'Conventions' : 'Gotchas', origin: { runId: run.id, via: 'tool' } }));

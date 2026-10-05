@@ -77,7 +77,7 @@ Everything dispatch remembers is on one page, **Brain** (Settings → Brain): yo
 
 - **Standing rules:** up to 20 lines sent on every worker turn and to the reviewer. Tell the agent "always do X" and it records the rule with `dispatch_memory`.
 - **Preferences** grow deterministically: the first time dispatch needs a choice it asks; after 2 matching answers it suggests; after 4 it acts on its own and says so with an Undo. A different answer starts over, and you can pin a mode. No model call.
-- **Repository notes:** `notes.md` and `tasks.jsonl` under `<data directory>/memory/<project id>/`, never in the repository. Finished runs append a summary; ready runs add up to three learnings from the worker's closing notes. A new task's first turn receives relevant notes, capped at 2,000 characters and labelled as data. Turn it off per repository. The value on repeat tasks is not yet measured.
+- **Repository notes:** `notes.md` and `tasks.jsonl` under `<data directory>/memory/<project id>/`, never in the repository. Finished runs append a summary; ready runs add up to three learnings from the worker's closing notes. A new note about the same thing as an older one replaces it, and a note no task has been given or learned again in 40 ready runs is dropped; notes you add or pin stay. A new task's first turn receives relevant notes, capped at 2,000 characters and labelled as data. Turn it off per repository. The value on repeat tasks is not yet measured.
 
 ## Connectors
 
