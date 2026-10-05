@@ -58,7 +58,7 @@ import { Landings } from './landing.mjs';
 import { PullRequests, reviewPages } from './pull-requests.mjs';
 import { commitMessage, commitSubject, withoutCommitLine } from './conventional-commit.mjs';
 import { BaseChecks } from './base-checks.mjs';
-import { LinkedRepositories, appName, browserApps, usesBrowser, changedMembers, commitTested, committed, committedMember, linkedEnvSettings, linkedSettings, workspaceScripts } from './linked-repositories.mjs';
+import { LinkedRepositories, appName, browserApps, usesBrowser, changedMembers, commitTested, committed, committedMember, deliverable, linkedEnvSettings, linkedSettings, workspaceScripts } from './linked-repositories.mjs';
 import { remainingMarker, remainingWork } from './remaining.mjs';
 
 const rawLogBytes = 16_000_000;
@@ -177,6 +177,7 @@ export class LiveService {
     this.browsers = new Map(); this.devServers = new Map(); this.browserSession = browserSession; this.profileRoot = join(resolve(engine.dataDir), 'browser-profiles');
     engine.onTransition = (run, status, message) => { if (run.mode !== 'live') return; this.steps.append(run, { kind: 'status', status, message }); if (status !== 'ready' || run.kind === 'answer') this.emit(`run.${status}`, run, message); };
     this.steps.recover(engine.runs);
+    for (const run of engine.runs) if (run.mode === 'live' && run.project?.repositoryPath === this.homePath) run.scratch = true;
     this.pending = new Set(); this.clients = new Set();
     this.interactions = new Interactions(this); this.recipeQueue = []; this.recipeActive = false;
     this.workspaceRoot = join(resolve(engine.dataDir), 'live-workspaces'); this.shadowRoot = join(resolve(engine.dataDir), 'shadow');
@@ -400,7 +401,7 @@ export class LiveService {
     return Boolean(deliverer) && this.connectors.active(run.project, deliverer.id) && this.connectors.allows(run.project, deliverer.id, 'delivery.push');
   }
   async deliver(run, signal) {
-    const pushing = this.autoDelivery(run) && Boolean(run.headSha) && run.headSha !== run.baseSha, writeback = this.tickets.writebackAllowed(run);
+    const pushing = this.autoDelivery(run) && deliverable(run), writeback = this.tickets.writebackAllowed(run);
     try { await this.linked.deliver(run, { signal, automatic: true }); } catch (error) { this.log(run, 'delivery', `Linked repository delivery did not complete: ${error.message}`); }
     if (pushing || writeback) {
       run.delivery ??= deliveryRecord(run);
@@ -428,12 +429,12 @@ export class LiveService {
   }
   async pullRequest(run, base, bases) {
     if (run.mode !== 'live' || run.kind === 'answer') throw new InputError('Only a live run can be published.', 404);
-    if (run.status !== 'ready' || !(committed(run) || changedMembers(run).some(committedMember))) throw new InputError('Only a ready run with a tested commit can be published.', 409);
+    if (run.status !== 'ready' || !(deliverable(run) || changedMembers(run).some(committedMember))) throw new InputError('Only a ready run with a tested commit can be published.', 409);
     if (run.supersededBy) throw new InputError('Publish the most recent execution of this ticket.', 409);
     if (run.worktreeRemovedAt || !existsSync(run.workspace)) throw new InputError('This run has no dispatch worktree to push from.', 409);
     if (run.headSha && base !== undefined && !safeBranch(base)) throw new InputError('Choose a valid base branch.');
     await this.readyToPublish(run.project);
-    if (committed(run)) this.log(run, 'delivery', await this.delivery.deliver(run, run.project, { base, pages: await reviewPages(this.steps, run.id) }));
+    if (deliverable(run)) this.log(run, 'delivery', await this.delivery.deliver(run, run.project, { base, pages: await reviewPages(this.steps, run.id) }));
     if (run.delivery?.pr) run.delivery.submittedAt = new Date().toISOString();
     await this.linked.deliver(run, { bases });
     await this.pullRequests.link([run]);
@@ -600,7 +601,7 @@ export class LiveService {
   }
   newRun(project, ticket, input) {
     const id = randomUUID();
-    return { id, kind: 'change', interactions: [], mode: 'live', provider: 'codex', projectId: project.id, project: structuredClone(project), ticket: structuredClone(ticket), ticketId: ticketIdFor(ticket, id), title: ticket.title, input, status: 'queued', createdAt: new Date().toISOString(), events: [], checks: [], artifacts: [], usage: { input: null, cachedInput: null, output: null, simulated: false }, usageReports: [], workerTurns: [], reviews: [], timings: {}, access: project.access === 'full' ? 'full' : this.accessMode, attempt: 0, maxRepairs: project.maxRepairs, sessionId: null, branch: isPlain(project) ? null : this.branchFor(project, ticket, id), workspace: isPlain(project) ? project.repositoryPath : join(this.workspaceRoot, id), shadow: isPlain(project) ? shadowDir(this.shadowRoot, project.id) : null, baseBranch: project.baseBranch, handoff: null, delivery: null };
+    return { id, ...(project.repositoryPath === this.homePath ? { scratch: true } : {}), kind: 'change', interactions: [], mode: 'live', provider: 'codex', projectId: project.id, project: structuredClone(project), ticket: structuredClone(ticket), ticketId: ticketIdFor(ticket, id), title: ticket.title, input, status: 'queued', createdAt: new Date().toISOString(), events: [], checks: [], artifacts: [], usage: { input: null, cachedInput: null, output: null, simulated: false }, usageReports: [], workerTurns: [], reviews: [], timings: {}, access: project.access === 'full' ? 'full' : this.accessMode, attempt: 0, maxRepairs: project.maxRepairs, sessionId: null, branch: isPlain(project) ? null : this.branchFor(project, ticket, id), workspace: isPlain(project) ? project.repositoryPath : join(this.workspaceRoot, id), shadow: isPlain(project) ? shadowDir(this.shadowRoot, project.id) : null, baseBranch: project.baseBranch, handoff: null, delivery: null };
   }
   savedBranchTemplate(project) { return this.brain.lookup({ key: 'branch.template', projectId: project.id })?.value ?? null; }
   branchFor(project, ticket, runId) {

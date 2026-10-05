@@ -49,6 +49,8 @@ export const usesBrowser = run => browserApps(run).length > 0;
 export const changedMembers = run => (run.linked ?? []).filter(member => member.changedPaths?.length);
 export const committed = repository => Boolean(repository.headSha) && repository.headSha !== repository.baseSha;
 export const committedMember = committed;
+// dispatch home is scratch space: a commit there (often just a tool's cache file) is never pushed, landed or opened as a pull request.
+export const deliverable = run => committed(run) && !run.scratch;
 export const memberRecipe = member => digest({ setup: member.project.setup, checks: member.project.validation, scripts: workspaceScripts(member.workspace) });
 
 export async function commitTested({ workspace, revision, identity, message, tree, signal }) {

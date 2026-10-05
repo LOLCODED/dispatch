@@ -7,6 +7,7 @@ import { taskState } from '../src/board-state.mjs';
 import { gated, liveFixture, settle, temporaryFolder, temporaryRepository, unitCheck, until, workerDouble } from './live-double.mjs';
 import { landable } from '../src/landing.mjs';
 import { publishable } from '../src/pull-requests.mjs';
+import { deliverable } from '../src/linked-repositories.mjs';
 
 const writes = files => options => {
   for (const [name, content] of Object.entries(files)) writeFileSync(join(options.workspace, name), content);
@@ -256,4 +257,12 @@ test('a task that changed only its linked repository lands only that repository 
 test('a ready task without a commit in any repository is neither landable nor publishable', () => {
   const run = { mode: 'live', kind: 'change', status: 'ready', headSha: 'abc', baseSha: 'abc', linked: [{ headSha: 'def', baseSha: 'def' }] };
   assert.equal(landable(run), false); assert.equal(publishable(run), false);
+});
+
+test('a commit in dispatch home is scratch: never delivered, while a linked repository in the same task still is', () => {
+  const ready = { mode: 'live', kind: 'change', status: 'ready', baseSha: 'base', headSha: 'head', scratch: true, linked: [] };
+  assert.equal(deliverable(ready), false); assert.equal(landable(ready), false); assert.equal(publishable(ready), false);
+  const withMember = { ...ready, linked: [{ baseSha: 'b', headSha: 'h' }] };
+  assert.equal(landable(withMember), true); assert.equal(publishable(withMember), true);
+  assert.equal(deliverable({ ...ready, scratch: undefined }), true);
 });
