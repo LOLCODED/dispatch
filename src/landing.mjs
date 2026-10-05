@@ -164,10 +164,12 @@ export class Landings {
     if (run.landing.target) {
       run.baseSha = await targetHead(run.project.repositoryPath, run.landing.target, signal);
       await git(run.project.repositoryPath, ['worktree', 'add', '--detach', run.workspace, run.baseSha], { signal });
+      await this.live.copyLocalFiles(run, run.project, run.workspace, signal);
     }
     for (const lane of run.linked ?? []) {
       lane.baseSha = await targetHead(lane.project.repositoryPath, lane.baseBranch, signal);
       await git(lane.project.repositoryPath, ['worktree', 'add', '--detach', lane.workspace, lane.baseSha], { signal });
+      await this.live.copyLocalFiles(run, lane.project, lane.workspace, signal, `${lane.name ?? lane.project.name}: `);
     }
     this.engine.store.save(); return true;
   }

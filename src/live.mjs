@@ -39,6 +39,7 @@ import { agentPrimary, resolveRepository } from './repository.mjs';
 import { agentMembers, taskRepositories } from './repository-selection.mjs';
 import { longRunningScript, npmScript } from './recipe-roles.mjs';
 import { repositoryInsight } from './repository-insight.mjs';
+import { copyLocalFiles, localFileSettings } from './local-files.mjs';
 import { checkScope, projectScopes, recipeChange, recipeDiffers, recipeScopes, protectedPaths, savedRecipe } from './check-scope.mjs';
 import { changeFlags, sqlToRun } from './flags.mjs';
 import { RiskChecks } from './risk-checks.mjs';
@@ -288,11 +289,11 @@ export class LiveService {
     if (input.allowSensitiveFiles !== undefined && typeof input.allowSensitiveFiles !== 'boolean') throw new InputError('Allow sensitive files must be a boolean.');
     const access = input.access ?? old?.access ?? 'inherit';
     if (!['inherit', 'full'].includes(access)) throw new InputError('Project access must be inherit or full.');
-    const instructions = operatorInstructions(input.instructions ?? old?.instructions), protectedPaths = protectedPathSettings(input.protectedPaths ?? old?.protectedPaths);
+    const instructions = operatorInstructions(input.instructions ?? old?.instructions), protectedPaths = protectedPathSettings(input.protectedPaths ?? old?.protectedPaths), localFiles = plain ? [] : localFileSettings(input.localFiles ?? old?.localFiles);
     if (input.trackRemote !== undefined && typeof input.trackRemote !== 'boolean') throw new InputError('Track remote must be a boolean.');
     const browser = browserSettings(input.browser ?? old?.browser), linked = linkedSettings(input.linked ?? old?.linked, this.projects, id), linkedEnv = linkedEnvSettings(input.linkedEnv ?? old?.linkedEnv, linked);
     let risk; try { risk = riskSettings(input.risk ?? old?.risk, validation); } catch (error) { throw new InputError(error.message); }
-    const project = { risk, browser, review: input.review ?? old?.review ?? false, memory: input.memory ?? old?.memory ?? true, dispatchCoAuthor: !plain && (input.dispatchCoAuthor ?? old?.dispatchCoAuthor ?? true), allowSensitiveFiles: input.allowSensitiveFiles ?? old?.allowSensitiveFiles ?? false, access, connectors: integrations, id: id ?? randomUUID(), name: String(input.name || info.name).slice(0, 100), repositoryPath: info.repositoryPath, baseBranch: plain ? null : input.baseBranch, targetBranches: plain ? [] : targetBranchSettings(input.targetBranches, old?.targetBranches, info.branches, input.baseBranch), validation, setup, checkScopes, instructions, protectedPaths, linked, linkedEnv, trackRemote: !plain && (input.trackRemote ?? old?.trackRemote ?? true), provider: 'codex', maxRepairs: 1, ...(plain ? { git: false } : {}) };
+    const project = { risk, browser, localFiles, review: input.review ?? old?.review ?? false, memory: input.memory ?? old?.memory ?? true, dispatchCoAuthor: !plain && (input.dispatchCoAuthor ?? old?.dispatchCoAuthor ?? true), allowSensitiveFiles: input.allowSensitiveFiles ?? old?.allowSensitiveFiles ?? false, access, connectors: integrations, id: id ?? randomUUID(), name: String(input.name || info.name).slice(0, 100), repositoryPath: info.repositoryPath, baseBranch: plain ? null : input.baseBranch, targetBranches: plain ? [] : targetBranchSettings(input.targetBranches, old?.targetBranches, info.branches, input.baseBranch), validation, setup, checkScopes, instructions, protectedPaths, linked, linkedEnv, trackRemote: !plain && (input.trackRemote ?? old?.trackRemote ?? true), provider: 'codex', maxRepairs: 1, ...(plain ? { git: false } : {}) };
     if (old) { delete old.textOnly; delete old.git; Object.assign(old, project); } else this.projects.push(project);
     const saved = old ?? project;
     if (input.instructions !== undefined || !old) this.brain.replaceRules(saved, instructions);
@@ -911,10 +912,17 @@ export class LiveService {
     if (sha !== local) this.log(run, 'worktree', `origin/${baseBranch} is at ${sha.slice(0, 12)}; the local branch is at ${local.slice(0, 12)}. Starting from origin.`);
     return { sha, source: 'origin', fetchedAt: new Date().toISOString() };
   }
+  async copyLocalFiles(run, project, workspace, signal, label = '') {
+    if (!project.localFiles?.length) return;
+    const { copied, skipped } = await copyLocalFiles(project.repositoryPath, workspace, project.localFiles, signal);
+    if (copied.length) this.log(run, 'setup', `${label}Copied ${copied.join(', ')} from your checkout.`);
+    if (skipped.length) this.log(run, 'setup', `${label}Did not copy ${skipped.join('; ')}.`);
+  }
   async createWorktree(run, signal) {
     const base = await this.timed(run, 'fetchMs', () => this.resolveBase(run, signal));
     run.branch = await this.uniqueBranch(run.project.repositoryPath, run.branch, signal);
     await git(run.project.repositoryPath, ['worktree', 'add', '-b', run.branch, run.workspace, base.sha], { signal });
+    await this.copyLocalFiles(run, run.project, run.workspace, signal);
     run.baseSha = base.sha; run.baseSource = base.source; run.baseFetchedAt = base.fetchedAt ?? null;
     if ((await git(run.workspace, ['ls-files', '--stage'], { signal })).split('\n').some(line => line.startsWith('160000 '))) { this.engine.transition(run, 'blocked', 'Submodule setup is not supported in V1.'); return false; }
     run.scriptsAtBase = this.packageScripts(run) !== null; run.protectedDigest = this.protectedRecipe(run); this.engine.store.save();

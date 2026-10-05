@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import { rmSync } from 'node:fs';
 import { digest, git } from './local-tools.mjs';
+import { copyLocalFiles } from './local-files.mjs';
 
 const sameCommand = (step, command) => JSON.stringify([step.command, ...step.args]) === JSON.stringify(command);
 
@@ -35,7 +36,7 @@ export class BaseChecks {
     if (owner.shadow || !owner.baseSha) return null;
     const step = project.validation.find(item => sameCommand(item, failure.command));
     if (!step || step.kind === 'browser-smoke') return null;
-    return { projectId: member?.projectId ?? run.projectId, repository: project.repositoryPath, baseSha: owner.baseSha, setup: project.setup ?? [], step };
+    return { projectId: member?.projectId ?? run.projectId, repository: project.repositoryPath, baseSha: owner.baseSha, setup: project.setup ?? [], localFiles: project.localFiles ?? [], step };
   }
 
   async runOnBase(run, origin, failure, signal) {
@@ -43,6 +44,7 @@ export class BaseChecks {
     this.live.log(run, 'check', `${failure.name} failed; running it once on the base commit ${origin.baseSha.slice(0, 12)} to see whether it failed before this task.`);
     try {
       await git(origin.repository, ['worktree', 'add', '--detach', '--force', workspace, origin.baseSha], { signal });
+      await copyLocalFiles(origin.repository, workspace, origin.localFiles, signal);
       for (const step of origin.setup) {
         const setup = await this.live.execute(run, step, signal, false, null, workspace);
         if (setup.exitCode !== 0 || setup.timedOut || setup.cancelled) return 'unknown';

@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { commandLine } from '@/lib/recipe-text.mjs';
 import { longRunningScript, npmScript } from '@/lib/recipe-roles.mjs';
 import { NoChoiceWarning } from '@/components/repository/RiskTab';
-import { checkIds, commandStep, editCommand, installStep, isInstall, scriptCheck, scriptDescription, unsuitableScripts, unusedScripts } from '@/lib/project-form.mjs';
+import { checkIds, commandStep, editCommand, installStep, isInstall, scriptCheck, localFileChoices, scriptDescription, unsuitableScripts, unusedScripts } from '@/lib/project-form.mjs';
 
 const minutes = step => Math.round((step.timeoutSeconds ?? 300) / 60);
 
@@ -42,11 +42,22 @@ function StepList({ steps, onSteps }) {
   return steps.map((step, index) => <StepRow key={step.id} step={step} onChange={next => replace(index, next)} onRemove={() => onSteps(steps.filter((_, position) => position !== index))}/>);
 }
 
+function LocalFiles({ form, update, info }) {
+  const [path, setPath] = useState(''), chosen = form.localFiles ?? [];
+  const toggle = (file, on) => update({ localFiles: on ? [...chosen, file] : chosen.filter(item => item !== file) });
+  const add = () => { const file = path.trim(); if (file && !chosen.includes(file)) update({ localFiles: [...chosen, file] }); setPath(''); };
+  return <><h4>Copied from your checkout</h4><p className="muted">Files Git ignores, such as <code>.env.test</code>, never reach a fresh copy. dispatch copies these into each task's copy before setup; files Git would commit are skipped.</p>
+    <ul className="row-list">{localFileChoices(info, form).map(file => <li key={file}><SwitchRow label={<code>{file}</code>} checked={chosen.includes(file)} onChange={on => toggle(file, on)}/></li>)}</ul>
+    <div className="add-row"><Input className="mono-input" aria-label="Add a file to copy" placeholder="Add a file to copy" value={path} onChange={event => setPath(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); add(); } }}/><IconButton type="button" label="Add a file to copy" icon={Plus} variant="outline" disabled={!path.trim()} onClick={add}/></div>
+  </>;
+}
+
 function Setup({ form, update, info }) {
   const offerInstall = info.suggestInstall && !form.setup.some(isInstall);
   return <section className="tab-section"><h3>Before each run</h3><p className="muted">Prepares a fresh copy of the repository before the agent starts.</p>
     <ul className="row-list"><StepList steps={form.setup} onSteps={setup => update({ setup })}/>{offerInstall && <li><SwitchRow label={<code>npm ci</code>} description="Install packages" checked={false} onChange={() => update({ setup: [installStep(), ...form.setup] })}/></li>}</ul>
     <AddCommand label="Add a setup command" taken={form.setup.map(step => step.id)} onAdd={step => update({ setup: [...form.setup, step] })}/>
+    {form.git !== false && <LocalFiles form={form} update={update} info={info}/>}
   </section>;
 }
 

@@ -112,6 +112,7 @@ export class LinkedRepositories {
     const root = member.project.repositoryPath, base = await this.live.resolveBase(run, signal, member);
     member.branch = await this.live.uniqueBranch(root, run.branch ?? this.live.branchFor(member.project, run.ticket, run.id), signal);
     await git(root, ['worktree', 'add', '-b', member.branch, member.workspace, base.sha], { signal });
+    await this.live.copyLocalFiles(run, member.project, member.workspace, signal, `${member.name}: `);
     Object.assign(member, { baseSha: base.sha, baseSource: base.source, protectedDigest: memberRecipe(member) });
     this.live.log(run, 'worktree', `Linked repository ${member.name}: worktree on ${member.branch} from ${base.sha.slice(0, 12)}.`);
   }

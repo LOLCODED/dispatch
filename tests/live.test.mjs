@@ -521,6 +521,18 @@ test('files a check rewrites are put back and named, and the run still fails as 
   assert.equal(existsSync(join(run.workspace, 'report.txt')), false); assert.equal(existsSync(join(run.workspace, 'new.txt')), true);
 });
 
+test('local files from the checkout reach the task worktree so checks that read them pass', async t => {
+  const { live, engine, project, repo } = await fixture(t);
+  writeFileSync(join(repo, '.gitignore'), '.env.test\n'); await git(repo, ['add', '.gitignore']); await git(repo, ['-c', 'user.name=Test', '-c', 'user.email=test@localhost', 'commit', '-q', '-m', 'Ignore env']);
+  writeFileSync(join(repo, '.env.test'), 'READY=1');
+  const needsEnv = { id: 'env', command: process.execPath, args: ['-e', 'if(require("fs").readFileSync(".env.test","utf8")!=="READY=1")process.exit(1)'] };
+  await live.saveProject({ ...project, confirmed: true, validation: [needsEnv], localFiles: ['.env.test'] }, project.id);
+  const run = await live.create({ projectId: project.id, input: 'Change the value' }); await settle(engine, run);
+  assert.equal(run.status, 'ready', JSON.stringify(run.events.map(event => event.message)));
+  assert.ok(run.events.some(event => event.message === 'Copied .env.test from your checkout.'));
+  assert.equal(run.changedPaths.includes('.env.test'), false);
+});
+
 test('checks cannot be edited while a run is active', async t => {
   const { live, engine, project } = await fixture(t, async options => { await new Promise(resolve => options.signal.addEventListener('abort', resolve, { once: true })); return { outcome: 'cancelled' }; });
   const run = await live.create({ projectId: project.id, input: 'Still working' });
