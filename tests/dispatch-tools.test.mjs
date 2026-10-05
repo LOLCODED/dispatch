@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { browserTools, dispatchTools, toolNames, toolSchemaCharacters, toolSet, toolsByName } from '../src/dispatch-tools.mjs';
 import { DispatchToolCalls } from '../src/tool-calls.mjs';
+import { browserApps } from '../src/linked-repositories.mjs';
 
 test('toolSet is the single gate: nothing attaches unless asked, and schema cost stays bounded', () => {
   assert.deepEqual(toolSet(), []);
@@ -47,4 +48,15 @@ test('DispatchToolCalls adds the repository’s connector tools and routes their
   const tools = calls.tools(run, { questions: 'native' });
   assert.deepEqual(JSON.parse((await calls.call(run, 'box_reset', { all: true }, { tools })).content[0].text), { ok: true });
   assert.deepEqual(seen, [['box_reset', { all: true }, { signal: undefined, workspace: '/w', readOnly: false }]]);
+});
+
+test('a linked repository with the browser on brings the browser tools to a task whose primary has it off', () => {
+  const calls = new DispatchToolCalls({ browserCall: async () => ({ content: [] }) });
+  const off = { project: { memory: false, browser: { enabled: false } }, linked: [{ name: 'Web App', project: { browser: { enabled: false } } }] };
+  assert.deepEqual(calls.tools(off, { questions: 'native' }), []);
+  const on = { ...off, linked: [...off.linked, { name: 'Portal', project: { browser: { enabled: true } } }] };
+  const names = toolNames(calls.tools(on, { questions: 'native' }));
+  assert.ok(browserTools.every(tool => names.includes(tool.name))); assert.ok(names.includes('dispatch_browser_review'));
+  assert.deepEqual(browserApps(on), ['app:portal/']);
+  assert.deepEqual(browserApps({ ...on, project: { browser: { enabled: true } } }), ['app:/', 'app:portal/']);
 });

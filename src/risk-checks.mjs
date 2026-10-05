@@ -4,6 +4,7 @@ import { workspaceGit } from './plain-folder.mjs';
 import { checkScope } from './check-scope.mjs';
 import { changeFlags } from './flags.mjs';
 import { riskEnabled, riskLevel, minimumChecks, landingChecks } from './risk-policy.mjs';
+import { usesBrowser } from './linked-repositories.mjs';
 
 const approved = new Set(['agent', 'operator', 'all-checks']);
 const text = (value, name, limit = 2000) => {
@@ -53,7 +54,7 @@ export class RiskChecks {
         summary: await workspaceGit(run)(['diff', '--no-ext-diff', '--no-textconv', '--stat', run.baseSha, snapshot.revision, '--'], { signal, maxOutput: 4000 }),
         signals: Object.fromEntries(Object.entries(changeFlags(snapshot.paths, run.project.protectedPaths)).map(([key, paths]) => [key, paths.slice(0, 20)])), policy: run.project.risk,
         scopeSuggestion: scope.steps.map(step => step.id), availableChecks: run.project.validation,
-        browserAvailable: run.project.browser?.enabled === true,
+        browserAvailable: usesBrowser(run),
         previewUrl: previewUrl(run),
         matrix: 'Low=1, medium=2, high=3. Likelihood × impact: 1–2 low risk, 3–4 medium risk, 6–9 high risk.',
         instructions: 'Read the diff in this worktree; path hints are not a probability estimate. Submit this revision after choosing checks. Missing coverage or uncertainty requires asking the operator. Only configured commands can be selected; ask the operator to configure missing commands. Manual review is a separate observation.' };

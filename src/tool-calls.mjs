@@ -3,6 +3,7 @@ import { InputError } from './engine.mjs';
 import { riskEnabled } from './risk-policy.mjs';
 import { bridgeQuestions, toolSet } from './dispatch-tools.mjs';
 import { browserReview } from './browser-review.mjs';
+import { usesBrowser } from './linked-repositories.mjs';
 
 const limits = { args: 16_000, result: 24_000 };
 const textContent = value => [{ type: 'text', text: (typeof value === 'string' ? value : JSON.stringify(value)).slice(0, limits.result) }];
@@ -11,7 +12,7 @@ const textContent = value => [{ type: 'text', text: (typeof value === 'string' ?
 export class DispatchToolCalls {
   constructor(live) { this.live = live; }
   tools(run, contract, { readOnly = false } = {}) {
-    const browser = run.project?.browser?.enabled === true && Boolean(this.live.browserCall);
+    const browser = usesBrowser(run) && Boolean(this.live.browserCall);
     const connectors = readOnly && contract.readOnlyTools !== true ? [] : this.live.connectors?.agentTools(run.project, { readOnly: readOnly || run.kind === 'answer' }) ?? [];
     return [...toolSet({ risk: !readOnly && riskEnabled(run.project), question: contract.questions === 'tool' && !readOnly, memory: run.project?.memory !== false && !readOnly, browser: browser && (!readOnly || contract.readOnlyTools === true), review: !readOnly && run.kind !== 'answer', repository: !readOnly && run.kind === 'change' && Boolean(this.live.repositories), permission: !readOnly && run.kind !== 'answer' && contract.permissionPrompts === 'tool' && Boolean(this.live.sensitiveWrites) }), ...connectors];
   }

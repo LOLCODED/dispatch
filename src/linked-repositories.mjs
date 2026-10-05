@@ -43,6 +43,9 @@ export function memberWorkspace(root, runId, project, taken = new Set()) {
   return join(root, `${runId}-${suffix}`);
 }
 
+// A task that starts in dispatch home and adds a web app as a linked repository still gets the browser for that app.
+export const browserApps = run => [...(run.project?.browser?.enabled === true ? ['app:/'] : []), ...(run.linked ?? []).filter(member => member.project?.browser?.enabled === true).map(member => `app:${appName(member.name)}/`)];
+export const usesBrowser = run => browserApps(run).length > 0;
 export const changedMembers = run => (run.linked ?? []).filter(member => member.changedPaths?.length);
 export const committed = repository => Boolean(repository.headSha) && repository.headSha !== repository.baseSha;
 export const committedMember = committed;

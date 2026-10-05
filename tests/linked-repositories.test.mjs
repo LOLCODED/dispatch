@@ -288,3 +288,13 @@ test('a script change in a linked repository blocks once, and continuing or allo
   assert.equal(allowed.status, 'ready', JSON.stringify(allowed.events.map(event => event.message)));
   assert.ok(allowed.events.some(event => /linked repository api and it allows writing sensitive files/.test(event.message)));
 });
+
+test('a linked web app with the browser on is offered to the agent when the primary has no browser', async t => {
+  const prompts = [];
+  const { live, engine, project, api, linked } = await linkedFixture(t, options => { prompts.push(options.prompt); return both(options); });
+  await live.saveProject({ repositoryPath: api, name: 'api', baseBranch: 'main', confirmed: true, validation: [unitCheck], browser: { enabled: true } }, linked.id);
+  const run = await live.create({ projectId: project.id, input: 'Change both repositories' }); await settle(engine, run);
+  assert.equal(run.project.browser?.enabled === true, false);
+  assert.match(prompts[0], /Navigate to app:api\/ to open the linked app/);
+  assert.match(prompts[0], /- api: \S+ \(app:api\/\)/);
+});
