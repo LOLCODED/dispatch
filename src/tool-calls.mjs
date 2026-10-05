@@ -6,7 +6,9 @@ import { browserReview } from './browser-review.mjs';
 import { usesBrowser } from './linked-repositories.mjs';
 import { sqlCall } from './sql-tool.mjs';
 
-const limits = { args: 16_000, result: 24_000 };
+const limits = { args: 16_000, result: 24_000, data: 14_000 };
+// Structured results feed the operator's views; anything too large for one step record is left to the text.
+const stepData = data => data && JSON.stringify(data).length <= limits.data ? { data } : {};
 const textContent = value => [{ type: 'text', text: (typeof value === 'string' ? value : JSON.stringify(value)).slice(0, limits.result) }];
 
 // One handler for every dispatch tool, whichever CLI transported the call.
@@ -26,9 +28,9 @@ export class DispatchToolCalls {
     this.live.steps?.append(run, { kind: 'tool.call', callId, name, server: 'dispatch', input: args ?? {} });
     try {
       const result = await this.dispatch(run, tool, args ?? {}, { signal, readOnly });
-      const content = Array.isArray(result?.content) ? result.content : textContent(result);
-      this.live.steps?.append(run, { kind: 'tool.result', callId, name, output: content.filter(item => item.type === 'text').map(item => item.text).join('\n'), isError: false, durationMs: Date.now() - started, imageArtifactIds: result?.artifactIds ?? [] });
-      return { content, isError: false };
+      const content = Array.isArray(result?.content) ? result.content : textContent(result), isError = result?.isError === true;
+      this.live.steps?.append(run, { kind: 'tool.result', callId, name, output: content.filter(item => item.type === 'text').map(item => item.text).join('\n'), isError, durationMs: Date.now() - started, imageArtifactIds: result?.artifactIds ?? [], ...stepData(result?.data) });
+      return { content, isError };
     } catch (error) {
       const message = String(error.message ?? error).slice(0, 2000);
       this.live.steps?.append(run, { kind: 'tool.result', callId, name, output: message, isError: true, durationMs: Date.now() - started });

@@ -16,7 +16,7 @@ test('backend entries pair each backend call with its result, keep order, mark r
   assert.deepEqual(backendEntries(steps).map(({ kind, title, output, isError, pending }) => ({ kind, title, output, isError, pending })), [
     { kind: 'http', title: 'POST app:/api/items', output: 'POST /api/items → 201', isError: false, pending: false },
     { kind: 'sql', title: 'select id', output: 'relation missing', isError: true, pending: false },
-    { kind: 'logs', title: 'logs worker', output: null, isError: false, pending: true },
+    { kind: 'logs', title: 'worker · logs', output: null, isError: false, pending: true },
     { kind: 'ci', title: 'status branch', output: 'CI success', isError: false, pending: false },
   ]);
   assert.equal(isBackendCall({ kind: 'tool.result', name: 'dispatch_http' }), false);

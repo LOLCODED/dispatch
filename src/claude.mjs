@@ -15,7 +15,8 @@ const aliases = [['fable', 'Fable', efforts], ['opus', 'Opus', efforts], ['sonne
 // A dispatch_question call waits for the user; larger values overflow Node timers and fire at once.
 const unboundedToolTimeoutMs = 2 ** 31 - 1;
 const mutating = ['Bash', 'Edit', 'Write', 'NotebookEdit'];
-const excluded = ['AskUserQuestion', 'Agent', 'Task', 'WebFetch', 'WebSearch'];
+// Plan mode waits for an approval nobody gives in a dispatch turn, and session messaging reaches agents outside the ticket's one owner.
+const excluded = ['AskUserQuestion', 'Agent', 'Task', 'WebFetch', 'WebSearch', 'EnterPlanMode', 'ExitPlanMode', 'ListAgents', 'SendMessage'];
 const sandboxNetwork = network => network?.hosts?.length || network?.localPorts ? { network: { ...(network.hosts?.length ? { allowedDomains: network.hosts } : {}), ...(network.localPorts ? { allowLocalBinding: true } : {}) } } : {};
 const sandbox = (writableRoots, network) => ({ sandbox: { enabled: true, autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: false, failIfUnavailable: true, ...(writableRoots.length ? { filesystem: { allowWrite: writableRoots } } : {}), ...sandboxNetwork(network) } });
 

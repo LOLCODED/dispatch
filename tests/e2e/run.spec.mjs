@@ -323,10 +323,13 @@ test('backend tool calls appear in the Backend tile and filter by kind', { tag: 
   await expect.poll(async () => (await exportRun(request, run.id)).status, { timeout: 60000 }).toBe('ready');
   await page.goto(`/runs/${run.id}`);
   await view(page, 'Backend');
-  const tile = page.locator('.backend-tile'), rows = tile.locator('.check-result');
+  const tile = page.locator('.backend-tile'), rows = tile.locator('.backend-entry');
   await expect(rows).toHaveCount(2);
-  await expect(rows.first()).toContainText('GET app:/'); await expect(rows.nth(1)).toContainText('logs app');
-  await rows.first().locator('summary').click(); await expect(rows.first().locator('pre')).toContainText('→ 200');
-  await tile.getByRole('button', { name: 'Logs only', exact: true }).click();
-  await expect(rows).toHaveCount(1); await expect(rows.first()).toContainText('logs app');
+  await expect(rows.first()).toContainText('GET'); await expect(rows.first().locator('.backend-pill')).toHaveText('200'); await expect(rows.nth(1)).toContainText('app · logs');
+  await rows.first().locator('.backend-row').click();
+  await expect(rows.first().getByRole('tab', { name: 'Response' })).toHaveAttribute('aria-selected', 'true'); await expect(rows.first().locator('.backend-code')).toContainText('Browser tool fixture');
+  await rows.first().getByRole('tab', { name: 'Headers' }).click(); await expect(rows.first().locator('.backend-headers')).toContainText('content-type');
+  await expect(rows.first().getByRole('button', { name: 'Copy as curl' })).toBeVisible();
+  await tile.getByRole('button', { name: 'Services only', exact: true }).click();
+  await expect(rows).toHaveCount(1); await expect(rows.first()).toContainText('app · logs');
 });

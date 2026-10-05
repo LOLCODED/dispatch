@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { databaseSettings, databaseUrl, sqlCall } from '../src/sql-tool.mjs';
+import { databaseSettings, databaseUrl, parseCsv, sqlCall, sqlGrid } from '../src/sql-tool.mjs';
 import { DispatchToolCalls } from '../src/tool-calls.mjs';
 import { toolNames } from '../src/dispatch-tools.mjs';
 
@@ -20,13 +20,14 @@ test('queries run read-only through psql and never echo the connection string', 
   writeFileSync(join(workspace, '.env.test'), `OTHER=1\nexport DATABASE_URL="${url}"\n`);
   const run = { workspace, project: { database: { envFile: '.env.test', variable: 'DATABASE_URL' } } }, calls = [];
   assert.equal(databaseUrl(workspace, run.project.database), url);
-  const execute = async (command, args, options) => { calls.push({ command, args, options }); return { exitCode: 0, output: ` id \n----\n  1\n(1 row) ${url}` }; };
+  const execute = async (command, args, options) => { calls.push({ command, args, options }); return { exitCode: 0, output: `id,note\n1,${url}\n2,\\N\n` }; };
   const result = await sqlCall({ run, args: { query: 'select 1 as id' }, execute });
   assert.equal(calls[0].command, 'psql'); assert.deepEqual(calls[0].args.slice(-2), ['-c', 'select 1 as id']);
   assert.match(calls[0].options.env.PGOPTIONS, /default_transaction_read_only=on/); assert.equal(calls[0].options.inheritEnv, false);
-  assert.equal(result.isError, false); assert.doesNotMatch(result.content[0].text, /secret/); assert.match(result.content[0].text, /\(1 row\) <database>/);
+  assert.equal(result.isError, false); assert.doesNotMatch(result.content[0].text, /secret/); assert.match(result.content[0].text, /1  \| <database>\n2  \| NULL\n\(2 rows\)/);
+  assert.deepEqual(result.data, { query: 'select 1 as id', columns: ['id', 'note'], rows: [['1', '<database>'], ['2', null]], rowCount: 2, truncated: false, durationMs: result.data.durationMs });
   const failed = await sqlCall({ run, args: { query: 'delete from x' }, execute: async () => ({ exitCode: 1, output: 'ERROR: cannot execute DELETE in a read-only transaction' }) });
-  assert.equal(failed.isError, true);
+  assert.equal(failed.isError, true); assert.match(failed.data.error, /read-only transaction/);
   await assert.rejects(sqlCall({ run: { workspace, project: { database: { envFile: '.env.missing', variable: 'DATABASE_URL' } } }, args: { query: 'select 1' }, execute }), /Copied from your checkout/);
 });
 
@@ -41,8 +42,15 @@ test('a connector can provide the connection string, for example from a secret s
   for (const value of [{ source: 'connector' }, { source: 'connector', connector: 'Bad Id' }, { source: 'connector', connector: 'ado', extra: 1 }]) assert.throws(() => databaseSettings(value), JSON.stringify(value));
   const run = { workspace: '/nowhere', project: { database: { source: 'connector', connector: 'vault' } } }, asked = [];
   const connectorUrl = async (project, id) => { asked.push(id); return `${url}\n`; };
-  const execute = async (command, args) => ({ exitCode: 0, output: `ok ${args[0]}` });
+  const execute = async (command, args) => ({ exitCode: 0, output: `seen\n${args[0]}\n` });
   const result = await sqlCall({ run, args: { query: 'select 1' }, execute, connectorUrl });
-  assert.deepEqual(asked, ['vault']); assert.equal(result.content[0].text, 'ok <database>');
+  assert.deepEqual(asked, ['vault']); assert.deepEqual(result.data.rows, [['<database>']]);
   await assert.rejects(sqlCall({ run, args: { query: 'select 1' }, execute, connectorUrl: async () => 'mysql://x' }), /did not return a postgres/);
+});
+
+test('csv parsing keeps quoted commas, quotes and newlines, and the grid stops at its size budget', () => {
+  assert.deepEqual(parseCsv('a,b\n"x,1","say ""hi""\nthere"\n'), [['a', 'b'], ['x,1', 'say "hi"\nthere']]);
+  const rows = Array.from({ length: 2000 }, (_, index) => [String(index), 'x'.repeat(40)]);
+  const grid = sqlGrid(['n', 'text'], rows);
+  assert.equal(grid.rowCount, 2000); assert.equal(grid.truncated, true); assert.ok(grid.rows.length > 100 && JSON.stringify(grid).length < 13_000);
 });

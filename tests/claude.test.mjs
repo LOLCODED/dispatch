@@ -23,6 +23,7 @@ test('Claude args keep owner turns in the sandbox and review turns away from mut
   assert.equal(auto[auto.indexOf('--permission-prompts') + 1], 'none');
   assert.deepEqual(JSON.parse(auto[auto.indexOf('--settings') + 1]).sandbox, { enabled: true, autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: false, failIfUnavailable: true });
   assert.ok(!auto.includes('Bash') && auto.includes('AskUserQuestion') && auto.includes('Agent'));
+  for (const tool of ['EnterPlanMode', 'ExitPlanMode', 'ListAgents', 'SendMessage']) assert.ok(auto.includes(tool), tool);
   assert.deepEqual(auto.slice(auto.indexOf('--model'), auto.indexOf('--model') + 4), ['--model', 'opus', '--effort', 'high']);
   assert.deepEqual(auto.slice(auto.indexOf('--allowedTools'), auto.indexOf('--allowedTools') + 4), ['--allowedTools', 'mcp__dispatch__dispatch_question', 'mcp__dispatch__dispatch_memory', '--mcp-config']);
   assert.ok(!auto.includes('--add-dir'));

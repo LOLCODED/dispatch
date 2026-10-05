@@ -17,7 +17,15 @@ export async function httpCall({ args, resolveUrl, signal, fetchImpl = fetch }) 
   if (!['127.0.0.1', 'localhost', '[::1]'].includes(target.hostname)) throw new Error('dispatch_http only reaches local dev servers.');
   const method = args.method ?? 'GET', started = Date.now();
   const response = await fetchImpl(target, { method, headers: args.headers ?? {}, body: ['GET', 'HEAD'].includes(method) ? undefined : args.body, redirect: 'manual', signal: AbortSignal.any([AbortSignal.timeout(timeoutMs), ...(signal ? [signal] : [])]) });
-  const text = method === 'HEAD' ? '' : await response.text(), shown = text.length > maxBody ? `${text.slice(0, maxBody)}\n… ${text.length - maxBody} more characters` : text;
+  const text = method === 'HEAD' ? '' : await response.text(), shown = text.length > maxBody ? `${text.slice(0, maxBody)}\n… ${text.length - maxBody} more characters` : text, durationMs = Date.now() - started;
   const headers = ['content-type', 'location', 'set-cookie'].map(name => response.headers.get(name) && `${name}: ${response.headers.get(name)}`).filter(Boolean).join('\n');
-  return { content: [{ type: 'text', text: `${method} ${target.pathname}${target.search} → ${response.status} ${response.statusText} in ${Date.now() - started} ms\n${headers}\n\n${shown}`.trim() }], isError: false };
+  const data = {
+    request: { method, url: args.url, resolved: target.href, headers: boundedHeaders(Object.entries(args.headers ?? {})), body: clip(args.body ?? '', 2000) },
+    response: { status: response.status, statusText: response.statusText, headers: boundedHeaders([...response.headers]), body: clip(text, 8000), bodyLength: text.length },
+    durationMs,
+  };
+  return { content: [{ type: 'text', text: `${method} ${target.pathname}${target.search} → ${response.status} ${response.statusText} in ${durationMs} ms\n${headers}\n\n${shown}`.trim() }], isError: false, data };
 }
+
+const clip = (text, limit) => text.length > limit ? text.slice(0, limit) : text;
+const boundedHeaders = entries => Object.fromEntries(entries.slice(0, 40).map(([name, value]) => [name, clip(String(value), 300)]));

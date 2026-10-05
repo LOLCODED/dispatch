@@ -52,6 +52,6 @@ export class CiTool {
       lines.push(...(logs.length ? logs.map(item => `\n### ${item.name} (${item.conclusion})\n${item.log.trimEnd().slice(-6000)}`) : ['\nNo failing checks, so there are no failure logs.']));
     }
     if (args.target !== 'base' && run.headSha && run.headSha !== sha) lines.push('\nThis task has local commits since that push; CI has not run on them.');
-    return { content: [{ type: 'text', text: lines.join('\n') }], isError: false };
+    return { content: [{ type: 'text', text: lines.join('\n') }], isError: false, data: { label, sha, state: ci.state, checks: ci.checks.slice(0, 50).map(({ name, status, conclusion }) => ({ name, status, conclusion })) } };
   }
 }

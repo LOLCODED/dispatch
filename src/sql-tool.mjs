@@ -45,9 +45,54 @@ async function connectionString(run, database, connectorUrl, signal) {
 export async function sqlCall({ run, args, signal, execute = runProcess, connectorUrl }) {
   const database = run.project?.database;
   if (!database) throw new Error('This repository has no database set up for queries.');
-  const url = await connectionString(run, database, connectorUrl, signal);
-  const result = await execute('psql', [url, '-X', '-q', '-v', 'ON_ERROR_STOP=1', '-P', 'pager=off', '-c', args.query], { cwd: run.workspace, signal, timeoutMs, inheritEnv: false, env: localEnvironment({ PGOPTIONS: '-c default_transaction_read_only=on -c statement_timeout=15000', PGCONNECT_TIMEOUT: '5' }) });
-  const output = String(result.output ?? '').split(url).join('<database>');
-  const shown = output.length > maxOutput ? `${output.slice(0, maxOutput)}\n… ${output.length - maxOutput} more characters` : output;
-  return { content: [{ type: 'text', text: shown.trim() || '(no output)' }], isError: result.exitCode !== 0 || Boolean(result.timedOut) };
+  const url = await connectionString(run, database, connectorUrl, signal), started = Date.now();
+  const result = await execute('psql', [url, '-X', '-q', '--csv', '-v', 'ON_ERROR_STOP=1', '-P', 'pager=off', '-P', `null=${nullMarker}`, '-c', args.query], { cwd: run.workspace, signal, timeoutMs, inheritEnv: false, env: localEnvironment({ PGOPTIONS: '-c default_transaction_read_only=on -c statement_timeout=15000', PGCONNECT_TIMEOUT: '5' }) });
+  const output = String(result.output ?? '').split(url).join('<database>'), failed = result.exitCode !== 0 || Boolean(result.timedOut);
+  if (failed) return { content: [{ type: 'text', text: capped(output.trim() || 'The query failed with no output.') }], isError: true, data: { query: args.query, error: output.trim().slice(0, 4000), durationMs: Date.now() - started } };
+  const [columns = [], ...records] = parseCsv(output), rows = records.map(record => record.map(cell => cell === nullMarker ? null : cell));
+  return { content: [{ type: 'text', text: capped(textTable(columns, rows)) }], isError: false, data: { query: args.query, ...sqlGrid(columns, rows), durationMs: Date.now() - started } };
+}
+
+const nullMarker = '\\N';
+const capped = text => text.length > maxOutput ? `${text.slice(0, maxOutput)}\n… ${text.length - maxOutput} more characters` : text;
+
+// psql --csv quotes fields holding commas, quotes or newlines and doubles inner quotes (RFC 4180).
+export function parseCsv(text) {
+  const records = [];
+  let record = [], field = '', quoted = false;
+  for (let index = 0; index < text.length; index++) {
+    const char = text[index];
+    if (quoted) {
+      if (char === '"' && text[index + 1] === '"') { field += '"'; index++; }
+      else if (char === '"') quoted = false;
+      else field += char;
+    } else if (char === '"') quoted = true;
+    else if (char === ',') { record.push(field); field = ''; }
+    else if (char === '\n') { record.push(field); records.push(record); record = []; field = ''; }
+    else if (char !== '\r') field += char;
+  }
+  if (field || record.length) { record.push(field); records.push(record); }
+  return records;
+}
+
+export function textTable(columns, rows) {
+  if (!columns.length) return '(no rows returned)';
+  const shown = cell => cell === null ? 'NULL' : cell.replaceAll('\n', '\\n');
+  const widths = columns.map((column, index) => Math.min(60, Math.max(column.length, ...rows.map(row => shown(row[index]).length))));
+  const line = cells => cells.map((cell, index) => shown(cell).slice(0, 60).padEnd(widths[index])).join(' | ').trimEnd();
+  return [line(columns), widths.map(width => '-'.repeat(width)).join('-+-'), ...rows.map(line), `(${rows.length} row${rows.length === 1 ? '' : 's'})`].join('\n');
+}
+
+const gridBudget = 12_000, cellLength = 500;
+// The operator's grid keeps the first rows that fit in one step record (a line holds 32k); the agent's text says how many came back.
+export function sqlGrid(columns, rows) {
+  const kept = [];
+  let size = JSON.stringify(columns).length;
+  for (const row of rows) {
+    const cells = row.map(cell => cell?.length > cellLength ? `${cell.slice(0, cellLength)}…` : cell);
+    size += JSON.stringify(cells).length + 1;
+    if (size > gridBudget) break;
+    kept.push(cells);
+  }
+  return { columns, rows: kept, rowCount: rows.length, truncated: kept.length < rows.length };
 }
