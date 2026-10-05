@@ -14,7 +14,7 @@ const memberPaths = prompt => new Map([...(prompt.split('LINKED REPOSITORIES')[1
 const completed = { outcome: 'completed', sessionId: 'session-1', summary: 'Updated' };
 
 async function linkedFixture(t, behavior, { writableRoots = true, services = {}, project = {}, extra = [], setup = [] } = {}) {
-  const adapter = { ...workerDouble(behavior), contract: { writableRoots } };
+  const adapter = { ...workerDouble(behavior), contract: { writableRoots, tools: 'mcp' } };
   const fixture = await liveFixture(t, { adapter, services });
   const repos = {}, saved = {};
   for (const name of ['api', ...extra]) {

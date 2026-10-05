@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { httpCall, httpTool } from '../src/http-tool.mjs';
 import { toolNames, toolSet } from '../src/dispatch-tools.mjs';
+import { completes, liveFixture, settle, workerDouble } from './live-double.mjs';
 
 const resolveUrl = async url => `http://127.0.0.1:5199${url.replace(/^app:[\w.-]*/i, '')}`;
 
@@ -24,4 +25,15 @@ test('dispatch_http only reaches the task’s own local apps', async () => {
 test('dispatch_http is attached only with the app tools', () => {
   assert.deepEqual(toolNames(toolSet({ http: true })), ['dispatch_http']);
   assert.equal(toolSet({ browser: true }).some(tool => tool.name === httpTool.name), false);
+});
+
+test('the worker prompt names dispatch tools only when the provider receives them', async t => {
+  const prompts = [];
+  const record = tools => ({ ...workerDouble(options => { prompts.push(options.prompt); return completes(options); }), contract: { tools } });
+  for (const tools of ['mcp', 'none']) {
+    const { live, engine, project } = await liveFixture(t, { adapter: record(tools), project: { browser: { enabled: true } } });
+    await settle(engine, await live.create({ projectId: project.id, input: `Prompt with tools ${tools}` }));
+  }
+  assert.match(prompts[0], /dispatch_browser_\*/); assert.match(prompts[0], /dispatch_http/); assert.match(prompts[0], /dispatch_memory/);
+  assert.doesNotMatch(prompts[1], /dispatch_[a-z]/);
 });
