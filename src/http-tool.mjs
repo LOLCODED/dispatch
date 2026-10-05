@@ -19,13 +19,7 @@ export async function httpCall({ args, resolveUrl, signal, fetchImpl = fetch }) 
   const response = await fetchImpl(target, { method, headers: args.headers ?? {}, body: ['GET', 'HEAD'].includes(method) ? undefined : args.body, redirect: 'manual', signal: AbortSignal.any([AbortSignal.timeout(timeoutMs), ...(signal ? [signal] : [])]) });
   const text = method === 'HEAD' ? '' : await response.text(), shown = text.length > maxBody ? `${text.slice(0, maxBody)}\n… ${text.length - maxBody} more characters` : text, durationMs = Date.now() - started;
   const headers = ['content-type', 'location', 'set-cookie'].map(name => response.headers.get(name) && `${name}: ${response.headers.get(name)}`).filter(Boolean).join('\n');
-  const data = {
-    request: { method, url: args.url, resolved: target.href, headers: boundedHeaders(Object.entries(args.headers ?? {})), body: clip(args.body ?? '', 2000) },
-    response: { status: response.status, statusText: response.statusText, headers: boundedHeaders([...response.headers]), body: clip(text, 8000), bodyLength: text.length },
-    durationMs,
-  };
-  return { content: [{ type: 'text', text: `${method} ${target.pathname}${target.search} → ${response.status} ${response.statusText} in ${durationMs} ms\n${headers}\n\n${shown}`.trim() }], isError: false, data };
+  const view = { type: 'http', request: { method, url: args.url, resolved: target.href, headers: args.headers ?? {}, body: args.body ?? '' }, response: { status: response.status, statusText: response.statusText, headers: Object.fromEntries(response.headers), body: text } };
+  return { content: [{ type: 'text', text: `${method} ${target.pathname}${target.search} → ${response.status} ${response.statusText} in ${durationMs} ms\n${headers}\n\n${shown}`.trim() }], isError: false, view };
 }
 
-const clip = (text, limit) => text.length > limit ? text.slice(0, limit) : text;
-const boundedHeaders = entries => Object.fromEntries(entries.slice(0, 40).map(([name, value]) => [name, clip(String(value), 300)]));

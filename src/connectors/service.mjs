@@ -70,6 +70,7 @@ export class ConnectorService {
     if (!permitted(project, this.global, found.connector, found.action) || (readOnly && found.access !== 'read')) throw new ConnectorNotPermitted(found.connector, found.action);
     return withTimeout(Promise.resolve(found.tool.run(args, this.context(project, found.connector, { signal, workspace }))), this.timeoutMs, `${found.connector.name} did not answer ${name} within ${this.timeoutMs / 1000} s.`);
   }
+  connectorOfTool(name) { return this.registry.tools().find(item => item.name === name)?.connector ?? null; }
   deliveryConnector(project) {
     const deliverers = this.registry.list.filter(delivers);
     return deliverers.find(connector => active(project, connector)) ?? (deliverers.length === 1 ? deliverers[0] : null);

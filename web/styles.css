@@ -1173,7 +1173,9 @@ legend { font-size:12px; font-weight:600; margin-bottom:8px; }
 .backend-row:hover { background:var(--secondary); }
 .backend-row:focus-visible { outline:1px solid var(--ring, var(--primary)); outline-offset:-1px; }
 .backend-entry { --kind:var(--muted-foreground); box-shadow:inset 2px 0 0 color-mix(in srgb, var(--kind) 70%, transparent); }
-.backend-entry.kind-http { --kind:var(--active); } .backend-entry.kind-sql { --kind:var(--syntax-keyword); } .backend-entry.kind-logs { --kind:var(--attention); } .backend-entry.kind-ci { --kind:var(--syntax-property); }
+.backend-entry.type-http { --kind:var(--active); } .backend-entry.type-table { --kind:var(--syntax-keyword); } .backend-entry.type-log { --kind:var(--attention); } .backend-entry.type-checks { --kind:var(--syntax-property); }
+.backend-spacer { flex:1; }
+.backend-checks li.tone-pending small { color:var(--active); }
 .backend-row { padding-left:10px; }
 .backend-kind-icon { flex:none; color:var(--kind); }
 .backend-kind { flex:none; min-width:52px; font:600 10px/1.6 var(--mono); letter-spacing:.04em; text-transform:uppercase; color:var(--kind); }

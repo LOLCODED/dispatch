@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { InputError } from './engine.mjs';
 import { localEnvironment } from './local-tools.mjs';
 import { runProcess } from './process.mjs';
+import { tableView } from './views.mjs';
 
 const maxOutput = 24000, timeoutMs = 20000, variable = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
 
@@ -45,12 +46,12 @@ async function connectionString(run, database, connectorUrl, signal) {
 export async function sqlCall({ run, args, signal, execute = runProcess, connectorUrl }) {
   const database = run.project?.database;
   if (!database) throw new Error('This repository has no database set up for queries.');
-  const url = await connectionString(run, database, connectorUrl, signal), started = Date.now();
+  const url = await connectionString(run, database, connectorUrl, signal);
   const result = await execute('psql', [url, '-X', '-q', '--csv', '-v', 'ON_ERROR_STOP=1', '-P', 'pager=off', '-P', `null=${nullMarker}`, '-c', args.query], { cwd: run.workspace, signal, timeoutMs, inheritEnv: false, env: localEnvironment({ PGOPTIONS: '-c default_transaction_read_only=on -c statement_timeout=15000', PGCONNECT_TIMEOUT: '5' }) });
   const output = String(result.output ?? '').split(url).join('<database>'), failed = result.exitCode !== 0 || Boolean(result.timedOut);
-  if (failed) return { content: [{ type: 'text', text: capped(output.trim() || 'The query failed with no output.') }], isError: true, data: { query: args.query, error: output.trim().slice(0, 4000), durationMs: Date.now() - started } };
+  if (failed) return { content: [{ type: 'text', text: capped(output.trim() || 'The query failed with no output.') }], isError: true, view: { type: 'table', label: 'SQL', columns: [], rows: [], query: args.query, error: output.trim() } };
   const [columns = [], ...records] = parseCsv(output), rows = records.map(record => record.map(cell => cell === nullMarker ? null : cell));
-  return { content: [{ type: 'text', text: capped(textTable(columns, rows)) }], isError: false, data: { query: args.query, ...sqlGrid(columns, rows), durationMs: Date.now() - started } };
+  return { content: [{ type: 'text', text: capped(textTable(columns, rows)) }], isError: false, view: { ...tableView(columns, rows, { query: args.query }), label: 'SQL' } };
 }
 
 const nullMarker = '\\N';
@@ -83,16 +84,3 @@ export function textTable(columns, rows) {
   return [line(columns), widths.map(width => '-'.repeat(width)).join('-+-'), ...rows.map(line), `(${rows.length} row${rows.length === 1 ? '' : 's'})`].join('\n');
 }
 
-const gridBudget = 12_000, cellLength = 500;
-// The operator's grid keeps the first rows that fit in one step record (a line holds 32k); the agent's text says how many came back.
-export function sqlGrid(columns, rows) {
-  const kept = [];
-  let size = JSON.stringify(columns).length;
-  for (const row of rows) {
-    const cells = row.map(cell => cell?.length > cellLength ? `${cell.slice(0, cellLength)}…` : cell);
-    size += JSON.stringify(cells).length + 1;
-    if (size > gridBudget) break;
-    kept.push(cells);
-  }
-  return { columns, rows: kept, rowCount: rows.length, truncated: kept.length < rows.length };
-}

@@ -330,6 +330,6 @@ test('backend tool calls appear in the Backend tile and filter by kind', { tag: 
   await expect(rows.first().getByRole('tab', { name: 'Response' })).toHaveAttribute('aria-selected', 'true'); await expect(rows.first().locator('.backend-code')).toContainText('Browser tool fixture');
   await rows.first().getByRole('tab', { name: 'Headers' }).click(); await expect(rows.first().locator('.backend-headers')).toContainText('content-type');
   await expect(rows.first().getByRole('button', { name: 'Copy as curl' })).toBeVisible();
-  await tile.getByRole('button', { name: 'Services only', exact: true }).click();
+  await tile.getByRole('button', { name: 'Service only', exact: true }).click();
   await expect(rows).toHaveCount(1); await expect(rows.first()).toContainText('app · logs');
 });

@@ -5,10 +5,11 @@ import { bridgeQuestions, toolSet } from './dispatch-tools.mjs';
 import { browserReview } from './browser-review.mjs';
 import { usesBrowser } from './linked-repositories.mjs';
 import { sqlCall } from './sql-tool.mjs';
+import { ToolOutput, boundedView } from './views.mjs';
 
-const limits = { args: 16_000, result: 24_000, data: 14_000 };
-// Structured results feed the operator's views; anything too large for one step record is left to the text.
-const stepData = data => data && JSON.stringify(data).length <= limits.data ? { data } : {};
+const limits = { args: 16_000, result: 24_000, view: 14_000 };
+// A step record is one line of at most 32k; a view that would not fit is left to the text result.
+const fitting = view => view && JSON.stringify(view).length <= limits.view ? view : null;
 const textContent = value => [{ type: 'text', text: (typeof value === 'string' ? value : JSON.stringify(value)).slice(0, limits.result) }];
 
 // One handler for every dispatch tool, whichever CLI transported the call.
@@ -27,9 +28,9 @@ export class DispatchToolCalls {
     const callId = randomUUID(), started = Date.now();
     this.live.steps?.append(run, { kind: 'tool.call', callId, name, server: 'dispatch', input: args ?? {} });
     try {
-      const result = await this.dispatch(run, tool, args ?? {}, { signal, readOnly });
+      const raw = await this.dispatch(run, tool, args ?? {}, { signal, readOnly }), result = raw instanceof ToolOutput ? raw.value : raw, view = fitting(boundedView(raw instanceof ToolOutput ? raw.view : result?.view));
       const content = Array.isArray(result?.content) ? result.content : textContent(result), isError = result?.isError === true;
-      this.live.steps?.append(run, { kind: 'tool.result', callId, name, output: content.filter(item => item.type === 'text').map(item => item.text).join('\n'), isError, durationMs: Date.now() - started, imageArtifactIds: result?.artifactIds ?? [], ...stepData(result?.data) });
+      this.live.steps?.append(run, { kind: 'tool.result', callId, name, output: content.filter(item => item.type === 'text').map(item => item.text).join('\n'), isError, durationMs: Date.now() - started, imageArtifactIds: result?.artifactIds ?? [], ...(view && { view: { ...view, label: view.label ?? this.toolLabel(tool) } }) });
       return { content, isError };
     } catch (error) {
       const message = String(error.message ?? error).slice(0, 2000);
@@ -37,6 +38,7 @@ export class DispatchToolCalls {
       return { content: textContent({ error: message }), isError: true };
     }
   }
+  toolLabel(tool) { return tool.kind === 'connector' ? this.live.connectors.connectorOfTool(tool.name)?.name ?? 'Tool' : 'Tool'; }
   dispatch(run, tool, args, options) {
     if (tool.kind === 'browser-review') return this.review(run, args, options);
     if (tool.kind === 'question') return this.question(run, args, options);

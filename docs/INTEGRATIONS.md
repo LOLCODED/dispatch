@@ -162,6 +162,18 @@ actions: {
 
 The agent sees `<connector id>_<tool name>` (here `docker_logs`) on dispatch's MCP server, next to dispatch's own tools; names are lowercase letters, digits and `_`, at most 48 characters together. dispatch attaches a tool only while the repository uses the connector and the tool's action is permitted, and checks both again on every call. Read-only turns (questions about the repository) get only tools of `read` actions. `run(args, ctx)` returns any JSON value, which the agent receives as text cut at 24,000 characters; arguments over 16,000 characters are refused before `run`; each call has 60 seconds. A tool runs in the dispatch server, outside the agent's sandbox, so validate every argument and keep anything that changes state in a `write` action. Calls and results appear in the run's steps. Every attached schema costs context on every turn; keep descriptions short.
 
+To show a result as more than text, return `dispatch.withView(value, view)`: the agent still receives `value`, and the run's **Backend** tile renders `view` next to dispatch's own HTTP, SQL, service and CI results, filterable by its label. A view is one of:
+
+| `type` | Fields | Shown as |
+| --- | --- | --- |
+| `table` | `columns`, `rows` (cells are strings or `null`), optional `query`, `rowCount` | A result grid with copy as TSV, CSV or JSON |
+| `http` | `request: { method, url, headers, body }`, `response: { status, statusText, headers, body }` | Request and response tabs with copy as curl |
+| `log` | `text` (JSON lines from pino, bunyan or winston are parsed) | A log viewer with levels and times |
+| `checks` | `items: [{ name, state, detail }]` (`state`: `ok`, `bad`, `pending`, `muted`), optional `detail` | A status list |
+| `text` | `text`, optional `format: 'json'` | Plain or pretty-printed text |
+
+Every view may add `label` (the row's badge, at most 16 characters; defaults to the connector's name), `title` and `error`. dispatch caps sizes (a table keeps the rows that fit in about 12,000 characters and says how many there were) and drops a view of unknown type.
+
 ### Examples
 
 A tracker that reads tickets served as JSON:

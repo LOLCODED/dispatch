@@ -18,6 +18,8 @@ export function deliveredHead(run, runs) {
   return null;
 }
 
+const checkState = check => check.status !== 'completed' ? 'pending' : ['success', 'neutral', 'skipped'].includes(check.conclusion) ? 'ok' : 'bad';
+
 export const ciSummary = (label, ci) => [`${label} at ${ci.sha.slice(0, 12)}: CI ${ci.state}.`, ...ci.checks.map(check => `- ${check.name || 'unnamed check'}: ${check.conclusion ?? check.status ?? 'unknown'}`)].join('\n');
 
 // The run's repository reads CI through its delivery connector's read-only checks hooks; nothing on the code host changes.
@@ -52,6 +54,6 @@ export class CiTool {
       lines.push(...(logs.length ? logs.map(item => `\n### ${item.name} (${item.conclusion})\n${item.log.trimEnd().slice(-6000)}`) : ['\nNo failing checks, so there are no failure logs.']));
     }
     if (args.target !== 'base' && run.headSha && run.headSha !== sha) lines.push('\nThis task has local commits since that push; CI has not run on them.');
-    return { content: [{ type: 'text', text: lines.join('\n') }], isError: false, data: { label, sha, state: ci.state, checks: ci.checks.slice(0, 50).map(({ name, status, conclusion }) => ({ name, status, conclusion })) } };
+    return { content: [{ type: 'text', text: lines.join('\n') }], isError: false, view: { type: 'checks', label: 'CI', title: `${label} · ${sha.slice(0, 12)} · ${ci.state}`, items: ci.checks.map(check => ({ name: check.name || 'unnamed check', state: checkState(check), detail: check.conclusion ?? check.status })), detail: lines.slice(1).join('\n') } };
   }
 }

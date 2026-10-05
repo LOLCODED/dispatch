@@ -44,9 +44,9 @@ export class Services {
   async call(run, args, { signal } = {}) {
     if (args.action === 'list') return text(this.list(run));
     if (!args.service) throw new Error(`${args.action} needs a service.`);
-    if (args.action === 'logs') return text(await this.logs(run, args.service, signal));
+    if (args.action === 'logs') return logView(await this.logs(run, args.service, signal), args.service);
     const service = this.find(run, args.service);
-    return text(args.action === 'start' ? this.start(run, service) : await this.stop(run, service));
+    return args.action === 'start' ? text(this.start(run, service)) : logView(await this.stop(run, service), service.id);
   }
 
   list(run) {
@@ -88,3 +88,4 @@ export class Services {
 }
 
 const text = value => ({ content: [{ type: 'text', text: value }], isError: false });
+const logView = (value, service) => ({ ...text(value), view: { type: 'log', label: 'Service', title: service, text: value } });

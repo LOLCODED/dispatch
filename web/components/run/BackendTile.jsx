@@ -1,13 +1,12 @@
 import { useMemo, useState } from 'react';
-import { ArrowLeftRight, Braces, Check, Copy, Database, FileSpreadsheet, GitPullRequest, LoaderCircle, ServerCog, Sheet, SquareTerminal } from 'lucide-react';
+import { ArrowLeftRight, Braces, Check, Copy, FileText, ListChecks, LoaderCircle, ScrollText, Sheet, FileSpreadsheet, SquareTerminal, Table2 } from 'lucide-react';
 import { IconButton } from '@/components/IconButton';
 import { useRunSteps } from '@/lib/steps';
 import { useFollowLatest } from '@/lib/follow-latest';
 import { duration } from '@/lib/workspace';
-import { backendEntries, backendFilters, curlCommand, gridAs, logLines } from '../../../src/backend-steps.mjs';
+import { backendEntries, curlCommand, gridAs, logLines } from '../../../src/backend-steps.mjs';
 
-const kindIcons = { http: ArrowLeftRight, logs: ServerCog, sql: Database, ci: GitPullRequest };
-const kindLabels = { sql: 'SQL', logs: 'Service', ci: 'CI' };
+const typeIcons = { http: ArrowLeftRight, log: ScrollText, table: Table2, checks: ListChecks, text: FileText };
 
 function useCopy() {
   const [copied, setCopied] = useState(null);
@@ -51,13 +50,13 @@ function Headers({ headers }) {
 
 const httpTabs = [['response', 'Response'], ['headers', 'Headers'], ['request', 'Request']];
 function HttpDetail({ entry, copier }) {
-  const [tab, setTab] = useState('response'), { request, response } = entry.data;
+  const [tab, setTab] = useState('response'), { request, response } = entry.view;
   return <div className="backend-detail">
     <div className="backend-detail-bar">
       <div className="backend-tabs" role="tablist">{httpTabs.map(([key, label]) => <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => setTab(key)}>{label}</button>)}</div>
       <code className="backend-url" title={request.resolved}>{request.resolved}</code>
       <CopyButton id={`${entry.id}:body`} label="Copy response body" icon={Copy} text={response.body} copier={copier}/>
-      <CopyButton id={`${entry.id}:curl`} label="Copy as curl" icon={SquareTerminal} text={curlCommand(entry.data)} copier={copier}/>
+      <CopyButton id={`${entry.id}:curl`} label="Copy as curl" icon={SquareTerminal} text={curlCommand(entry.view)} copier={copier}/>
     </div>
     {tab === 'response' && <><Body text={response.body} contentType={response.headers['content-type']}/>{response.bodyLength > response.body.length && <p className="muted">Showing the first {response.body.length.toLocaleString()} of {response.bodyLength.toLocaleString()} characters.</p>}</>}
     {tab === 'headers' && <Headers headers={response.headers}/>}
@@ -76,78 +75,85 @@ function SqlGrid({ data }) {
   </div>;
 }
 
-function SqlDetail({ entry, copier }) {
-  const { data } = entry, rows = data.columns?.length > 0;
+function TableDetail({ entry, copier }) {
+  const data = entry.view, rows = data.columns?.length > 0;
   return <div className="backend-detail">
     <div className="backend-detail-bar">
-      <pre className="backend-query">{data.query}</pre>
-      <CopyButton id={`${entry.id}:query`} label="Copy query" icon={Copy} text={data.query} copier={copier}/>
+      {data.query ? <><pre className="backend-query">{data.query}</pre><CopyButton id={`${entry.id}:query`} label="Copy query" icon={Copy} text={data.query} copier={copier}/></> : <span className="backend-spacer"/>}
       {rows && <>
         <CopyButton id={`${entry.id}:tsv`} label="Copy for a spreadsheet" icon={Sheet} text={gridAs.tsv(data)} copier={copier}/>
         <CopyButton id={`${entry.id}:csv`} label="Copy as CSV" icon={FileSpreadsheet} text={gridAs.csv(data)} copier={copier}/>
         <CopyButton id={`${entry.id}:json`} label="Copy as JSON" icon={Braces} text={gridAs.json(data)} copier={copier}/>
       </>}
     </div>
-    {data.error ? <pre className="backend-code backend-error">{data.error}</pre> : rows ? <SqlGrid data={data}/> : <p className="muted">The query returned no rows.</p>}
+    {data.error ? <pre className="backend-code backend-error">{data.error}</pre> : rows ? <SqlGrid data={data}/> : <p className="muted">No rows.</p>}
     {data.truncated && <p className="muted">Showing {data.rows.length} of {data.rowCount} rows; the agent saw them all.</p>}
   </div>;
 }
 
 function LogDetail({ entry, copier }) {
-  const lines = useMemo(() => logLines(entry.output), [entry.output]);
+  const source = entry.view?.text ?? entry.output, lines = useMemo(() => logLines(source), [source]);
   return <div className="backend-detail">
-    <div className="backend-detail-bar"><span className="muted">{lines.length} line{lines.length === 1 ? '' : 's'}</span><CopyButton id={`${entry.id}:logs`} label="Copy log" icon={Copy} text={entry.output ?? ''} copier={copier}/></div>
+    <div className="backend-detail-bar"><span className="muted">{lines.length} line{lines.length === 1 ? '' : 's'}</span><CopyButton id={`${entry.id}:logs`} label="Copy log" icon={Copy} text={source ?? ''} copier={copier}/></div>
     <div className="backend-log">{lines.map((line, index) => <div key={index} className={`backend-log-line level-${line.level ?? 'none'}`}>
       {line.time && <span className="backend-log-time">{line.time}</span>}{line.level && <span className="backend-log-level">{line.level}</span>}<span>{line.text}</span>{line.fields && <span className="backend-log-fields">{line.fields}</span>}
     </div>)}</div>
   </div>;
 }
 
-const checkTone = check => check.status !== 'completed' ? 'muted' : ['success', 'neutral', 'skipped'].includes(check.conclusion) ? 'ok' : 'bad';
-function CiDetail({ entry }) {
-  const logs = entry.output?.indexOf('### ') ?? -1;
+function ChecksDetail({ entry }) {
+  const { items, detail } = entry.view;
   return <div className="backend-detail">
-    <p className="muted">{entry.data.label} · {entry.data.sha.slice(0, 12)}</p>
-    <ul className="backend-checks">{entry.data.checks.map((check, index) => <li key={index} className={`tone-${checkTone(check)}`}><span>{check.name || 'unnamed check'}</span><small>{check.conclusion ?? check.status}</small></li>)}</ul>
-    {logs >= 0 && <pre className="backend-code">{entry.output.slice(logs)}</pre>}
+    <ul className="backend-checks">{items.map((item, index) => <li key={index} className={`tone-${item.state}`}><span>{item.name}</span><small>{item.detail}</small></li>)}</ul>
+    {detail && <pre className="backend-code">{detail}</pre>}
   </div>;
 }
 
+function TextDetail({ entry, copier }) {
+  const { text, format } = entry.view;
+  return <div className="backend-detail">
+    <div className="backend-detail-bar"><span className="backend-spacer"/><CopyButton id={`${entry.id}:text`} label="Copy" icon={Copy} text={text} copier={copier}/></div>
+    {format === 'json' ? <Body text={text} contentType="application/json"/> : <pre className="backend-code">{text}</pre>}
+  </div>;
+}
+
+const checkSummary = items => items.some(item => item.state === 'bad') ? 'bad' : items.some(item => item.state === 'pending') ? 'pending' : items.length ? 'ok' : 'muted';
 function Badge({ entry }) {
-  const { data } = entry;
+  const { view } = entry;
   if (entry.pending) return <LoaderCircle size={13} className="backend-spin" aria-label="running"/>;
-  if (entry.kind === 'http' && data) return <span className={`backend-pill tone-${statusTone(data.response.status)}`}>{data.response.status}</span>;
-  if (entry.kind === 'sql' && data) return <span className={`backend-pill tone-${data.error ? 'bad' : 'muted'}`}>{data.error ? 'error' : `${data.rowCount} row${data.rowCount === 1 ? '' : 's'}`}</span>;
-  if (entry.kind === 'ci' && data) return <span className={`backend-pill tone-${data.state === 'success' ? 'ok' : data.state === 'failure' ? 'bad' : 'muted'}`}>{data.state}</span>;
-  return entry.isError ? <span className="backend-pill tone-bad">error</span> : null;
+  if (view?.error || (entry.isError && !view)) return <span className="backend-pill tone-bad">error</span>;
+  if (view?.type === 'http') return <span className={`backend-pill tone-${statusTone(view.response.status)}`}>{view.response.status}</span>;
+  if (view?.type === 'table') return <span className="backend-pill tone-muted">{view.rowCount} row{view.rowCount === 1 ? '' : 's'}</span>;
+  if (view?.type === 'checks') { const tone = checkSummary(view.items); return <span className={`backend-pill tone-${tone === 'pending' ? 'muted' : tone}`}>{{ ok: 'passing', bad: 'failing', pending: 'running', muted: 'no checks' }[tone]}</span>; }
+  return null;
 }
 
 function Title({ entry }) {
-  const Icon = kindIcons[entry.kind];
-  if (entry.kind !== 'http') return <><Icon size={13} className="backend-kind-icon" aria-hidden="true"/><span className="backend-kind">{kindLabels[entry.kind]}</span><code className="backend-title">{entry.title}</code></>;
+  const Icon = typeIcons[entry.type] ?? FileText;
+  if (entry.type !== 'http' || entry.label !== 'HTTP') return <><Icon size={13} className="backend-kind-icon" aria-hidden="true"/><span className="backend-kind">{entry.label}</span><code className="backend-title">{entry.title}</code></>;
   const [method, ...rest] = entry.title.split(' ');
   return <><Icon size={13} className="backend-kind-icon" aria-hidden="true"/><span className={`backend-kind method-${method.toLowerCase()}`}>{method}</span><code className="backend-title">{rest.join(' ').replace(/^app:/, '')}</code></>;
 }
 
-const details = { http: HttpDetail, sql: SqlDetail, logs: LogDetail, ci: CiDetail };
+const details = { http: HttpDetail, table: TableDetail, log: LogDetail, checks: ChecksDetail, text: TextDetail };
 function EntryRow({ entry, open, onToggle, copier }) {
-  const Detail = details[entry.kind], structured = !entry.pending && (entry.kind === 'logs' || entry.data);
-  return <div className={`backend-entry kind-${entry.kind}${open ? ' is-open' : ''}`}>
+  const Detail = details[entry.type], structured = !entry.pending && (entry.view || entry.type === 'log');
+  return <div className={`backend-entry type-${entry.type}${open ? ' is-open' : ''}`}>
     <button type="button" className="backend-row" aria-expanded={open} onClick={onToggle}>
       <Title entry={entry}/><Badge entry={entry}/><small className="backend-duration">{entry.pending ? '' : duration(entry.durationMs)}</small>
     </button>
-    {open && (structured ? <Detail entry={entry} copier={copier}/> : <pre className="backend-code">{entry.output ?? 'Waiting for the result…'}</pre>)}
+    {open && (structured ? (entry.view?.error ? <pre className="backend-code backend-error">{entry.view.error}</pre> : <Detail entry={entry} copier={copier}/>) : <pre className="backend-code">{entry.output ?? 'Waiting for the result…'}</pre>)}
   </div>;
 }
 
 export function BackendTile({ run }) {
   const { steps, error } = useRunSteps(run.id, run.stepCount ?? 0), [only, setOnly] = useState(null), [opened, setOpened] = useState(() => new Set()), copier = useCopy();
-  const entries = useMemo(() => backendEntries(steps), [steps]), counts = useMemo(() => Object.groupBy(entries, entry => entry.kind), [entries]);
-  const shown = only ? entries.filter(entry => entry.kind === only) : entries, list = useFollowLatest(shown.length);
+  const entries = useMemo(() => backendEntries(steps), [steps]), labels = useMemo(() => [...new Map(entries.map(entry => [entry.label, entry.type])).entries()], [entries]);
+  const shown = only ? entries.filter(entry => entry.label === only) : entries, list = useFollowLatest(shown.length);
   const toggle = id => setOpened(current => { const next = new Set(current); if (!next.delete(id)) next.add(id); return next; });
   return <div className="timeline-tile backend-tile">
-    <div className="timeline-toolbar"><span className="timeline-filters">{backendFilters.filter(([kind]) => counts[kind]).map(([kind, label]) => <IconButton key={kind} label={`${label} only`} icon={kindIcons[kind]} aria-pressed={only === kind} onClick={() => setOnly(only === kind ? null : kind)}/>)}</span></div>
+    <div className="timeline-toolbar"><span className="timeline-filters">{labels.length > 1 && labels.map(([label, type]) => <IconButton key={label} label={`${label} only`} icon={typeIcons[type] ?? FileText} aria-pressed={only === label} onClick={() => setOnly(only === label ? null : label)}/>)}</span></div>
     {error && <p className="error" role="alert">{error}</p>}
-    <div ref={list.ref} className="timeline-feed" onScroll={list.onScroll}>{shown.length ? shown.map(entry => <EntryRow key={entry.id} entry={entry} open={opened.has(entry.id)} onToggle={() => toggle(entry.id)} copier={copier}/>) : <p className="muted">HTTP calls, service logs, SQL results and CI reads appear here as the agent makes them.</p>}</div>
+    <div ref={list.ref} className="timeline-feed" onScroll={list.onScroll}>{shown.length ? shown.map(entry => <EntryRow key={entry.id} entry={entry} open={opened.has(entry.id)} onToggle={() => toggle(entry.id)} copier={copier}/>) : <p className="muted">HTTP calls, logs, query results and checks appear here as the agent makes them, from dispatch's tools and from connectors.</p>}</div>
   </div>;
 }

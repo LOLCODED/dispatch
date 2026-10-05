@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { databaseSettings, databaseUrl, parseCsv, sqlCall, sqlGrid } from '../src/sql-tool.mjs';
+import { databaseSettings, databaseUrl, parseCsv, sqlCall } from '../src/sql-tool.mjs';
+import { tableView } from '../src/views.mjs';
 import { DispatchToolCalls } from '../src/tool-calls.mjs';
 import { toolNames } from '../src/dispatch-tools.mjs';
 
@@ -25,9 +26,9 @@ test('queries run read-only through psql and never echo the connection string', 
   assert.equal(calls[0].command, 'psql'); assert.deepEqual(calls[0].args.slice(-2), ['-c', 'select 1 as id']);
   assert.match(calls[0].options.env.PGOPTIONS, /default_transaction_read_only=on/); assert.equal(calls[0].options.inheritEnv, false);
   assert.equal(result.isError, false); assert.doesNotMatch(result.content[0].text, /secret/); assert.match(result.content[0].text, /1  \| <database>\n2  \| NULL\n\(2 rows\)/);
-  assert.deepEqual(result.data, { query: 'select 1 as id', columns: ['id', 'note'], rows: [['1', '<database>'], ['2', null]], rowCount: 2, truncated: false, durationMs: result.data.durationMs });
+  assert.deepEqual(result.view, { type: 'table', label: 'SQL', columns: ['id', 'note'], rows: [['1', '<database>'], ['2', null]], rowCount: 2, truncated: false, query: 'select 1 as id' });
   const failed = await sqlCall({ run, args: { query: 'delete from x' }, execute: async () => ({ exitCode: 1, output: 'ERROR: cannot execute DELETE in a read-only transaction' }) });
-  assert.equal(failed.isError, true); assert.match(failed.data.error, /read-only transaction/);
+  assert.equal(failed.isError, true); assert.match(failed.view.error, /read-only transaction/);
   await assert.rejects(sqlCall({ run: { workspace, project: { database: { envFile: '.env.missing', variable: 'DATABASE_URL' } } }, args: { query: 'select 1' }, execute }), /Copied from your checkout/);
 });
 
@@ -44,13 +45,13 @@ test('a connector can provide the connection string, for example from a secret s
   const connectorUrl = async (project, id) => { asked.push(id); return `${url}\n`; };
   const execute = async (command, args) => ({ exitCode: 0, output: `seen\n${args[0]}\n` });
   const result = await sqlCall({ run, args: { query: 'select 1' }, execute, connectorUrl });
-  assert.deepEqual(asked, ['vault']); assert.deepEqual(result.data.rows, [['<database>']]);
+  assert.deepEqual(asked, ['vault']); assert.deepEqual(result.view.rows, [['<database>']]);
   await assert.rejects(sqlCall({ run, args: { query: 'select 1' }, execute, connectorUrl: async () => 'mysql://x' }), /did not return a postgres/);
 });
 
 test('csv parsing keeps quoted commas, quotes and newlines, and the grid stops at its size budget', () => {
   assert.deepEqual(parseCsv('a,b\n"x,1","say ""hi""\nthere"\n'), [['a', 'b'], ['x,1', 'say "hi"\nthere']]);
   const rows = Array.from({ length: 2000 }, (_, index) => [String(index), 'x'.repeat(40)]);
-  const grid = sqlGrid(['n', 'text'], rows);
+  const grid = tableView(['n', 'text'], rows);
   assert.equal(grid.rowCount, 2000); assert.equal(grid.truncated, true); assert.ok(grid.rows.length > 100 && JSON.stringify(grid).length < 13_000);
 });
