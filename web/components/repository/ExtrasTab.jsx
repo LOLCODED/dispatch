@@ -6,6 +6,15 @@ import { Textarea } from '@/components/ui/textarea';
 import { useConnectorCatalog } from '@/components/Connections';
 import { effectiveAction, overridden, setAction, setSetting, setUsed, settingValue } from '@/lib/connectors.mjs';
 
+function Services({ form, update }) {
+  const services = form.services ?? [];
+  return <section className="tab-section"><h3>Services</h3>
+    <p className="muted">Background processes the agent can start, stop and read logs from with dispatch_service, outside the sandbox, for example a worker or a mock API. Dev server logs are always available as app.</p>
+    <Label htmlFor="services">One per line as id: command</Label>
+    <Textarea id="services" className="mono-input" rows={Math.min(6, Math.max(2, services.length + 1))} placeholder="worker: npm run worker" value={services.join('\n')} onChange={event => update({ services: event.target.value.split('\n') })}/>
+  </section>;
+}
+
 function Database({ form, update, connectors }) {
   const database = form.database ?? { source: 'env', connector: '', envFile: '', variable: '' }, set = change => update({ database: { ...database, ...change } });
   const providers = connectors.filter(connector => connector.databases);
@@ -65,6 +74,7 @@ export function ExtrasTab({ form, update }) {
     </ul></section>
     <Network form={form} update={update}/>
     <Database form={form} update={update} connectors={connectors}/>
+    {form.git !== false && <Services form={form} update={update}/>}
     {connectors.length > 0 && <section className="tab-section"><h3>Connectors</h3><ul className="row-list">
       {connectors.map(connector => <ConnectorRows key={connector.id} form={form} connector={connector} update={update}/>)}
     </ul></section>}

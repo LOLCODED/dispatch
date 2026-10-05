@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { localEnvironment } from './local-tools.mjs';
 import { freePort, resolveStart, startScripts, waitForUrl } from './browser-smoke.mjs';
+import { logBuffer } from './services.mjs';
 
 export async function prepareAppDependencies({ workspace, start, signal, execute = runProcess, onSpawn, timeoutMs = 300_000 }) {
   // Git worktrees do not include ignored dependencies. Install from the saved
@@ -27,9 +28,10 @@ export async function startApp({ workspace, step = {}, env: extra = {}, signal, 
   const url = `http://127.0.0.1:${port}/`, stop = new AbortController(), abort = () => stop.abort();
   signal?.addEventListener('abort', abort, { once: true });
   const env = localEnvironment({ ...extra, PORT: String(port), HOST: '127.0.0.1', BROWSER: 'none', CI: '1', CODEX_HOME: '' });
-  const exited = execute(start.command, start.args, { cwd: workspace, signal: stop.signal, timeoutMs, inheritEnv: false, env, maxOutput: 20000, onSpawn });
+  const logs = logBuffer();
+  const exited = execute(start.command, start.args, { cwd: workspace, signal: stop.signal, timeoutMs, inheritEnv: false, env, maxOutput: 20000, onSpawn, onStdout: logs.add, onStderr: logs.add });
   const command = [start.command, ...start.args].join(' ');
   const ready = await Promise.race([waitForUrl(url, readyTimeoutMs, stop.signal).then(status => ({ status })), exited.then(result => ({ exited: result }))]);
   if (ready.exited) { signal?.removeEventListener('abort', abort); throw new Error(`${command} exited (code ${ready.exited.exitCode}) before answering at ${url}.\n${ready.exited.output.slice(-2000)}`); }
-  return { url, port, command, exited, stop: async () => { stop.abort(); signal?.removeEventListener('abort', abort); await exited; } };
+  return { url, port, command, exited, logs: logs.read, stop: async () => { stop.abort(); signal?.removeEventListener('abort', abort); await exited; } };
 }

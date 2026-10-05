@@ -16,12 +16,12 @@ export function formFromProject(project) {
     validation: project.validation.filter(step => !smokeStep(step)), smoke: project.validation.find(smokeStep) ?? null, setup: project.setup,
     risk: riskSettings(project.risk, project.validation), scopes: projectScopes(project), instructions: project.instructions ?? [], protectedPaths: project.protectedPaths ?? [], linked: project.linked ?? [], linkedEnv: project.linkedEnv ?? {},
     review: project.review === true, browser: project.browser?.enabled === true, headed: project.browser?.headed === true, memory: project.memory !== false, trackRemote: project.trackRemote !== false, dispatchCoAuthor: project.dispatchCoAuthor !== false,
-    allowSensitiveFiles: project.allowSensitiveFiles === true, localFiles: project.localFiles ?? [], network: { hosts: project.network?.hosts ?? [], localPorts: project.network?.localPorts === true }, database: { source: project.database?.source ?? 'env', connector: project.database?.connector ?? '', envFile: project.database?.envFile ?? '', variable: project.database?.variable ?? '' }, connectors: structuredClone(project.connectors ?? {}),
+    allowSensitiveFiles: project.allowSensitiveFiles === true, localFiles: project.localFiles ?? [], network: { hosts: project.network?.hosts ?? [], localPorts: project.network?.localPorts === true }, database: { source: project.database?.source ?? 'env', connector: project.database?.connector ?? '', envFile: project.database?.envFile ?? '', variable: project.database?.variable ?? '' }, services: (project.services ?? []).map(serviceLine), connectors: structuredClone(project.connectors ?? {}),
   };
 }
 
 export function blankForm(path = '') {
-  return { risk: { mode: 'agent', minimumChecks: { low: [], medium: [], high: [] }, guidance: '' }, path, name: '', base: '', targets: [], git: true, validation: [], smoke: null, setup: [], localFiles: [], network: { hosts: [], localPorts: false }, database: { source: 'env', connector: '', envFile: '', variable: '' }, scopes: [], instructions: [], protectedPaths: [], linked: [], linkedEnv: {}, review: false, browser: false, headed: false, memory: true, trackRemote: true, dispatchCoAuthor: true, allowSensitiveFiles: false, connectors: {} };
+  return { risk: { mode: 'agent', minimumChecks: { low: [], medium: [], high: [] }, guidance: '' }, path, name: '', base: '', targets: [], git: true, validation: [], smoke: null, setup: [], localFiles: [], network: { hosts: [], localPorts: false }, database: { source: 'env', connector: '', envFile: '', variable: '' }, services: [], scopes: [], instructions: [], protectedPaths: [], linked: [], linkedEnv: {}, review: false, browser: false, headed: false, memory: true, trackRemote: true, dispatchCoAuthor: true, allowSensitiveFiles: false, connectors: {} };
 }
 
 export function formFromInspect(info) {
@@ -86,7 +86,7 @@ export function projectPayload(form, repositoryPath) {
     validation: [...form.validation, ...(form.smoke ? [form.smoke] : [])], setup: form.setup, checkScopes: scopes, risk: landingRisk(form),
     instructions: lines(form.instructions), protectedPaths: lines(form.protectedPaths), linked: form.linked, linkedEnv: Object.fromEntries(Object.entries(form.linkedEnv).map(([id, name]) => [id, name.trim()]).filter(([id, name]) => name && form.linked.includes(id))), trackRemote: git && form.trackRemote,
     connectors: form.connectors,
-    browser: { enabled: form.browser, headed: form.browser && form.headed }, review: form.review, memory: form.memory, dispatchCoAuthor: git && form.dispatchCoAuthor, allowSensitiveFiles: form.allowSensitiveFiles, network: { hosts: lines(form.network?.hosts ?? []), localPorts: form.network?.localPorts === true }, database: databasePayload(form.database), ...(git ? { localFiles: form.localFiles ?? [] } : {}) };
+    browser: { enabled: form.browser, headed: form.browser && form.headed }, review: form.review, memory: form.memory, dispatchCoAuthor: git && form.dispatchCoAuthor, allowSensitiveFiles: form.allowSensitiveFiles, network: { hosts: lines(form.network?.hosts ?? []), localPorts: form.network?.localPorts === true }, database: databasePayload(form.database), ...(git ? { services: servicesPayload(form.services) } : {}), ...(git ? { localFiles: form.localFiles ?? [] } : {}) };
 }
 
 export const localFileChoices = (info, form) => [...new Set([...(info?.localFiles ?? []), ...(form.localFiles ?? [])])];
@@ -94,4 +94,13 @@ export const localFileChoices = (info, form) => [...new Set([...(info?.localFile
 export function databasePayload(database) {
   if (database?.source === 'connector') return database.connector ? { source: 'connector', connector: database.connector } : null;
   return database?.envFile?.trim() && database?.variable?.trim() ? { envFile: database.envFile.trim(), variable: database.variable.trim() } : null;
+}
+
+export const serviceLine = service => `${service.id}: ${[service.command, ...service.args].join(' ')}`;
+export function servicesPayload(lines = []) {
+  return lines.map(line => line.trim()).filter(Boolean).map(line => {
+    const [, id = '', rest = ''] = line.match(/^([^:\s]+)\s*:\s*(.*)$/) ?? [];
+    const [command = '', ...args] = rest.split(/\s+/).filter(Boolean);
+    return { id, command, args };
+  });
 }
