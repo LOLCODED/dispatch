@@ -15,19 +15,35 @@ function Services({ form, update }) {
   </section>;
 }
 
-function Database({ form, update, connectors }) {
-  const database = form.database ?? { source: 'env', connector: '', envFile: '', variable: '' }, set = change => update({ database: { ...database, ...change } });
-  const providers = connectors.filter(connector => connector.databases);
-  return <section className="tab-section"><h3>Database for read-only queries</h3>
-    <p className="muted">Gives the agent dispatch_sql: read-only queries against a development Postgres, with results shown in the run. The connection string is never shown. Needs psql installed. A local Docker database is reached through the Docker connector's own tools instead.</p>
-    <div className="segmented" role="group" aria-label="Connection string from">
-      <Button type="button" variant="ghost" aria-pressed={database.source !== 'connector'} onClick={() => set({ source: 'env' })}>Env file</Button>
-      {providers.map(connector => <Button key={connector.id} type="button" variant="ghost" aria-pressed={database.source === 'connector' && database.connector === connector.id} onClick={() => set({ source: 'connector', connector: connector.id })}>{connector.name}</Button>)}
+const formats = [['csv', 'CSV'], ['tsv', 'Tab-separated']];
+function Choices({ label, options, value, onChoose }) {
+  return <div className="segmented" role="group" aria-label={label}>{options.map(([id, name]) => <Button key={id} type="button" variant="ghost" aria-pressed={value === id} onClick={() => onChoose(id)}>{name}</Button>)}</div>;
+}
+
+function QueryCommands({ database, set }) {
+  return <>
+    <div className="field"><Label htmlFor="database-query">Query command</Label><Input id="database-query" className="mono-input" placeholder="mysql --batch -e {sql}" value={database.query} onChange={event => set({ query: event.target.value })}/></div>
+    <p className="muted">Runs in the task's copy with the connection variables set; {'{sql}'} is replaced by the query, or it is added as the last argument. Print a header row, then one row per line. Use a read-only database user: dispatch cannot make an unknown engine read-only.</p>
+    <div className="form-columns">
+      <div className="field"><Label id="database-format">Output</Label><Choices label="Output format" options={formats} value={database.format} onChoose={format => set({ format })}/></div>
+      <div className="field"><Label htmlFor="database-null">NULL is printed as</Label><Input id="database-null" className="mono-input" placeholder="NULL" value={database.nullMarker} onChange={event => set({ nullMarker: event.target.value })}/></div>
     </div>
+  </>;
+}
+
+function Database({ form, update, connectors }) {
+  const database = form.database, set = change => update({ database: { ...database, ...change } });
+  const engines = [...connectors.filter(connector => connector.queries).map(connector => [connector.id, connector.name]), ['commands', 'Commands']];
+  const engine = database.engine || (engines.length === 2 ? engines[0][0] : ''), sources = [['env', 'Env file'], ...connectors.filter(connector => connector.databases).map(connector => [`connector:${connector.id}`, connector.name])];
+  return <section className="tab-section"><h3>Database for queries</h3>
+    <p className="muted">Gives the agent dispatch_sql: queries against a development database, with results shown in the run as a table. A connector speaks the database's engine; with Commands you give your own client command instead. Connection strings are never shown.</p>
+    <div className="field"><Label>Engine</Label><Choices label="Database engine" options={engines} value={engine} onChoose={id => set({ engine: id })}/></div>
+    {engine === 'commands' && <QueryCommands database={database} set={set}/>}
+    <div className="field"><Label>Connection from</Label><Choices label="Connection from" options={sources} value={database.source === 'connector' ? `connector:${database.connector}` : 'env'} onChoose={id => set(id === 'env' ? { source: 'env' } : { source: 'connector', connector: id.slice('connector:'.length) })}/></div>
     {database.source === 'connector' ? <p className="muted">{connectors.find(item => item.id === database.connector)?.name ?? database.connector} provides it; set where it reads from in that connector's settings below.</p>
       : <div className="form-columns">
         <div className="field"><Label htmlFor="database-env-file">Env file</Label><Input id="database-env-file" className="mono-input" placeholder=".env.development" value={database.envFile} onChange={event => set({ envFile: event.target.value })}/></div>
-        <div className="field"><Label htmlFor="database-variable">Variable</Label><Input id="database-variable" className="mono-input" placeholder="DATABASE_URL" value={database.variable} onChange={event => set({ variable: event.target.value })}/></div>
+        <div className="field"><Label htmlFor="database-variable">Variables</Label><Input id="database-variable" className="mono-input" placeholder="DATABASE_URL" value={database.variable} onChange={event => set({ variable: event.target.value })}/></div>
       </div>}
   </section>;
 }

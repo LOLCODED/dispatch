@@ -21,6 +21,10 @@ Everything dispatch does outside your machine goes through a connector: reading 
 
 Nothing a connector can do runs until you allow it (see [Permissions](#permissions)). The full contract is under [Writing a connector](#writing-a-connector).
 
+### PostgreSQL
+
+Built in. Implements `database.query` with `psql` (install the PostgreSQL client): a read-only session with a 15-second statement limit, reading the connection from the variable set in its settings (`DATABASE_URL` by default). It is the default engine while it is the only query connector loaded; another engine (MySQL, SQL Server, …) is a connector with its own `database.query`, or the repository's own **Commands** under **Extras → Database**. Tested with doubles only.
+
 ### GitHub
 
 Uses your `gh` login (`gh auth login`). Its actions are **Push task branches** and **Open pull requests** (writes, off by default) and **Read pull requests** and **Read CI checks** (reads, on by default). Per repository it has a **Git remote** (default `origin`) and **Open as draft** (default on). After `ready`, a repository that uses GitHub with pushing on gets `HEAD:refs/heads/<branch>` pushed (never forced, never the base branch), the branch's pull request reused or a new one opened, and check runs read for the exact pushed SHA. Delivery errors are recorded on the run; the status stays `ready`. Tested with doubles and `node src/connectors/github/smoke.mjs` (local bare remote, `gh` shim); not yet run against GitHub. See [its README](../src/connectors/github/README.md).
@@ -111,7 +115,8 @@ Each call has 60 seconds. A hook that throws is reported on the run; throw an `E
 | Hook | Returns |
 |---|---|
 | `ticket.detect(input, { memory })` | A reference `{ id, sourceUrl?, organization?, project? }` when the pasted text is yours, else `null`. Synchronous, no I/O. Throw for a link that is yours but malformed. `memory` lets a bare id such as `PROJ-12` resolve after a first link. If you match a link inside prose, dispatch passes the whole typed text to the agent as an operator note beside the ticket you read. |
-| `database.url(ctx)` | A `postgres://` connection string for the repository's development database, for example read from a secret store using `ctx.settings`. Used by `dispatch_sql` when the repository picks this connector as its database source; never shown to the agent or the operator. |
+| `database.url(ctx)` | A connection string for the repository's development database, for example read from a secret store using `ctx.settings`. Used when the repository picks this connector as its database connection; it becomes the connection variable the engine reads, and is never shown to the agent or the operator. |
+| `database.query({ sql, env, workspace }, ctx)` | Runs one query for `dispatch_sql` and returns `{ columns, rows }` (cells are strings or `null`). `env` holds the connection variables (from the env file, a `database.url` connector or the task's own database); connect with them and keep the session read-only where the engine allows. Throw an `Error` with the database's message on failure. dispatch redacts connection values from rows and errors and shows the rows as a table. |
 | `ticket.read(ref, ctx)` | The ticket: `title` (required), `description`, `acceptance`, and optionally `key` (duplicate-run identity; default `<id>:<ref.id>`), `reference` (for example `PROJ-12`; prefixes the pull request title), `revision`, `type`, `state`, `branch` (a branch name or template using `{type} {ticketId} {id} {run} {slug}`, used when the operator has no `branch.template` preference and offered first when dispatch asks; an invalid one is ignored; put it behind a setting, since `dispatch/<run>` is the default), and `remember: { ... }`, stored as this repository's memory |
 | `ticket.revision(ref, ctx)` | The ticket's current revision number; lets the comment say the ticket changed since intake |
 | `ticket.comment(ref, text, ctx)` | Nothing. Posts dispatch's one result comment for a ready run (outcome, branch, pull request, checks, state move) |

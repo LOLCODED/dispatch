@@ -42,7 +42,7 @@ import { repositoryInsight } from './repository-insight.mjs';
 import { copyLocalFiles, localFileSettings } from './local-files.mjs';
 import { networkSettings, taskNetwork } from './network-access.mjs';
 import { httpCall } from './http-tool.mjs';
-import { databaseSettings } from './sql-tool.mjs';
+import { Databases, databaseSettings } from './database.mjs';
 import { Services, serviceSettings } from './services.mjs';
 import { CiTool } from './ci-tool.mjs';
 import { checkScope, projectScopes, recipeChange, recipeDiffers, recipeScopes, protectedPaths, savedRecipe } from './check-scope.mjs';
@@ -191,7 +191,7 @@ export class LiveService {
     this.workspaceRoot = join(resolve(engine.dataDir), 'live-workspaces'); this.shadowRoot = join(resolve(engine.dataDir), 'shadow');
     this.logRoot = join(resolve(engine.dataDir), 'live-logs');
     mkdirSync(this.workspaceRoot, { recursive: true }); mkdirSync(this.logRoot, { recursive: true });
-    this.landings = new Landings(this); this.riskChecks = new RiskChecks(this); this.pullRequests = new PullRequests(this); this.linked = new LinkedRepositories(this); this.baseChecks = new BaseChecks(this); this.services = new Services(this); this.ci = new CiTool(this); this.repositories = new RepositoryTool(this); this.router = new RepositoryRouter(this); this.sensitiveWrites = new SensitiveWrites(this);
+    this.landings = new Landings(this); this.riskChecks = new RiskChecks(this); this.pullRequests = new PullRequests(this); this.linked = new LinkedRepositories(this); this.baseChecks = new BaseChecks(this); this.services = new Services(this); this.ci = new CiTool(this); this.databases = new Databases(this); this.repositories = new RepositoryTool(this); this.router = new RepositoryRouter(this); this.sensitiveWrites = new SensitiveWrites(this);
     this.reconcileWorktrees();
   }
   get projects() { return this.engine.store.state.projects; }

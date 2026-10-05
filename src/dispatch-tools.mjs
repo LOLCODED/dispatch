@@ -1,5 +1,5 @@
 import { httpTool } from './http-tool.mjs';
-import { sqlTool } from './sql-tool.mjs';
+import { sqlTool } from './database.mjs';
 import { serviceTool } from './services.mjs';
 import { ciTool } from './ci-tool.mjs';
 export const questionTool = {

@@ -4,7 +4,6 @@ import { riskEnabled } from './risk-policy.mjs';
 import { bridgeQuestions, toolSet } from './dispatch-tools.mjs';
 import { browserReview } from './browser-review.mjs';
 import { usesBrowser } from './linked-repositories.mjs';
-import { sqlCall } from './sql-tool.mjs';
 import { ToolOutput, boundedView } from './views.mjs';
 
 const limits = { args: 16_000, result: 24_000, view: 14_000 };
@@ -50,7 +49,7 @@ export class DispatchToolCalls {
     if (tool.kind === 'http') return this.live.httpCall(run, args, options);
     if (tool.kind === 'service') return this.live.services.call(run, args, options);
     if (tool.kind === 'ci') return this.live.ci.call(run, args, options);
-    if (tool.kind === 'sql') return sqlCall({ run, args, signal: options.signal, connectorUrl: (project, id, signal) => this.live.connectors.invoke(project, id, 'database.url', [], { signal }) });
+    if (tool.kind === 'sql') return this.live.databases.call(run, args, options);
     if (tool.kind === 'connector') return this.live.connectors.callTool(run.project, tool.name, args, { signal: options.signal, workspace: run.workspace, readOnly: options.readOnly || run.kind === 'answer' });
     throw new InputError('Unknown dispatch tool kind.');
   }

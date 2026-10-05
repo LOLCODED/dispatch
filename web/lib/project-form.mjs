@@ -16,12 +16,12 @@ export function formFromProject(project) {
     validation: project.validation.filter(step => !smokeStep(step)), smoke: project.validation.find(smokeStep) ?? null, setup: project.setup,
     risk: riskSettings(project.risk, project.validation), scopes: projectScopes(project), instructions: project.instructions ?? [], protectedPaths: project.protectedPaths ?? [], linked: project.linked ?? [], linkedEnv: project.linkedEnv ?? {},
     review: project.review === true, browser: project.browser?.enabled === true, headed: project.browser?.headed === true, memory: project.memory !== false, trackRemote: project.trackRemote !== false, dispatchCoAuthor: project.dispatchCoAuthor !== false,
-    allowSensitiveFiles: project.allowSensitiveFiles === true, localFiles: project.localFiles ?? [], network: { hosts: project.network?.hosts ?? [], localPorts: project.network?.localPorts === true }, database: { source: project.database?.source ?? 'env', connector: project.database?.connector ?? '', envFile: project.database?.envFile ?? '', variable: project.database?.variable ?? '' }, services: (project.services ?? []).map(serviceLine), connectors: structuredClone(project.connectors ?? {}),
+    allowSensitiveFiles: project.allowSensitiveFiles === true, localFiles: project.localFiles ?? [], network: { hosts: project.network?.hosts ?? [], localPorts: project.network?.localPorts === true }, database: databaseForm(project.database), services: (project.services ?? []).map(serviceLine), connectors: structuredClone(project.connectors ?? {}),
   };
 }
 
 export function blankForm(path = '') {
-  return { risk: { mode: 'agent', minimumChecks: { low: [], medium: [], high: [] }, guidance: '' }, path, name: '', base: '', targets: [], git: true, validation: [], smoke: null, setup: [], localFiles: [], network: { hosts: [], localPorts: false }, database: { source: 'env', connector: '', envFile: '', variable: '' }, services: [], scopes: [], instructions: [], protectedPaths: [], linked: [], linkedEnv: {}, review: false, browser: false, headed: false, memory: true, trackRemote: true, dispatchCoAuthor: true, allowSensitiveFiles: false, connectors: {} };
+  return { risk: { mode: 'agent', minimumChecks: { low: [], medium: [], high: [] }, guidance: '' }, path, name: '', base: '', targets: [], git: true, validation: [], smoke: null, setup: [], localFiles: [], network: { hosts: [], localPorts: false }, database: databaseForm(null), services: [], scopes: [], instructions: [], protectedPaths: [], linked: [], linkedEnv: {}, review: false, browser: false, headed: false, memory: true, trackRemote: true, dispatchCoAuthor: true, allowSensitiveFiles: false, connectors: {} };
 }
 
 export function formFromInspect(info) {
@@ -91,9 +91,19 @@ export function projectPayload(form, repositoryPath) {
 
 export const localFileChoices = (info, form) => [...new Set([...(info?.localFiles ?? []), ...(form.localFiles ?? [])])];
 
+// Repositories saved before engines were chosen hold only the connection; both shapes load into the same form.
+export function databaseForm(database) {
+  const connection = database?.connection ?? (database?.source === 'connector' ? { from: 'connector', connector: database.connector } : { from: 'envFile', envFile: database?.envFile, variables: database?.variable ? [database.variable] : [] });
+  const commands = database?.commands;
+  return { engine: database?.engine ?? '', source: connection.from === 'connector' ? 'connector' : 'env', connector: connection.connector ?? '', envFile: connection.envFile ?? '', variable: (connection.variables ?? [connection.variable]).filter(Boolean).join(', '), query: commands ? [commands.query.command, ...commands.query.args].join(' ') : '', format: commands?.format ?? 'csv', nullMarker: commands?.null ?? '' };
+}
+
 export function databasePayload(database) {
-  if (database?.source === 'connector') return database.connector ? { source: 'connector', connector: database.connector } : null;
-  return database?.envFile?.trim() && database?.variable?.trim() ? { envFile: database.envFile.trim(), variable: database.variable.trim() } : null;
+  const variables = (database?.variable ?? '').split(',').map(name => name.trim()).filter(Boolean);
+  const connection = database?.source === 'connector' ? (database.connector ? { from: 'connector', connector: database.connector, ...(variables[0] ? { variable: variables[0] } : {}) } : null) : database?.envFile?.trim() && variables.length ? { from: 'envFile', envFile: database.envFile.trim(), variables } : null;
+  if (!connection) return null;
+  const commands = database.engine === 'commands' ? { query: database.query.trim(), format: database.format, ...(database.nullMarker ? { null: database.nullMarker } : {}) } : null;
+  return { engine: database.engine || null, connection, ...(commands ? { commands } : {}) };
 }
 
 export const serviceLine = service => `${service.id}: ${[service.command, ...service.args].join(' ')}`;

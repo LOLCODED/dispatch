@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { commandStep, formChanged, formFromInspect, formFromProject, newCommands, projectPayload, uniqueId, unusedScripts } from '../web/lib/project-form.mjs';
+import { commandStep, databaseForm, databasePayload, formChanged, formFromInspect, formFromProject, newCommands, projectPayload, uniqueId, unusedScripts } from '../web/lib/project-form.mjs';
 
 const project = {
   repositoryPath: '/repo', name: 'repo', baseBranch: 'main', review: true, memory: true, trackRemote: false,
@@ -52,4 +52,12 @@ test('a plain folder round-trips without a base branch and never sends Git-only 
   assert.equal(payload.baseBranch, null); assert.equal(payload.trackRemote, false); assert.equal(payload.dispatchCoAuthor, false); assert.deepEqual(payload.connectors, {});
   assert.equal(formFromInspect({ repositoryPath: '/folder', name: 'folder', git: false, baseBranch: null, branches: [], scripts: {}, suggestedChecks: [], suggestInstall: false }).git, false);
   assert.equal(formChanged(form, formFromProject(folder)), false);
+});
+
+test('database settings load from both saved shapes and save an engine with its connection', () => {
+  assert.deepEqual(databaseForm({ envFile: '.env', variable: 'DATABASE_URL' }), { engine: '', source: 'env', connector: '', envFile: '.env', variable: 'DATABASE_URL', query: '', format: 'csv', nullMarker: '' });
+  const saved = { engine: 'commands', connection: { from: 'envFile', envFile: '.env', variables: ['DB_HOST', 'DB_USER'] }, commands: { query: { command: 'mysql', args: ['--batch', '-e', '{sql}'] }, format: 'tsv', null: 'NULL' } };
+  assert.deepEqual(databasePayload(databaseForm(saved)), { engine: 'commands', connection: saved.connection, commands: { query: 'mysql --batch -e {sql}', format: 'tsv', null: 'NULL' } });
+  assert.deepEqual(databasePayload(databaseForm({ source: 'connector', connector: 'ado' })), { engine: null, connection: { from: 'connector', connector: 'ado' } });
+  assert.equal(databasePayload(databaseForm(null)), null);
 });

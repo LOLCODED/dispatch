@@ -1,0 +1,7 @@
+{
+  "name": "dispatch-connector-postgres",
+  "private": true,
+  "description": "Runs read-only queries against a PostgreSQL development database with psql.",
+  "type": "module",
+  "dispatch": { "connector": "./index.mjs" }
+}
