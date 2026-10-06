@@ -3,7 +3,7 @@ import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { runProcess } from './process.mjs';
 
-const checkEveryMs = 6 * 60 * 60 * 1000, firstCheckMs = 30_000, gitTimeoutMs = 30_000;
+const checkEveryMs = 6 * 60 * 60 * 1000, firstCheckMs = 30_000, gitTimeoutMs = 30_000, staleMs = 10 * 60 * 1000;
 const key = version => version.split('.').map(Number);
 const compare = (a, b) => { const [x, y] = [key(a), key(b)]; return x[0] - y[0] || x[1] - y[1] || x[2] - y[2]; };
 
@@ -31,6 +31,11 @@ export class Updates {
     this.latest = null; this.checkedAt = null; this.error = null;
   }
   status() { return { current: this.version, latest: this.latest, checkedAt: this.checkedAt, error: this.error, installed: this.installed }; }
+  // Opening the page reads tags again once the last check is stale, so a release tagged after a check shows without waiting hours.
+  async fresh({ now = Date.now() } = {}) {
+    const age = this.checkedAt ? now - Date.parse(this.checkedAt) : Infinity;
+    return this.installed && age >= staleMs ? this.check() : this.status();
+  }
   async check({ signal } = {}) {
     if (!this.installed) return this.status();
     const result = await this.execute('git', ['ls-remote', '--tags', '--refs', 'origin'], { cwd: this.root, signal, timeoutMs: gitTimeoutMs });

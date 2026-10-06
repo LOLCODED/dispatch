@@ -9,7 +9,7 @@ const dismissalKey = 'dispatch-update-alert-dismissed-until', command = 'dispatc
 export function UpdateAlert() {
   const [status, setStatus] = useState(null), [dismissedUntil, setDismissedUntil] = useState(() => Number(preference(dismissalKey, '0'))), [copied, copy] = useCopied();
   useEffect(() => {
-    api('/api/update').then(found => found.installed && !found.checkedAt ? api('/api/update/check', {}) : found).then(setStatus, () => {});
+    api('/api/update').then(setStatus, () => {});
   }, []);
   if (!status?.latest || dismissedUntil > Date.now()) return null;
   const dismiss = () => { const until = Date.now() + day; savePreference(dismissalKey, String(until)); setDismissedUntil(until); };

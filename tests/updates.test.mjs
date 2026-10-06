@@ -25,6 +25,11 @@ test('the installed service reads release tags from its origin; a checkout never
   assert.deepEqual(calls[0], ['git', 'ls-remote', '--tags', '--refs', 'origin']);
   const checkout = new Updates({ root: '/app', version: '1.2.0', execute, installed: false });
   assert.equal((await checkout.check()).latest, null); assert.equal(calls.length, 1);
+  const later = new Updates({ root: '/app', version: '1.2.0', execute, installed: true });
+  await later.fresh(); const checked = Date.parse(later.checkedAt);
+  await later.fresh({ now: checked + 9 * 60 * 1000 }); assert.equal(calls.length, 2, 'a check under ten minutes old is reused');
+  await later.fresh({ now: checked + 11 * 60 * 1000 }); assert.equal(calls.length, 3, 'an older one is repeated');
+  await checkout.fresh(); assert.equal(calls.length, 3, 'a checkout never checks');
   const failing = new Updates({ root: '/app', version: '1.2.0', execute: async () => ({ exitCode: 128, output: 'fatal: no origin' }), installed: true });
   assert.match((await failing.check()).error, /Could not read release tags: fatal: no origin/);
 });

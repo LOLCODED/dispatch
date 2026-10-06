@@ -174,7 +174,7 @@ export function createServer(engine, { assetRoot = root, devFraming = false, upd
       const editPath = path.match(/^\/api\/(tasks|runs)\/([a-f0-9-]+)\/edit$/);
       if (editPath) { const result = await editRoute({ tasks, live }, req, editPath[1], editPath[2]); if (result) return json(res, ...result); }
       if (req.method === 'GET' && path === '/api/analytics') return json(res, 200, analytics(engine.runs));
-      if (req.method === 'GET' && path === '/api/update') return json(res, 200, updates.status());
+      if (req.method === 'GET' && path === '/api/update') return json(res, 200, await updates.fresh());
       if (req.method === 'POST' && path === '/api/update/check') { await jsonBody(req); return json(res, 200, await updates.check()); }
       if (req.method === 'GET' && path === '/api/changelog') return json(res, 200, await changelog(root, { version: appVersion, since: releaseVersion.test(url.searchParams.get('since') ?? '') ? url.searchParams.get('since') : null, all: url.searchParams.get('all') === '1' }));
       if (req.method === 'POST' && path === '/api/runs') {
