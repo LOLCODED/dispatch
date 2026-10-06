@@ -21,10 +21,6 @@ Everything dispatch does outside your machine goes through a connector: reading 
 
 Nothing a connector can do runs until you allow it (see [Permissions](#permissions)). The full contract is under [Writing a connector](#writing-a-connector).
 
-### PostgreSQL
-
-Built in. Implements `database.query` with `psql` (install the PostgreSQL client): a read-only session with a 15-second statement limit, reading the connection from the variable set in its settings (`DATABASE_URL` by default). Its **Give each task its own database** action (a write, off until a repository turns it on) clones the development database on the same server: `CREATE DATABASE … TEMPLATE` when nothing else is connected to it, otherwise `pg_dump` and `pg_restore`, and drops the clone with the worktree. It is the default engine while it is the only query connector loaded; another engine (MySQL, SQL Server, …) is a connector with its own `database.query`, or the repository's own **Commands** under **Extras → Database**. Tested with doubles only.
-
 ### GitHub
 
 Uses your `gh` login (`gh auth login`). Its actions are **Push task branches** and **Open pull requests** (writes, off by default) and **Read pull requests** and **Read CI checks** (reads, on by default). Per repository it has a **Git remote** (default `origin`) and **Open as draft** (default on). After `ready`, a repository that uses GitHub with pushing on gets `HEAD:refs/heads/<branch>` pushed (never forced, never the base branch), the branch's pull request reused or a new one opened, and check runs read for the exact pushed SHA. Delivery errors are recorded on the run; the status stays `ready`. Tested with doubles and `node src/connectors/github/smoke.mjs` (local bare remote, `gh` shim); not yet run against GitHub. See [its README](../src/connectors/github/README.md).
@@ -238,7 +234,7 @@ export default function createConnector() {
 
 Turn on **Email when ready for review** in Settings (it is a write, so it starts off), then **Use Mail** in a repository and fill in **Send to**. The same shape works for a webhook: call `fetch` in the hook.
 
-The delivery example is GitHub: [`src/connectors/github/index.mjs`](../src/connectors/github/index.mjs). An agent-tool example is the Docker connector (container and PostgreSQL tools behind a per-repository allowlist), which lives in a repository of its own.
+The delivery example is GitHub: [`src/connectors/github/index.mjs`](../src/connectors/github/index.mjs). An agent-tool example is the Docker connector (container and PostgreSQL tools behind a per-repository allowlist), and a database example is the PostgreSQL connector (`database.query`, per-task databases and a task's changes, with `psql`); each lives in a repository of its own and is added with `dispatch connector add`.
 
 ### Testing a connector
 

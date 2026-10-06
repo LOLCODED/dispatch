@@ -38,7 +38,7 @@ function commandsSettings(value) {
 function envTemplate(lines) {
   const listed = lines && typeof lines === 'object' && !Array.isArray(lines) ? Object.entries(lines).map(([name, value]) => `${name}=${value}`) : Array.isArray(lines) ? lines : String(lines ?? '').split('\n');
   const entries = listed.map(line => line.trim()).filter(Boolean).map(line => line.match(envLine));
-  if (!entries.length || entries.some(entry => !entry)) throw new InputError('Commands give the task database’s variables one per line as NAME=value, for example DATABASE_URL=postgres://localhost:{port}/app_{task}.');
+  if (!entries.length || entries.some(entry => !entry)) throw new InputError('Commands give the task database’s variables one per line as NAME=value, for example DATABASE_URL=<scheme>://127.0.0.1:{port}/app_{task}.');
   return Object.fromEntries(entries.map(([, name, value]) => [name, value]));
 }
 
@@ -105,7 +105,7 @@ export function envFileValues(workspace, envFile, names) {
   return values;
 }
 
-// psql --csv and similar tools quote fields holding the delimiter, quotes or newlines and double inner quotes (RFC 4180).
+// Database CLIs' CSV output quotes fields holding the delimiter, quotes or newlines and double inner quotes (RFC 4180).
 export function parseDelimited(text, delimiter = ',') {
   const records = [];
   let record = [], field = '', quoted = false;

@@ -41,9 +41,9 @@ function QueryCommands({ id, database, set }) {
 
 function TaskCommands({ id, perTask, set }) {
   return <>
-    {field(`${id}-create`, 'Create', perTask.create, create => set({ create }), 'docker run -d --name app-{task} -p {port}:5432 postgres:16')}
+    {field(`${id}-create`, 'Create', perTask.create, create => set({ create }), 'docker run -d --name app-{task} -p {port}:<port> <image>')}
     {field(`${id}-drop`, 'Drop', perTask.drop, drop => set({ drop }), 'docker rm -f app-{task}')}
-    <div className="field"><Label htmlFor={`${id}-env`}>Variables</Label><Textarea id={`${id}-env`} className="mono-input" rows={2} placeholder="DATABASE_URL=postgres://postgres@127.0.0.1:{port}/postgres" value={perTask.env} onChange={event => set({ env: event.target.value })}/></div>
+    <div className="field"><Label htmlFor={`${id}-env`}>Variables</Label><Textarea id={`${id}-env`} className="mono-input" rows={2} placeholder="DATABASE_URL=<scheme>://127.0.0.1:{port}/app" value={perTask.env} onChange={event => set({ env: event.target.value })}/></div>
     <p className="muted">{'{task}'} is unique to the task, {'{port}'} a free local port.</p>
     {field(`${id}-snapshot`, 'Snapshot', perTask.snapshot, snapshot => set({ snapshot }), 'scripts/db-snapshot {snapshot}')}
     {field(`${id}-changes`, 'Changes', perTask.changes, changes => set({ changes }), 'scripts/db-changes {snapshot}')}
