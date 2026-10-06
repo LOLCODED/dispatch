@@ -70,7 +70,7 @@ export class Updates {
     if (!service) throw new InputError('Only the installed dispatch service can update itself. Run dispatch update in a terminal.', 409);
     if (await this.running()) throw new InputError('An update is already running.', 409);
     const defaultRoot = join(this.home, '.local', 'share', 'dispatch'), dir = this.installRoot() === defaultRoot ? [] : ['--dir', this.installRoot()];
-    const args = ['--user', `--unit=${service}-update`, '--collect', '--quiet', `--setenv=PORT=${this.env.PORT ?? 4317}`, `--setenv=PATH=${this.env.PATH ?? ''}`, process.execPath, join(this.root, 'bin', 'dispatch.mjs'), 'update', '--service', service, '--status', this.statusFile, ...dir];
+    const args = ['--user', `--unit=${service}-update`, '--collect', '--quiet', `--setenv=PORT=${this.env.PORT ?? 4317}`, `--setenv=PATH=${this.env.PATH ?? ''}`, process.execPath, join(this.root, 'bin', 'dispatch.mjs'), 'update', '--service', service, '--port', String(this.env.PORT ?? 4317), '--status', this.statusFile, ...dir];
     writeFileSync(this.statusFile, `${JSON.stringify({ stage: 'starting', at: new Date().toISOString() })}\n`);
     const result = await this.execute('systemd-run', args, { timeoutMs: 30_000 });
     if (result.exitCode !== 0) { const message = `Could not start the update: ${result.output.trim().slice(-300)}`; writeFileSync(this.statusFile, `${JSON.stringify({ stage: 'failed', message, at: new Date().toISOString() })}\n`); throw new InputError(message, 500); }

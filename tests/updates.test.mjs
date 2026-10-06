@@ -42,7 +42,7 @@ test('the update runs in its own transient unit with the service, status file an
   await updates.start();
   const run = calls.find(call => call[0] === 'systemd-run');
   assert.deepEqual(run.slice(0, 7), ['systemd-run', '--user', '--unit=dispatch-test-update', '--collect', '--quiet', '--setenv=PORT=4317', '--setenv=PATH=/usr/bin']);
-  assert.deepEqual(run.slice(-5), ['update', '--service', 'dispatch-test', '--status', join(data, 'update.json')], 'the default install folder passes no --dir');
+  assert.deepEqual(run.slice(-7), ['update', '--service', 'dispatch-test', '--port', '4317', '--status', join(data, 'update.json')], 'the default install folder passes no --dir');
   assert.equal(JSON.parse(readFileSync(join(data, 'update.json'), 'utf8')).stage, 'starting');
 });
 

@@ -143,8 +143,8 @@ export function switchVersion(app, target, previous, exec = run) {
     if (!previous) throw error;
     console.log(`Building ${target} failed; restoring ${previous.slice(0, 12)}.`);
     try { build(app, previous, exec); }
-    catch { throw new InstallError(`Updating to ${target} failed (${error.message}), and restoring ${previous.slice(0, 12)} failed too. Fix the install in ${app} before dispatch restarts.`); }
-    throw new InstallError(`Updating to ${target} failed (${error.message}). ${previous.slice(0, 12)} is restored; dispatch keeps running it.`);
+    catch { throw new InstallError(`Updating to ${target} failed: ${error.message.replace(/\.$/, '')}. Restoring ${previous.slice(0, 12)} failed too; fix the install in ${app} before dispatch restarts.`); }
+    throw new InstallError(`Updating to ${target} failed: ${error.message.replace(/\.$/, '')}. ${previous.slice(0, 12)} is restored; dispatch keeps running it.`);
   }
 }
 
@@ -237,7 +237,7 @@ export function install({ dir, port, ref, service, source = fileURLToPath(new UR
   run('git', ['clone', '--no-checkout', source, layout.app]);
   const version = checkout(layout, ref);
   const unit = writeService(layout), link = layout.service === serviceName ? linkCommand(layout) : `${join(layout.app, 'bin', 'dispatch.mjs')} (not linked: only the dispatch service gets the command)`;
-  console.log(`\nInstalled ${version} in ${layout.app}\nData: ${layout.data}\nService: ${unit}\nCommand: ${link}\nOpen http://127.0.0.1:${layout.port}${pathHint(link, process.env.PATH ?? '')}`);
+  console.log(`\nInstalled ${version} in ${layout.app}\nData: ${layout.data}\nService: ${unit}\nCommand: ${link}\nOpen http://127.0.0.1:${layout.port}${layout.service === serviceName ? pathHint(link, process.env.PATH ?? '') : ''}`);
 }
 
 // The server's update button reads this file to show progress, and after the restart to tell whether the update landed.

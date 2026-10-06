@@ -256,3 +256,21 @@ test('a setting changed through the settings API, as a task or the CLI would, sh
   await expect(page.locator('html')).toHaveClass(/dark/);
   expect(await page.evaluate(() => localStorage.getItem('dispatch-theme'))).toBe('dark');
 });
+
+test('the update alert offers a newer release, shows progress and the failure, and can wait until tomorrow', { tag: '@ui' }, async ({ page }) => {
+  let status = { current: '1.2.0', latest: '1.3.0', checkedAt: '2026-10-06T00:00:00.000Z', error: null, installed: true, progress: null }, started = 0;
+  await page.route('/api/update', route => {
+    if (route.request().method() === 'POST') { started++; status = { ...status, progress: { stage: 'building', at: 'now' } }; return route.fulfill({ status: 202, json: status }); }
+    return route.fulfill({ json: status });
+  });
+  await page.goto('/');
+  const alert = page.getByRole('complementary', { name: 'Update alert' });
+  await expect(alert).toContainText('dispatch 1.3.0 is available'); await expect(alert).toContainText('You have 1.2.0.');
+  await alert.getByRole('button', { name: 'Update to 1.3.0 and restart' }).click();
+  await expect(alert).toContainText('Installing and building… (1.3.0)'); expect(started).toBe(1);
+  status = { ...status, progress: { stage: 'failed', message: 'Updating to v1.3.0 failed: npm run failed (exit 1). abc is restored; dispatch keeps running it.', at: 'now' } };
+  await expect(alert.getByRole('alert')).toContainText('abc is restored');
+  await expect(alert.getByRole('button', { name: 'Try the update again' })).toBeVisible();
+  await alert.getByRole('button', { name: 'Remind me tomorrow' }).click();
+  await expect(alert).toBeHidden();
+});

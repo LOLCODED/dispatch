@@ -68,10 +68,10 @@ test('a failed build restores the previous version before anything restarts, and
   t.mock.method(console, 'log', () => {});
   const recorder = failing => { const calls = []; return { calls, exec: (command, args) => { calls.push(`${command} ${args.join(' ')}`); if (failing(calls)) throw new Error('npm run failed (exit 1).'); } }; };
   const target = recorder(calls => calls.at(-1) === 'npm run build' && calls.includes('git checkout --detach --force v1.3.0') && !calls.includes('git checkout --detach --force aaaaaaaaaaaaaaaa'));
-  assert.throws(() => switchVersion('/app', 'v1.3.0', 'aaaaaaaaaaaaaaaa', target.exec), /Updating to v1\.3\.0 failed \(npm run failed \(exit 1\)\.\)\. aaaaaaaaaaaa is restored; dispatch keeps running it\./);
+  assert.throws(() => switchVersion('/app', 'v1.3.0', 'aaaaaaaaaaaaaaaa', target.exec), /Updating to v1\.3\.0 failed: npm run failed \(exit 1\)\. aaaaaaaaaaaa is restored; dispatch keeps running it\./);
   assert.deepEqual(target.calls.slice(3), ['git checkout --detach --force aaaaaaaaaaaaaaaa', 'npm ci --no-audit --no-fund', 'npm run build']);
   const both = recorder(calls => calls.at(-1) === 'npm run build');
-  assert.throws(() => switchVersion('/app', 'v1.3.0', 'aaaaaaaaaaaaaaaa', both.exec), /restoring aaaaaaaaaaaa failed too/);
+  assert.throws(() => switchVersion('/app', 'v1.3.0', 'aaaaaaaaaaaaaaaa', both.exec), /Restoring aaaaaaaaaaaa failed too/);
   const first = recorder(calls => calls.at(-1) === 'npm run build');
   assert.throws(() => switchVersion('/app', 'v1.3.0', null, first.exec), /npm run failed/);
   assert.equal(first.calls.length, 3);

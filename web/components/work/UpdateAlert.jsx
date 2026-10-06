@@ -41,7 +41,7 @@ export function UpdateAlert() {
   if (status?.latest) target.current = status.latest;
   useUpdatePolling(target.current, updating, setStatus);
   const failed = progress?.stage === 'failed' ? progress.message : error;
-  if (!status?.installed || (!status.latest && !failed) || (dismissedUntil > Date.now() && !updating && !failed)) return null;
+  if (!status?.installed || (!status.latest && !failed) || (dismissedUntil > Date.now() && !updating)) return null;
   const start = async () => { setError(null); try { setStatus(await api('/api/update', {})); } catch (reason) { setError(reason.message); } };
   const dismiss = () => { const until = Date.now() + day; savePreference(dismissalKey, String(until)); setDismissedUntil(until); };
   return <aside className="home-alert" aria-label="Update alert" aria-live="polite">
