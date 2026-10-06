@@ -6,22 +6,23 @@ import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { activeStatuses } from '../src/board-state.mjs';
 import { migrateData, serviceEnv } from './migrate-data.mjs';
+import { latestTag } from '../src/updates.mjs';
+
+export { latestTag };
 
 export const serviceName = 'dispatch';
 export const launchdLabel = 'dev.dispatch.server';
 
 export class InstallError extends Error {}
 
-// Data defaults to ~/.dispatch so deleting that one folder resets dispatch; an explicit --dir keeps everything under it.
-export function installLayout({ dir, port = 4317 } = {}) {
-  const root = resolve(dir ?? join(homedir(), '.local', 'share', 'dispatch'));
-  return { root, app: join(root, 'app'), data: dir ? join(root, 'data') : join(homedir(), '.dispatch'), log: join(root, 'server.log'), port: Number(port) };
-}
+export const defaultRoot = () => join(homedir(), '.local', 'share', 'dispatch');
+const serviceId = /^[a-z][a-z0-9-]{0,40}$/;
 
-export function latestTag(tags) {
-  const versions = tags.split('\n').map(tag => tag.trim()).filter(tag => /^v\d+\.\d+\.\d+$/.test(tag));
-  const key = tag => tag.slice(1).split('.').map(Number);
-  return versions.sort((a, b) => { const [x, y] = [key(a), key(b)]; return y[0] - x[0] || y[1] - x[1] || y[2] - x[2]; })[0] ?? null;
+// Data defaults to ~/.dispatch so deleting that one folder resets dispatch; an explicit --dir keeps everything under it.
+export function installLayout({ dir, port = 4317, service = serviceName } = {}) {
+  if (!serviceId.test(service)) throw new InstallError('A service name is lowercase letters, digits and dashes.');
+  const root = resolve(dir ?? defaultRoot());
+  return { root, app: join(root, 'app'), data: dir ? join(root, 'data') : join(homedir(), '.dispatch'), log: join(root, 'server.log'), port: Number(port), service };
 }
 
 export function servicePath(path) {
@@ -40,6 +41,7 @@ WorkingDirectory=${layout.app}
 Environment=${systemdValue(`PORT=${layout.port}`)}
 Environment=${systemdValue(`DISPATCH_DATA_DIR=${layout.data}`)}
 Environment=${systemdValue(`PATH=${path}`)}
+Environment=${systemdValue(`DISPATCH_SERVICE=${layout.service ?? serviceName}`)}
 ExecStart=${systemdValue(node)} src/server.mjs
 Restart=on-failure
 TimeoutStopSec=30
@@ -162,19 +164,20 @@ function servicePlatform() {
   throw new InstallError(`No service support for ${process.platform}; run \`npm start\` in ${installLayout().app} instead.`);
 }
 
-function serviceFile() {
-  if (servicePlatform() === 'systemd') return join(homedir(), '.config', 'systemd', 'user', `${serviceName}.service`);
+export function serviceFile(service = serviceName) {
+  if (servicePlatform() === 'systemd') return join(homedir(), '.config', 'systemd', 'user', `${service}.service`);
+  if (service !== serviceName) throw new InstallError('A service name other than dispatch is supported with systemd only.');
   return join(homedir(), 'Library', 'LaunchAgents', `${launchdLabel}.plist`);
 }
 
 function writeService(layout, path = process.env.PATH ?? '') {
   const spec = { layout, node: process.execPath, path: servicePath(path) };
-  const file = serviceFile();
+  const file = serviceFile(layout.service);
   mkdirSync(dirname(file), { recursive: true });
   if (servicePlatform() === 'systemd') {
     writeFileSync(file, systemdUnit(spec));
     run('systemctl', ['--user', 'daemon-reload']);
-    run('systemctl', ['--user', 'enable', '--now', serviceName]);
+    run('systemctl', ['--user', 'enable', '--now', layout.service]);
     return file;
   }
   writeFileSync(file, launchdPlist(spec));
@@ -183,13 +186,13 @@ function writeService(layout, path = process.env.PATH ?? '') {
   return file;
 }
 
-function restartService() {
-  if (servicePlatform() === 'systemd') run('systemctl', ['--user', 'restart', serviceName]);
+function restartService(service) {
+  if (servicePlatform() === 'systemd') run('systemctl', ['--user', 'restart', service]);
   else run('launchctl', ['kickstart', '-k', `gui/${process.getuid()}/${launchdLabel}`]);
 }
 
-function installedServiceFile() {
-  const file = serviceFile();
+function installedServiceFile(service = serviceName) {
+  const file = serviceFile(service);
   if (!existsSync(file)) throw new InstallError('dispatch is not installed as a service. Run `dispatch install` from a dispatch checkout, or `npm start` there.');
   return file;
 }
@@ -199,9 +202,9 @@ function assertIdle(runs, force, action) {
   if (busy.length && !force) throw new InstallError(`${busy.length} run(s) are working (${busy.map(item => item.title).join(', ')}). Wait for them or pass --force to ${action}; interrupted runs recover as interrupted, queued runs stay queued.`);
 }
 
-export function startService() {
-  const file = installedServiceFile();
-  if (servicePlatform() === 'systemd') { output('systemctl', ['--user', 'start', serviceName]); return; }
+export function startService(service = serviceName) {
+  const file = installedServiceFile(service);
+  if (servicePlatform() === 'systemd') { output('systemctl', ['--user', 'start', service]); return; }
   spawnSync('launchctl', ['bootstrap', `gui/${process.getuid()}`, file]);
   output('launchctl', ['kickstart', `gui/${process.getuid()}/${launchdLabel}`]);
 }
@@ -227,45 +230,52 @@ function linkCommand(layout) {
   return link;
 }
 
-export function install({ dir, port, ref, source = fileURLToPath(new URL('..', import.meta.url)) }) {
-  const layout = installLayout({ dir, port });
+export function install({ dir, port, ref, service, source = fileURLToPath(new URL('..', import.meta.url)) }) {
+  const layout = installLayout({ dir, port, service });
   if (existsSync(layout.app)) throw new InstallError(`${layout.app} already exists. Use \`dispatch update\`.`);
   mkdirSync(layout.data, { recursive: true });
   run('git', ['clone', '--no-checkout', source, layout.app]);
   const version = checkout(layout, ref);
-  const service = writeService(layout), link = linkCommand(layout);
-  console.log(`\nInstalled ${version} in ${layout.app}\nData: ${layout.data}\nService: ${service}\nCommand: ${link}\nOpen http://127.0.0.1:${layout.port}${pathHint(link, process.env.PATH ?? '')}`);
+  const unit = writeService(layout), link = layout.service === serviceName ? linkCommand(layout) : `${join(layout.app, 'bin', 'dispatch.mjs')} (not linked: only the dispatch service gets the command)`;
+  console.log(`\nInstalled ${version} in ${layout.app}\nData: ${layout.data}\nService: ${unit}\nCommand: ${link}\nOpen http://127.0.0.1:${layout.port}${pathHint(link, process.env.PATH ?? '')}`);
 }
 
-export async function update({ dir, port, ref, force, runs, queue }) {
-  const layout = installLayout({ dir, port });
-  if (!existsSync(layout.app)) throw new InstallError(`No install at ${layout.app}. Run \`dispatch install\` from a dispatch checkout.`);
-  const held = !force && await waitForIdle(queue);
-  if (held) await queue.hold(queueHold.installSeconds);
-  else assertIdle(await runs(), force, 'update anyway');
-  let version;
-  try { version = checkout(layout, ref); }
-  catch (error) { if (held) await queue.release(); throw error; }
-  const moved = dir ? null : moveData(layout);
-  if (!moved) restartService();
-  console.log(`\nUpdated to ${version}. dispatch restarted on http://127.0.0.1:${moved?.port ?? layout.port}`);
+// The server's update button reads this file to show progress, and after the restart to tell whether the update landed.
+const progress = file => (stage, details = {}) => { if (file) writeFileSync(file, `${JSON.stringify({ stage, ...details, at: new Date().toISOString() })}\n`); };
+
+export async function update({ dir, port, ref, force, runs, queue, service, status }) {
+  const layout = installLayout({ dir, port, service }), report = progress(status);
+  try {
+    if (!existsSync(layout.app)) throw new InstallError(`No install at ${layout.app}. Run \`dispatch install\` from a dispatch checkout.`);
+    const held = !force && await waitForIdle(queue, { log: line => { console.log(line); report('waiting', { message: line }); } });
+    if (held) await queue.hold(queueHold.installSeconds);
+    else assertIdle(await runs(), force, 'update anyway');
+    report('building');
+    let version;
+    try { version = checkout(layout, ref); }
+    catch (error) { if (held) await queue.release(); throw error; }
+    report('restarting', { version });
+    const moved = dir ? null : moveData(layout);
+    if (!moved) restartService(layout.service);
+    console.log(`\nUpdated to ${version}. dispatch restarted on http://127.0.0.1:${moved?.port ?? layout.port}`);
+  } catch (error) { report('failed', { message: error.message }); throw error; }
 }
 
-function haltService() {
-  if (servicePlatform() === 'systemd') output('systemctl', ['--user', 'stop', serviceName]);
+function haltService(service) {
+  if (servicePlatform() === 'systemd') output('systemctl', ['--user', 'stop', service]);
   else spawnSync('launchctl', ['bootout', `gui/${process.getuid()}/${launchdLabel}`]);
 }
 
 // An install made before data moved to ~/.dispatch is moved there once, while the update has the queue idle; the service keeps its port and PATH.
 function moveData(layout) {
-  const env = serviceEnv(readFileSync(installedServiceFile(), 'utf8')), from = env.DISPATCH_DATA_DIR;
+  const env = serviceEnv(readFileSync(installedServiceFile(layout.service), 'utf8')), from = env.DISPATCH_DATA_DIR;
   if (!from || resolve(from) === layout.data || !existsSync(from)) return null;
   if (existsSync(layout.data)) { console.log(`${layout.data} already exists, so data stays in ${from}. Move or remove one of them, then update again to switch.`); return null; }
   const target = { ...layout, port: Number(env.PORT ?? layout.port) };
-  haltService();
+  haltService(layout.service);
   let result;
   try { result = migrateData(resolve(from), layout.data); }
-  catch (error) { startService(); throw new InstallError(`Data was not moved: ${error.message}`); }
+  catch (error) { startService(layout.service); throw new InstallError(`Data was not moved: ${error.message}`); }
   writeService(target, env.PATH ?? process.env.PATH ?? '');
   console.log(`Moved data from ${from} to ${layout.data}.`);
   for (const line of result.failed) console.log(`Could not re-link worktree ${line}`);

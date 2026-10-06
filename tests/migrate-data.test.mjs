@@ -9,9 +9,9 @@ import { temporaryRepository } from './live-double.mjs';
 
 test('the service files give back the data folder, port and PATH they were written with', () => {
   const layout = { ...installLayout({ dir: '/home/me/odd "dir"%', port: 4400 }) }, path = '/home/me/bin:/usr/bin';
-  for (const text of [systemdUnit({ layout, node: '/usr/bin/node', path }), launchdPlist({ layout, node: '/usr/bin/node', path })]) {
-    assert.deepEqual(serviceEnv(text), { PORT: '4400', DISPATCH_DATA_DIR: '/home/me/odd "dir"%/data', PATH: path });
-  }
+  const written = { PORT: '4400', DISPATCH_DATA_DIR: '/home/me/odd "dir"%/data', PATH: path };
+  assert.deepEqual(serviceEnv(systemdUnit({ layout, node: '/usr/bin/node', path })), { ...written, DISPATCH_SERVICE: 'dispatch' });
+  assert.deepEqual(serviceEnv(launchdPlist({ layout, node: '/usr/bin/node', path })), written);
 });
 
 test('only whole path prefixes are rewritten', () => {

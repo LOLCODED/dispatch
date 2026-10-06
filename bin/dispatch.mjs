@@ -216,7 +216,7 @@ const commands = {
 };
 try {
   const parsed = parseArgs({ allowPositionals: true, allowNegative: true, options: {
-    repo: { type: 'string', multiple: true }, answer: { type: 'boolean' }, ref: { type: 'string' }, port: { type: 'string' }, dir: { type: 'string' }, force: { type: 'boolean' }, help: { type: 'boolean', short: 'h' },
+    repo: { type: 'string', multiple: true }, answer: { type: 'boolean' }, ref: { type: 'string' }, port: { type: 'string' }, dir: { type: 'string' }, service: { type: 'string' }, status: { type: 'string' }, force: { type: 'boolean' }, help: { type: 'boolean', short: 'h' },
     name: { type: 'string' }, base: { type: 'string' }, check: { type: 'string', multiple: true }, setup: { type: 'string', multiple: true }, 'text-only': { type: 'string', multiple: true },
     instruction: { type: 'string', multiple: true }, browser: { type: 'boolean' }, review: { type: 'boolean' }, link: { type: 'string' },
   } });

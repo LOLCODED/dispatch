@@ -21,6 +21,9 @@ test('the service keeps the user PATH once so agent CLIs resolve, and uses its o
   assert.match(unit, /Environment="DISPATCH_DATA_DIR=\/home\/me\/.local\/share\/dispatch\/data"/);
   assert.match(unit, /Environment="PORT=4317"/);
   assert.match(unit, /ExecStart="\/usr\/bin\/node" src\/server.mjs/);
+  assert.match(unit, /Environment="DISPATCH_SERVICE=dispatch"/);
+  assert.match(systemdUnit({ ...spec, layout: installLayout({ dir: '/tmp/x', service: 'dispatch-test' }) }), /DISPATCH_SERVICE=dispatch-test/);
+  assert.throws(() => installLayout({ service: '../evil' }), /service name/);
   assert.match(systemdUnit({ ...spec, path: '/odd%dir' }), /PATH=\/odd%%dir/);
   const plist = launchdPlist({ ...spec, path: '/a&b' });
   assert.match(plist, /<key>DISPATCH_DATA_DIR<\/key><string>\/home\/me\/.local\/share\/dispatch\/data<\/string>/);

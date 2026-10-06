@@ -17,7 +17,7 @@ export const preferenceSpecs = {
   editor: { type: 'string', default: '', cache: 'dispatch-editor', description: 'Editor command used to open worktrees; empty uses the first one found.', valid: value => typeof value === 'string' && value.length <= 200 },
   'attention.sound': enumOf(['off', 'on'], 'dispatch-attention-sound', 'Play a sound when a task needs you.'),
   'attention.volume': { type: 'integer', default: 60, cache: 'dispatch-attention-volume', description: 'Sound volume, 0 to 100.', valid: value => Number.isInteger(value) && value >= 0 && value <= 100 },
-  alerts: { type: 'json', default: {}, cache: 'dispatch-alerts', description: 'Banners to show: { usage, review, storage, folders } as true or false.', valid: value => record(value) && Object.values(value).every(item => typeof item === 'boolean') },
+  alerts: { type: 'json', default: {}, cache: 'dispatch-alerts', description: 'Banners to show: { usage, review, storage, folders, update } as true or false.', valid: value => record(value) && Object.values(value).every(item => typeof item === 'boolean') },
   keybinds: { type: 'json', default: {}, cache: 'dispatch-keybinds', description: 'Keyboard shortcuts by action, e.g. { "fullScreen": "Alt+F" }.', valid: value => record(value) && Object.values(value).every(item => typeof item === 'string' && item.length <= 40) && shortJson(value) },
 };
 
@@ -42,5 +42,5 @@ export function fromCache(key, text) {
 
 // What a browser keeps for itself — drafts, dismissed banners, last-used choices, tile positions — and the page's own event and class names.
 // None is a setting; anything else the web code stores must be a preference above (tests/settings.test.mjs).
-export const browserStateKeys = ['dispatch-draft', 'dispatch-text-attachments', 'dispatch-followup-', 'dispatch-question-', 'dispatch-game', 'dispatch-game-best-', 'dispatch-tiles', 'dispatch-tiles-', 'dispatch-board-folder', 'dispatch-select-collapsed', 'dispatch-seen-version', 'dispatch-land-strategy', 'dispatch-pr-base-', 'dispatch-usage-alert-dismissed', 'dispatch-review-alert-dismissed-until', 'dispatch-storage-alert-dismissed-until', 'dispatch-folder-alert-dismissed-until', 'dispatch-browser-dismissed-', 'dispatch-full-screen-key'];
+export const browserStateKeys = ['dispatch-draft', 'dispatch-text-attachments', 'dispatch-followup-', 'dispatch-question-', 'dispatch-game', 'dispatch-game-best-', 'dispatch-tiles', 'dispatch-tiles-', 'dispatch-board-folder', 'dispatch-select-collapsed', 'dispatch-seen-version', 'dispatch-land-strategy', 'dispatch-pr-base-', 'dispatch-usage-alert-dismissed', 'dispatch-review-alert-dismissed-until', 'dispatch-storage-alert-dismissed-until', 'dispatch-folder-alert-dismissed-until', 'dispatch-update-alert-dismissed-until', 'dispatch-browser-dismissed-', 'dispatch-full-screen-key'];
 export const browserEvents = ['dispatch-refresh', 'dispatch-flight'];
