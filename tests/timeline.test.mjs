@@ -79,3 +79,17 @@ test('browser captions name the element the agent acted on and the message that 
   const said = browserNarration([{ seq: 1, kind: 'browser.step' }, { seq: 2, kind: 'message', text: 'Opening the  invite dialog.' }, { seq: 3, kind: 'browser.step' }, { seq: 4, kind: 'browser.step' }]);
   assert.equal(said.get(1), ''); assert.equal(said.get(3), 'Opening the invite dialog.'); assert.equal(said.get(4), 'Opening the invite dialog.');
 });
+
+test('an accepted check reads as accepted, not failed, in its phase and in the checks filter', () => {
+  const turn = { attempt: 1, role: 'worker' }, run = { id: 'r1' };
+  const accepted = ownSteps([
+    { seq: 1, kind: 'check.end', name: 'unit', status: 'failed', turn },
+    { seq: 2, kind: 'check.accepted', name: 'unit', revision: 'tree1', turn },
+  ], run, 0);
+  const [phase] = timelinePhases(accepted);
+  assert.deepEqual([phase.outcome, phase.tone], ['checks accepted', 'passed']);
+  assert.equal(stepTitle(accepted[1]), 'Check unit · accepted, fails on the base commit too');
+  assert.deepEqual(filterSteps(accepted, { checksOnly: true }).map(step => step.seq), [1, 2]);
+  const other = ownSteps([{ seq: 1, kind: 'check.end', name: 'lint', status: 'failed', turn }, { seq: 2, kind: 'check.accepted', name: 'unit', turn }], run, 0);
+  assert.equal(timelinePhases(other)[0].outcome, 'checks failed', 'accepting one check does not hide another failure');
+});

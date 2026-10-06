@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Check, Pencil, Plus, Trash2 } from 'lucide-react';
 import { IconButton } from '@/components/IconButton';
 import { SwitchRow } from '@/components/Switch';
@@ -40,6 +40,25 @@ function AddCommand({ label, taken, onAdd }) {
 function StepList({ steps, onSteps }) {
   const replace = (index, step) => onSteps(steps.map((item, position) => position === index ? step : item));
   return steps.map((step, index) => <StepRow key={step.id} step={step} onChange={next => replace(index, next)} onRemove={() => onSteps(steps.filter((_, position) => position !== index))}/>);
+}
+
+// Switching a script check on or off keeps its row where it was; moving it between groups put another row under the pointer.
+function useStableOrder(keys) {
+  const seen = useRef([]);
+  for (const key of keys) if (!seen.current.includes(key)) seen.current.push(key);
+  return [...keys].sort((a, b) => seen.current.indexOf(a) - seen.current.indexOf(b));
+}
+
+function CheckRows({ form, info, onSteps }) {
+  const steps = form.validation, unused = unusedScripts(info, form);
+  const rows = new Map([...steps.map((step, index) => [npmScript(step) ?? `step:${step.id}`, { step, index }]), ...unused.map(script => [script, { script }])]);
+  const replace = (index, step) => onSteps(steps.map((item, position) => position === index ? step : item));
+  return useStableOrder([...rows.keys()]).map(key => {
+    const { step, index, script } = rows.get(key);
+    return step
+      ? <StepRow key={key} step={step} onChange={next => replace(index, next)} onRemove={() => onSteps(steps.filter((_, position) => position !== index))}/>
+      : <li key={key}><SwitchRow label={<code>npm run {script}</code>} description={scriptDescription(info, script)} checked={false} onChange={() => onSteps([...steps, scriptCheck(script)])}/></li>;
+  });
 }
 
 function LocalFiles({ form, update, info }) {
@@ -84,8 +103,7 @@ export function ChecksTab({ form, update, info }) {
       <NoChoiceWarning form={form}/>
       {!checkIds(form).length && <p className="muted" role="status">No checks yet. Adding at least one command that fails when the project breaks, such as its test runner, lets dispatch catch and repair broken changes.</p>}
       <ul className="row-list">
-        <StepList steps={form.validation} onSteps={setValidation}/>
-        {unusedScripts(info, form).map(script => <li key={script}><SwitchRow label={<code>npm run {script}</code>} description={scriptDescription(info, script)} checked={false} onChange={() => setValidation([...form.validation, scriptCheck(script)])}/></li>)}
+        <CheckRows form={form} info={info} onSteps={setValidation}/>
         <li><SwitchRow label="Browser smoke check" description="Starts the app, opens it in Chromium and fails on page errors." checked={Boolean(form.smoke)} onChange={on => update({ smoke: on ? { id: 'browser-smoke', kind: 'browser-smoke' } : null })}/></li>
       </ul>
       <AddCommand label="Add a check command" taken={checkIds(form)} onAdd={step => setValidation([...form.validation, step])}/>

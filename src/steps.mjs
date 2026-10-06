@@ -3,7 +3,7 @@ import { createInterface } from 'node:readline';
 import { join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
-export const stepKinds = ['turn.start', 'turn.end', 'message', 'tool.call', 'tool.result', 'browser.step', 'files', 'check.start', 'check.end', 'question', 'answer', 'delivery', 'status', 'dev-server', 'patch', 'model', 'risk', 'overflow'];
+export const stepKinds = ['turn.start', 'turn.end', 'message', 'tool.call', 'tool.result', 'browser.step', 'files', 'check.start', 'check.end', 'check.accepted', 'question', 'answer', 'delivery', 'status', 'dev-server', 'patch', 'model', 'risk', 'overflow'];
 export const limits = { line: 32_000, file: 64_000_000, page: 500, text: 16_000, output: 64_000, paths: 500 };
 const redact = text => String(text).replace(/\b(?:sk-[\w-]{12,}|gh[pousr]_[\w]{20,}|eyJ[\w-]+\.[\w-]+\.[\w-]+)\b/g, '[REDACTED]');
 const clip = (value, max) => typeof value === 'string' ? redact(value).slice(0, max) : value;

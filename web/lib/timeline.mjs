@@ -1,6 +1,6 @@
 import { terminal } from '../../src/catalog.mjs';
 
-export const stepIcons = {'turn.start': 'play', 'turn.end': 'flag', message: 'message', 'tool.call': 'wrench', 'tool.result': 'wrench', 'browser.step': 'globe', files: 'files', 'check.start': 'flask', 'check.end': 'flask', question: 'help', answer: 'reply', delivery: 'send', status: 'circle', 'dev-server': 'server', patch: 'diff', overflow: 'alert' };
+export const stepIcons = {'turn.start': 'play', 'turn.end': 'flag', message: 'message', 'tool.call': 'wrench', 'tool.result': 'wrench', 'browser.step': 'globe', files: 'files', 'check.start': 'flask', 'check.end': 'flask', 'check.accepted': 'flask', question: 'help', answer: 'reply', delivery: 'send', status: 'circle', 'dev-server': 'server', patch: 'diff', overflow: 'alert' };
 const hidden = new Set(['tool.result', 'check.start']);
 
 export function groupByTurn(steps) {
@@ -20,12 +20,12 @@ export const visibleSteps = steps => steps.filter(step => !hidden.has(step.kind)
 export function filterSteps(steps, { browserOnly = false, checksOnly = false } = {}) {
   const visible = visibleSteps(steps);
   if (browserOnly) return visible.filter(step => step.kind === 'browser.step');
-  return checksOnly ? visible.filter(step => step.kind === 'check.end') : visible;
+  return checksOnly ? visible.filter(step => step.kind === 'check.end' || step.kind === 'check.accepted') : visible;
 }
 
 const folded = new Set(['status', 'turn.start', 'turn.end', 'patch']);
 const isEnd = step => step?.kind === 'status' && terminal.has(step.status);
-const outcomeTones = { 'checks failed': 'failed', failed: 'failed', cancelled: 'failed', 'checks passed': 'passed', completed: 'passed', blocked: 'blocked' };
+const outcomeTones = { 'checks failed': 'failed', failed: 'failed', cancelled: 'failed', 'checks passed': 'passed', 'checks accepted': 'passed', completed: 'passed', blocked: 'blocked' };
 const endTones = { ready: 'passed', planned: 'passed', failed: 'failed', cancelled: 'failed' };
 
 export function phaseTitle({ attempt, role, runIndex }, multiRun = false) {
@@ -33,8 +33,8 @@ export function phaseTitle({ attempt, role, runIndex }, multiRun = false) {
   return multiRun ? `Run ${runIndex + 1} · ${name}` : name;
 }
 function phaseOutcome(steps) {
-  const checks = steps.filter(step => step.kind === 'check.end');
-  if (checks.length) return checks.some(check => check.status === 'failed') ? 'checks failed' : 'checks passed';
+  const checks = steps.filter(step => step.kind === 'check.end'), accepted = new Set(steps.filter(step => step.kind === 'check.accepted').map(step => step.name));
+  if (checks.length) return checks.some(check => check.status === 'failed' && !accepted.has(check.name)) ? 'checks failed' : accepted.size ? 'checks accepted' : 'checks passed';
   return steps.findLast(step => step.kind === 'turn.end')?.outcome ?? '';
 }
 const spanMs = steps => { const first = Date.parse(steps[0]?.at), last = Date.parse(steps.at(-1)?.at); return Number.isFinite(first) && Number.isFinite(last) ? last - first : null; };
@@ -108,6 +108,7 @@ export function stepTitle(step) {
     case 'browser.step': return browserTitle(step);
     case 'files': return `${step.paths?.length ?? 0} file${step.paths?.length === 1 ? '' : 's'} changed`;
     case 'check.end': return `Check ${step.name} · ${step.status}`;
+    case 'check.accepted': return `Check ${step.name} · accepted, fails on the base commit too`;
     case 'risk': return `Testing plan · ${step.level} risk · ${step.status}`;
     case 'question': return 'Question for you';
     case 'answer': return 'Your answer';

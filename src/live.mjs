@@ -1331,6 +1331,7 @@ export class LiveService {
       const accepted = run.acceptedFailures?.find(item => item.name === failure.name && item.revision === failure.revision);
       if (accepted && !signal.aborted && await this.baseChecks.failsOnBase(run, failure, signal)) {
         failure.accepted = { by: 'operator', at: accepted.acceptedAt };
+        this.steps.append(run, { kind: 'check.accepted', name: failure.name, revision: failure.revision });
         this.log(run, 'check', `${failure.name} failed as it does on the base commit; you accepted it for revision ${failure.revision.slice(0, 12)}.`);
       } else open.push(failure);
     }

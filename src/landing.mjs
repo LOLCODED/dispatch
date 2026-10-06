@@ -317,6 +317,7 @@ export class Landings {
     for (const check of run.checks.slice(from).filter(item => item.status === 'failed')) {
       if (signal.aborted || !accepted.has(check.name) || !await this.live.baseChecks.failsOnBase(run, check, signal)) return check;
       check.accepted = { by: 'operator', at: new Date().toISOString() };
+      this.live.steps.append(run, { kind: 'check.accepted', name: check.name, revision: check.revision });
       this.live.log(run, 'check', `${check.name} failed as it does on ${run.landing.target}; a landed task accepted it as failing before the change.`);
     }
     return null;
