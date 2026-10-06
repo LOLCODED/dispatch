@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import assert from 'node:assert/strict';
-import { activeRuns, installLayout, latestTag, launchdPlist, servicePath, systemdUnit, upstreamUrl, waitForIdle } from '../bin/install.mjs';
+import { activeRuns, installLayout, latestTag, launchdPlist, servicePath, switchVersion, systemdUnit, upstreamUrl, waitForIdle } from '../bin/install.mjs';
 
 const layout = installLayout({ dir: '/home/me/.local/share/dispatch', port: 4317 });
 const spec = { layout, node: '/usr/bin/node', path: '/home/me/.local/bin:/usr/bin' };
@@ -59,4 +59,20 @@ test('an install cloned from a local checkout finds that checkout\'s own origin 
   assert.equal(upstreamUrl(source), null);
   git(app, 'remote', 'set-url', 'origin', 'git@github.com:me/dispatch.git');
   assert.equal(upstreamUrl(app), null);
+});
+
+test('a failed build restores the previous version before anything restarts, and says so', t => {
+  t.mock.method(console, 'log', () => {});
+  const recorder = failing => { const calls = []; return { calls, exec: (command, args) => { calls.push(`${command} ${args.join(' ')}`); if (failing(calls)) throw new Error('npm run failed (exit 1).'); } }; };
+  const target = recorder(calls => calls.at(-1) === 'npm run build' && calls.includes('git checkout --detach --force v1.3.0') && !calls.includes('git checkout --detach --force aaaaaaaaaaaaaaaa'));
+  assert.throws(() => switchVersion('/app', 'v1.3.0', 'aaaaaaaaaaaaaaaa', target.exec), /Updating to v1\.3\.0 failed \(npm run failed \(exit 1\)\.\)\. aaaaaaaaaaaa is restored; dispatch keeps running it\./);
+  assert.deepEqual(target.calls.slice(3), ['git checkout --detach --force aaaaaaaaaaaaaaaa', 'npm ci --no-audit --no-fund', 'npm run build']);
+  const both = recorder(calls => calls.at(-1) === 'npm run build');
+  assert.throws(() => switchVersion('/app', 'v1.3.0', 'aaaaaaaaaaaaaaaa', both.exec), /restoring aaaaaaaaaaaa failed too/);
+  const first = recorder(calls => calls.at(-1) === 'npm run build');
+  assert.throws(() => switchVersion('/app', 'v1.3.0', null, first.exec), /npm run failed/);
+  assert.equal(first.calls.length, 3);
+  const fine = recorder(() => false);
+  switchVersion('/app', 'v1.3.0', 'aaaaaaaaaaaaaaaa', fine.exec);
+  assert.deepEqual(fine.calls, ['git checkout --detach --force v1.3.0', 'npm ci --no-audit --no-fund', 'npm run build']);
 });

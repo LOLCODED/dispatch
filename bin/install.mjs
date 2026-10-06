@@ -128,12 +128,31 @@ function fetchTags(app) {
   if (result.status !== 0) console.log(`Could not fetch release tags from ${upstream}; using the tags in the source checkout.`);
 }
 
+function build(app, revision, exec) {
+  exec('git', ['checkout', '--detach', '--force', revision], { cwd: app });
+  exec('npm', ['ci', '--no-audit', '--no-fund'], { cwd: app });
+  exec('npm', ['run', 'build'], { cwd: app });
+}
+
+// The running server keeps its code in memory, so a failed build is undone before anything restarts into it.
+export function switchVersion(app, target, previous, exec = run) {
+  try { build(app, target, exec); }
+  catch (error) {
+    if (!previous) throw error;
+    console.log(`Building ${target} failed; restoring ${previous.slice(0, 12)}.`);
+    try { build(app, previous, exec); }
+    catch { throw new InstallError(`Updating to ${target} failed (${error.message}), and restoring ${previous.slice(0, 12)} failed too. Fix the install in ${app} before dispatch restarts.`); }
+    throw new InstallError(`Updating to ${target} failed (${error.message}). ${previous.slice(0, 12)} is restored; dispatch keeps running it.`);
+  }
+}
+
+const currentRevision = app => { const result = spawnSync('git', ['rev-parse', '--verify', 'HEAD^{commit}'], { cwd: app, encoding: 'utf8' }); return result.status === 0 ? result.stdout.trim() : null; };
+
 function checkout(layout, ref) {
+  const previous = currentRevision(layout.app);
   fetchTags(layout.app);
   const target = resolveRef(layout.app, ref);
-  run('git', ['checkout', '--detach', '--force', target], { cwd: layout.app });
-  run('npm', ['ci', '--no-audit', '--no-fund'], { cwd: layout.app });
-  run('npm', ['run', 'build'], { cwd: layout.app });
+  switchVersion(layout.app, target, previous);
   return target;
 }
 
