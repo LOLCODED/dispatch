@@ -67,6 +67,9 @@ function ActivityEntry({ entry, runId, onOpenArtifact }) {
 }
 
 const blockedMarker = /^DISPATCH_BLOCKED:\s*/m, answeredMarker = /^\s*DISPATCH_(?:ANSWERED|PLAN)\s*$/m;
+// The run summary is the last message with dispatch's own marker lines removed, so compare the two without them.
+const withoutMarkers = text => String(text ?? '').replace(/^\s*DISPATCH_(?:COMMIT|REMAINING|ANSWERED|PLAN)\b.*$/gm, '').replace(/\s+/g, ' ').trim();
+const summaryShown = cycle => cycle.events.some(event => event.kind === 'message' && withoutMarkers(event.message) === withoutMarkers(cycle.summary));
 
 function AgentMessage({ agent, text: raw, className = 'message assistant-message' }) {
   const text = raw.replace(answeredMarker, '').trim(), marker = text.search(blockedMarker), remaining = splitRemaining(marker < 0 ? text : text.slice(0, marker).trim());
@@ -86,7 +89,7 @@ function Turn({ cycle, index, current, single, onOpenArtifact, activity }) {
     <div className="timeline">{bundles(cycle).filter(bundle => activity || bundle.type === 'message').map((bundle, position) => bundle.type === 'message'
       ? <AgentMessage key={bundle.entry.id} agent={agentName(cycle)} text={bundle.entry.message}/>
       : <details className="activity-bundle" key={position}><summary>Activity · {bundle.entries.length} {bundle.entries.length === 1 ? 'update' : 'updates'}</summary><div>{bundle.entries.map(entry => <ActivityEntry key={entry.id} entry={entry} runId={cycle.id} onOpenArtifact={onOpenArtifact}/>)}</div></details>)}</div>
-    {cycle.summary && !activeStatuses.has(cycle.status) && !cycle.events.some(event => event.kind === 'message' && event.message === cycle.summary) && <AgentMessage agent={agentName(cycle)} text={cycle.summary} className="result-summary"/>}
+    {cycle.summary && !activeStatuses.has(cycle.status) && !summaryShown(cycle) && <AgentMessage agent={agentName(cycle)} text={cycle.summary} className="result-summary"/>}
   </section>;
 }
 

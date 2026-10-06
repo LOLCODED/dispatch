@@ -303,6 +303,8 @@ export function createServer(engine, { assetRoot = root, devFraming = false, upd
       }
       const openPath = path.match(/^\/api\/runs\/([a-f0-9-]+)\/open$/);
       if (req.method === 'POST' && openPath) { const input = await jsonBody(req); return json(res, 200, await live.openWorkspace(openPath[1], input.target, input.editor)); }
+      const acceptPath = path.match(/^\/api\/runs\/([a-f0-9-]+)\/accept-preexisting$/);
+      if (req.method === 'POST' && acceptPath) { await jsonBody(req); return json(res, 201, viewRun(await live.acceptPreexisting(acceptPath[1]))); }
       const deliveryRepair = path.match(/^\/api\/runs\/([a-f0-9-]+)\/delivery\/repair$/);
       if (req.method === 'POST' && deliveryRepair) { const input = await jsonBody(req); return json(res, 201, await live.pullRequests.repair(deliveryRepair[1], input.reason ?? 'ci')); }
       const pullRequest = path.match(/^\/api\/runs\/([a-f0-9-]+)\/delivery\/pull-request$/);

@@ -11,6 +11,7 @@ import { exampleTracker, issueUrl, parseIssueRef } from './tracker-double.mjs';
 import { completesWithFiles, liveFixture, settle, until } from './live-double.mjs';
 import { Tasks } from '../src/tasks.mjs';
 import { taskState } from '../src/board-state.mjs';
+import { changeFacts, describeChange } from '../src/change-summary.mjs';
 const fixture = (t, behavior, tracker = exampleTracker()) => liveFixture(t, { behavior: behavior ?? completesWithFiles, services: { connectors: [tracker.connector] } });
 test('live worktree preserves dirty checkout, commits new files and resumes follow-up session', async t => {
   const { live, engine, project, repo } = await fixture(t);
@@ -489,6 +490,41 @@ test('a check that also fails on the base commit is run there once and the repai
   const next = await live.followup(run.id, { input: 'Try again' }); await settle(engine, next);
   assert.equal(next.events.some(event => /running it once on the base commit/.test(event.message)), false);
   assert.match(prompts.at(-1), /Dispatch ran unit on the untouched base commit/);
+});
+
+test('the operator accepts a check that also fails on the base commit, for that revision only, and it lands', async t => {
+  let value = 'other';
+  const { live, engine, project, repo } = await fixture(t, async options => { writeFileSync(join(options.workspace, 'value.txt'), value); return { outcome: 'completed', sessionId: 'session-1' }; });
+  const run = await live.create({ projectId: project.id, input: 'Change the value' }); await settle(engine, run);
+  assert.equal(run.status, 'failed');
+  const accepted = await live.acceptPreexisting(run.id); await settle(engine, accepted);
+  assert.equal(accepted.status, 'ready', JSON.stringify(accepted.events.map(event => event.message)));
+  assert.ok(accepted.checks.find(check => check.name === 'unit' && check.revision === accepted.revision).accepted);
+  assert.match(describeChange(changeFacts(accepted)).body, /- unit: failed, also on the base commit; accepted by the operator/);
+  await assert.rejects(live.acceptPreexisting(accepted.id), /stopped as blocked or failed/);
+  const landing = await live.landings.create({ runIds: [accepted.id] }); await settle(engine, landing);
+  assert.equal(landing.status, 'ready', JSON.stringify(landing.events.map(event => event.message)));
+  assert.equal(readFileSync(join(repo, 'value.txt'), 'utf8'), 'other');
+});
+
+test('an accepted failure does not carry to a changed revision', async t => {
+  let value = 'other';
+  const { live, engine, project } = await fixture(t, async options => { writeFileSync(join(options.workspace, 'value.txt'), value); return { outcome: 'completed', sessionId: 'session-1' }; });
+  const run = await live.create({ projectId: project.id, input: 'Change the value' }); await settle(engine, run);
+  const accepted = await live.acceptPreexisting(run.id); await settle(engine, accepted);
+  assert.equal(accepted.status, 'ready');
+  value = 'another';
+  const changed = await live.followup(accepted.id, { input: 'Change it again' }); await settle(engine, changed);
+  assert.equal(changed.status, 'failed', 'a new revision runs the accepted check again');
+  assert.equal(changed.checks.some(check => check.revision === changed.revision && check.accepted), false);
+});
+
+test('a check that passes on the base commit cannot be accepted as failing before the task', async t => {
+  const { live, engine, project } = await fixture(t, writesOther([]));
+  await live.saveProject({ ...project, confirmed: true, validation: [{ ...failsUnless('original', 'original'), id: 'keeps' }] }, project.id);
+  const run = await live.create({ projectId: project.id, input: 'Change the value' }); await settle(engine, run);
+  assert.equal(run.status, 'failed');
+  await assert.rejects(live.acceptPreexisting(run.id), /No failing check here also fails on the base commit/);
 });
 
 test('a check that passes on the base commit is repaired without a base note', async t => {

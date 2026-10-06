@@ -12,7 +12,7 @@ function RunInfo({ run }) {
   return <section className="panel run-info">
     <dl>
       <dt>Repository</dt><dd>{run.project.name} / {run.ticketId}</dd>
-      <dt>Model</dt><dd title={run.execution?.reason}>{model}</dd>
+      {run.kind !== 'landing' && <><dt>Model</dt><dd title={run.execution?.reason}>{model}</dd></>}
       {run.branch && <><dt>Branch</dt><dd className="break-all">{run.branch}</dd></>}
       {!run.branch && run.project?.git === false && run.kind !== 'answer' && <><dt>Folder</dt><dd className="break-all">{run.workspace}</dd></>}
     </dl>

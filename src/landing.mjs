@@ -304,7 +304,22 @@ export class Landings {
     run.protectedDigest = this.live.protectedRecipe(run);
     const files = this.live.steps.append(run, { kind: 'files', paths: run.changedPaths, revision: run.revision });
     await this.live.savePatch(run, files.id, signal);
-    return this.verdict(run, await this.live.validate(run, signal), signal);
+    return this.verdict(run, await this.ownFailure(run, signal), signal);
+  }
+
+  // A check a landed task accepted as failing before it passes the landing too, but only while it also fails on the
+  // base the landing targets; without an acceptance the landing stops at the first failure as before.
+  async ownFailure(run, signal) {
+    const accepted = new Set(run.landing.items.flatMap(item => this.engine.get(item.runId)?.acceptedFailures ?? []).map(item => item.name));
+    if (!accepted.size) return this.live.validate(run, signal);
+    const from = run.checks.length;
+    if (!await this.live.validate(run, signal, { all: true })) return null;
+    for (const check of run.checks.slice(from).filter(item => item.status === 'failed')) {
+      if (signal.aborted || !accepted.has(check.name) || !await this.live.baseChecks.failsOnBase(run, check, signal)) return check;
+      check.accepted = { by: 'operator', at: new Date().toISOString() };
+      this.live.log(run, 'check', `${check.name} failed as it does on ${run.landing.target}; a landed task accepted it as failing before the change.`);
+    }
+    return null;
   }
 
   async checkLinked(run, signal) {

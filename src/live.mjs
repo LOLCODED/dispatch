@@ -664,6 +664,20 @@ export class LiveService {
     const run = await this.followup(id, { input: 'Continue with the updated checks.' }, { project: { ...structuredClone(project), ...changes } });
     Object.assign(project, changes); this.engine.store.save(); return run;
   }
+  // The operator may accept a check that also fails on the untouched base commit. It holds for that check on this
+  // revision only: any later change runs it again, and it is accepted only while it still fails on the base.
+  async acceptPreexisting(id) {
+    const previous = this.engine.get(id);
+    if (previous.mode !== 'live' || !['blocked', 'failed'].includes(previous.status) || this.engine.active.has(previous.id)) throw new InputError('Accept a failure from a run that stopped as blocked or failed.', 409);
+    const revisionOf = check => check.linked ? previous.linked?.find(member => member.projectId === check.linked)?.revision : previous.revision;
+    const latest = [...new Map((previous.checks ?? []).map(check => [check.name, check])).values()]
+      .filter(check => check.status === 'failed' && check.base === 'failed' && !check.accepted && check.revision === revisionOf(check));
+    if (!latest.length) throw new InputError('No failing check here also fails on the base commit.', 409);
+    const acceptedAt = new Date().toISOString(), names = latest.map(check => check.name).join(', ');
+    previous.acceptedFailures = [...(previous.acceptedFailures ?? []), ...latest.map(check => ({ name: check.name, revision: check.revision, baseSha: check.baseSha, acceptedAt }))];
+    this.log(previous, 'check', `You accepted ${names} as failing before this task.`);
+    return this.followup(id, { input: `The operator accepted ${names} as a failure that already existed before this task: it fails the same way on the base commit. Do not change code for it; if nothing else is needed, make no changes and finish.` });
+  }
   // A linked member's recipe reaches the follow-up through refreshRecipes, so it is saved first and restored if the follow-up is refused.
   async continueWithMemberRecipe(id, project, changes) {
     const original = Object.fromEntries(Object.keys(changes).map(key => [key, project[key]]));
@@ -697,6 +711,7 @@ export class LiveService {
     const run = this.newRun(project ?? previous.project, previous.ticket, input.input.trim());
     Object.assign(run, { kind: previous.kind ?? 'change', provider: previous.execution?.provider ?? 'codex', execution: structuredClone(previous.execution ?? { provider: 'codex', model: null, effort: null, mode: 'auto', reason: 'Continuing the original CLI defaults.' }), repositorySelection: structuredClone(previous.repositorySelection ?? { mode: 'manual', reason: 'Continuing in the original repository.' }), previousRunId: previous.id, workspace: previous.workspace, shadow: previous.shadow ?? null, branch: previous.branch, baseSha: previous.baseSha, baseSource: previous.baseSource, baseFetchedAt: previous.baseFetchedAt, sessionId: previous.sessionId, commitSubject: previous.commitSubject ?? null, protectedDigest: previous.protectedDigest, setupComplete: previous.setupComplete, scriptsAtBase: previous.scriptsAtBase, baselineScripts: previous.baselineScripts, scriptsAccepted: previous.scriptsAccepted, baseChecks: structuredClone(previous.baseChecks ?? {}), linked: [...this.linked.continued(previous), ...this.linked.snapshot(previous.project, run.id, joining.map(item => item.id))] });
     run.usageCumulative = structuredClone(previous.usageCumulative ?? {});
+    if (previous.acceptedFailures?.length) run.acceptedFailures = structuredClone(previous.acceptedFailures);
     if (current) run.project.instructions = structuredClone(current.instructions ?? []);
     if (project) Object.assign(run, { recipeReplaced: true, protectedDigest: replacedDigest, setupComplete: run.setupComplete && digest(project.setup) === digest(previous.project.setup) });
     if (previous.scriptsChanged) this.acceptScripts(run, 'you continued the run');
@@ -1287,8 +1302,10 @@ export class LiveService {
     const markers = run.mergeIn ? await this.conflictMarkers(run, signal) : [];
     if (markers.length) return { prompt: `Conflict markers remain in ${markers.join(', ')}. Resolve them without committing.`, reason: 'conflict markers remained' };
     if (!changed) { const where = run.shadow ? 'folder' : 'worktree'; e.transition(run, 'blocked', `No changes in the ${where}. The worker finished without editing files, so there is nothing to check${run.shadow ? '' : ' or commit'}. Reply with more direction; files written outside the ${where} are not checked${run.shadow ? '' : ' or committed'}.`); return null; }
-    const failures = await this.validateAll(run, signal);
+    const checked = await this.validateAll(run, signal);
     if (run.status === 'blocked' || signal.aborted) return null;
+    const failures = await this.unaccepted(run, checked, signal);
+    if (signal.aborted) return null;
     if (failures.length) return this.repairFor(run, failures, signal);
     if (run.project.review) {
       const review = await this.review(run, adapter, signal);
@@ -1307,6 +1324,17 @@ export class LiveService {
     if (run.changedPaths.length) await this.validate(run, signal, { all: true });
     if (run.status !== 'blocked' && !signal.aborted) await this.linked.validate(run, signal, { all: true });
     return run.checks.slice(from).filter(check => check.status === 'failed');
+  }
+  async unaccepted(run, failures, signal) {
+    const open = [];
+    for (const failure of failures) {
+      const accepted = run.acceptedFailures?.find(item => item.name === failure.name && item.revision === failure.revision);
+      if (accepted && !signal.aborted && await this.baseChecks.failsOnBase(run, failure, signal)) {
+        failure.accepted = { by: 'operator', at: accepted.acceptedAt };
+        this.log(run, 'check', `${failure.name} failed as it does on the base commit; you accepted it for revision ${failure.revision.slice(0, 12)}.`);
+      } else open.push(failure);
+    }
+    return open;
   }
   async repairFor(run, failures, signal) {
     const preexisting = await this.timed(run, 'baseCheckMs', () => this.baseChecks.preexisting(run, failures, signal));

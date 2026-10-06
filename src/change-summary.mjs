@@ -6,7 +6,7 @@ export function changeFacts(run, { base, pages = [], related = [] } = {}) {
     id: run.id, title: run.title, ticketId: run.ticketId, reference: run.ticket?.reference ?? null, sourceUrl: run.ticket?.sourceUrl ?? null, summary: run.summary ?? '', sqlToRun: run.sqlToRun ?? null,
     workspace: run.workspace, branch: run.branch, baseBranch: run.baseBranch, base: base ?? run.baseBranch, baseSha: run.baseSha ?? null, headSha: run.headSha ?? null, revision: run.revision ?? null,
     changedPaths: (run.changedPaths ?? []).slice(0, maxCheckedPaths), flags: run.flags ?? {}, baseMoved: run.handoff?.baseMoved ?? 0, pages, related,
-    checks: (run.checks ?? []).filter(check => check.revision === run.revision).map(({ name, status, attempt, revision, command }) => ({ name, status, attempt, revision, command: command ?? null })),
+    checks: (run.checks ?? []).filter(check => check.revision === run.revision).map(({ name, status, attempt, revision, command, accepted }) => ({ name, status, attempt, revision, command: command ?? null, ...(accepted ? { accepted: true } : {}) })),
     delivery: run.delivery ?? null,
   };
 }
@@ -56,7 +56,7 @@ function changeBody(change) {
     ...(change.sqlToRun ? ['## SQL to run before deploy', '```sql', change.sqlToRun, '```', ''] : []),
     ...whereToLook(change, pages),
     '## Checks', `Ticket: ${change.ticketId} — ${change.title}`, `Base: ${change.baseBranch} @ ${change.baseSha}`, `Head: ${change.branch} @ ${change.headSha}`,
-    ...checks.map(check => `- ${check.name}: ${check.status} (attempt ${check.attempt}, revision ${check.revision.slice(0, 12)})`), `Checks ran locally against ${change.revision}.`, '',
+    ...checks.map(check => `- ${check.name}: ${check.status}${check.accepted ? ', also on the base commit; accepted by the operator as failing before this change' : ''} (attempt ${check.attempt}, revision ${check.revision.slice(0, 12)})`), `Checks ran locally against ${change.revision}.`, '',
     '## How to test', ...passed.map((check, index) => `${index + 1}. \`${check.command?.join(' ') ?? check.name}\` passes.`), `${passed.length + 1}. Review the diff against ${change.baseBranch}.`,
     ...(pages.length ? [`${passed.length + 2}. Open the pages under Where to look and confirm they match the summary.`] : []),
     ...relatedLines(related),

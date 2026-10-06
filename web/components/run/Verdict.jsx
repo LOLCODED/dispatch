@@ -1,4 +1,4 @@
-import { Check, Code, Copy, FolderOpen, FolderX, Wrench } from 'lucide-react';
+import { Check, CheckCheck, Code, Copy, FolderOpen, FolderX, Wrench } from 'lucide-react';
 import { IconButton, Tooltip } from '@/components/IconButton';
 import { api, Link, navigate } from '@/lib/workspace';
 import { useAction } from '@/lib/use-action';
@@ -19,8 +19,8 @@ const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
 function checksLine(run) {
   const checks = currentChecks(run);
   if (!checks.length) return run.status === 'ready' && run.kind !== 'answer' ? 'none required by the verification policy' : 'not run';
-  const by = status => checks.filter(check => check.status === status).length;
-  return [`${by('passed')} passed`, by('skipped') && `${by('skipped')} skipped by policy`, by('failed') && `${by('failed')} failed`].filter(Boolean).join(', ') + ` against ${run.revision?.slice(0, 12) ?? 'the candidate'}`;
+  const by = status => checks.filter(check => check.status === status && !check.accepted).length, accepted = checks.filter(check => check.accepted).length;
+  return [`${by('passed')} passed`, by('skipped') && `${by('skipped')} skipped by policy`, by('failed') && `${by('failed')} failed`, accepted && `${accepted} accepted as failing on the base too`].filter(Boolean).join(', ') + ` against ${run.revision?.slice(0, 12) ?? 'the candidate'}`;
 }
 function reviewLine(run) {
   if (!run.project?.review) return 'off';
@@ -94,6 +94,19 @@ function CiRepair({ run, onUpdate }) {
   </div>;
 }
 
+// A check that also fails on the untouched base commit can be accepted for this revision; any later change runs it again.
+function AcceptPreexisting({ run, onUpdate }) {
+  const { busy, error, perform } = useAction();
+  const failing = currentChecks(run).filter(check => check.status === 'failed' && check.base === 'failed' && !check.accepted);
+  if (!['blocked', 'failed'].includes(run.status) || !failing.length || run.supersededBy || !run.sessionId) return null;
+  const accept = () => perform(async () => { const next = await api(`/api/runs/${run.id}/accept-preexisting`, {}); onUpdate(next); navigate(`/runs/${next.id}`); });
+  return <div className="verdict-ci" role="group" aria-label="Failing before this task">
+    <p>{failing.map(check => check.name).join(', ')} also {failing.length === 1 ? 'fails' : 'fail'} on the untouched base commit, so this task did not cause {failing.length === 1 ? 'it' : 'them'}.</p>
+    <IconButton label="Accept pre-existing failure" icon={CheckCheck} variant="outline" disabled={busy} onClick={accept}/>
+    {error && <p className="error" role="alert">{error}</p>}
+  </div>;
+}
+
 export function Verdict({ run, onUpdate }) {
   const verdict = handingOff[run.handingOff] ?? verdicts[run.status]?.(run);
   if (!verdict) return null;
@@ -113,6 +126,7 @@ export function Verdict({ run, onUpdate }) {
     {list.length > 0 && <ul className="verdict-warnings" aria-label="Warnings">{list.map(item => <li key={item}>{item}</li>)}</ul>}
     <RiskDecision decision={run.riskAssessments?.at(-1)} selection={run.riskSelection}/>
     {run.sqlToRun && <SqlBlock sql={run.sqlToRun}/>}
+    <AcceptPreexisting run={run} onUpdate={onUpdate}/>
     <CiRepair run={run} onUpdate={onUpdate}/>
     <TrackerOffers run={run} onUpdate={onUpdate}/>
     <LinkOffer run={run} onUpdate={onUpdate}/>
