@@ -6,7 +6,7 @@ import { changeFlags } from './flags.mjs';
 import { riskEnabled, riskLevel, minimumChecks, landingChecks } from './risk-policy.mjs';
 import { usesBrowser } from './linked-repositories.mjs';
 
-const approved = new Set(['agent', 'operator', 'all-checks']);
+const approvedByOperator = new Set(['operator', 'all-checks']), approved = new Set(['agent', ...approvedByOperator]);
 const text = (value, name, limit = 2000) => {
   if (typeof value !== 'string' || !value.trim() || value.length > limit) throw new Error(`${name} needs 1–${limit} characters.`);
   return value.trim();
@@ -76,27 +76,48 @@ export class RiskChecks {
       status: 'proposed', createdAt: new Date().toISOString() };
     (run.riskAssessments ??= []).push(record); this.save(run, record);
     try {
-      if (record.mode === 'ask' || record.confidence === 'uncertain' || manualReview || priorRejection) {
-        const accept = manualReview ? 'Review passed; use suggested checks' : 'Use suggested checks';
-        const result = await this.live.interactions.request(run, { kind: 'question', source: 'risk', riskAssessmentId: record.id, questions: [{ id: 'risk', header: 'Testing plan',
-          question: `**${level[0].toUpperCase() + level.slice(1)} risk** · ${record.likelihood} likelihood / ${record.impact} impact. Estimates are judgments, not measured probabilities.\n\n**Proposed checks:** ${checks.join(', ') || 'none'} (repository minimums included).\n\n${manualReview ? `**Required review:** ${manualReview}${previewUrl(run) ? `\n\n[Open live preview](${previewUrl(run)})` : ''}` : 'Select a verification plan.'}`,
-          details: `**Affected workflows:** ${workflows}\n\n${reason}`,
-          options: [{ label: `${accept} (Recommended)`, description: `${manualReview ? 'Confirm review and approve selected checks.' : 'Approve selected checks.'} ${this.estimate(run, checks)}` },
-            { label: manualReview ? 'Review passed; run all checks' : 'Run all configured checks', description: `${manualReview ? 'Confirm review and run every configured check.' : 'Run every configured check.'} ${this.estimate(run, [...known])}` },
-            { label: 'Revise the plan', description: 'Request a revised assessment. Estimated time depends on the requested changes.' }] }] }, signal);
-        // The provider-facing answer can include appended attachment paths. The saved answer is the operator's exact choice.
-        const answer = run.interactions?.find(item => item.riskAssessmentId === record.id)?.answers?.risk ?? result.answers?.risk?.answers?.[0];
-        record.answer = String(answer ?? '').slice(0, 4000);
-        if (answer === `${accept} (Recommended)`) { record.status = 'operator'; if (manualReview) record.manualReviewPassed = true; }
-        else if (answer === (manualReview ? 'Review passed; run all checks' : 'Run all configured checks')) { record.status = 'all-checks'; record.checks = [...known]; if (manualReview) record.manualReviewPassed = true; }
-        else { record.status = 'rejected'; record.reasonForRejection = record.answer; }
-      } else record.status = 'agent';
+      const asks = record.mode === 'ask' || record.confidence === 'uncertain' || manualReview || priorRejection;
+      const earlier = asks && !priorRejection ? this.approvedEarlier(run, record) : null;
+      if (earlier) this.reuse(run, record, earlier);
+      else if (asks) await this.askOperator(run, record, known, signal);
+      else record.status = 'agent';
       const current = await this.snapshot(run, signal);
       if (approved.has(record.status) && (current.revision !== record.revision || current.recipeDigest !== record.recipeDigest || current.policyDigest !== record.policyDigest)) record.status = 'stale';
       if (signal.aborted) record.status = 'cancelled';
     } catch (error) { record.status = signal.aborted ? 'cancelled' : 'rejected'; record.reasonForRejection = error.message; throw error; }
     finally { this.save(run, record); }
-    return { status: record.status, level, checks: record.checks, revision: record.revision, message: approved.has(record.status) ? 'Plan recorded. Dispatch will execute the selected checks on this exact revision after your turn.' : 'Plan not accepted. Address the operator’s response and submit again, or finish blocked.', answer: record.answer };
+    return { status: record.status, level, checks: record.checks, revision: record.revision, message: approved.has(record.status) ? `Plan recorded${record.reusedFrom ? ' without asking: the operator already approved a plan for this exact revision' : ''}. Dispatch will execute the selected checks on this exact revision after your turn.` : 'Plan not accepted. Address the operator’s response and submit again, or finish blocked.', answer: record.answer };
+  }
+  // Every turn submits its own plan, so an unchanged follow-up would otherwise re-ask the operator about a tree they already approved.
+  approvedEarlier(run, record) {
+    if (record.mode === 'ask') return null;
+    const covers = earlier => approvedByOperator.has(earlier.status) && earlier.revision === record.revision && earlier.recipeDigest === record.recipeDigest
+      && earlier.policyDigest === record.policyDigest && record.checks.every(id => earlier.checks.includes(id)) && (!record.manualReview || earlier.manualReviewPassed);
+    for (const current of this.live.workspaceHistory(run)) {
+      const earlier = current.riskAssessments?.findLast(item => item !== record && covers(item));
+      if (earlier) return { earlier, runId: current.id };
+    }
+    return null;
+  }
+  reuse(run, record, { earlier, runId }) {
+    Object.assign(record, { status: earlier.status, checks: [...earlier.checks], reusedFrom: { assessmentId: earlier.id, runId }, answer: earlier.answer, ...(earlier.manualReviewPassed && { manualReviewPassed: true }) });
+    this.live.log(run, 'check', `Testing plan for tree ${record.revision.slice(0, 12)} reused: you approved it ${runId === run.id ? 'earlier in this run' : `in run ${runId.slice(0, 8)}`} and nothing changed since.${record.manualReview ? ` The agent also noted: ${record.manualReview}` : ''}`);
+  }
+  async askOperator(run, record, known, signal) {
+    const { level, workflows, reason, manualReview, checks } = record;
+    const accept = manualReview ? 'Review passed; use suggested checks' : 'Use suggested checks';
+    const result = await this.live.interactions.request(run, { kind: 'question', source: 'risk', riskAssessmentId: record.id, questions: [{ id: 'risk', header: 'Testing plan',
+      question: `**${level[0].toUpperCase() + level.slice(1)} risk** · ${record.likelihood} likelihood / ${record.impact} impact. Estimates are judgments, not measured probabilities.\n\n**Proposed checks:** ${checks.join(', ') || 'none'} (repository minimums included).\n\n${manualReview ? `**Required review:** ${manualReview}${previewUrl(run) ? `\n\n[Open live preview](${previewUrl(run)})` : ''}` : 'Select a verification plan.'}`,
+      details: `**Affected workflows:** ${workflows}\n\n${reason}`,
+      options: [{ label: `${accept} (Recommended)`, description: `${manualReview ? 'Confirm review and approve selected checks.' : 'Approve selected checks.'} ${this.estimate(run, checks)}` },
+        { label: manualReview ? 'Review passed; run all checks' : 'Run all configured checks', description: `${manualReview ? 'Confirm review and run every configured check.' : 'Run every configured check.'} ${this.estimate(run, [...known])}` },
+        { label: 'Revise the plan', description: 'Request a revised assessment. Estimated time depends on the requested changes.' }] }] }, signal);
+    // The provider-facing answer can include appended attachment paths. The saved answer is the operator's exact choice.
+    const answer = run.interactions?.find(item => item.riskAssessmentId === record.id)?.answers?.risk ?? result.answers?.risk?.answers?.[0];
+    record.answer = String(answer ?? '').slice(0, 4000);
+    if (answer === `${accept} (Recommended)`) { record.status = 'operator'; if (manualReview) record.manualReviewPassed = true; }
+    else if (answer === (manualReview ? 'Review passed; run all checks' : 'Run all configured checks')) { record.status = 'all-checks'; record.checks = [...known]; if (manualReview) record.manualReviewPassed = true; }
+    else { record.status = 'rejected'; record.reasonForRejection = record.answer; }
   }
   // A CLI can end its turn while a submit still waits on the operator (Codex 0.159 does); checks wait for that decision.
   async decided(run, signal) {

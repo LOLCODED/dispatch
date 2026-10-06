@@ -274,3 +274,48 @@ test('a landing runs the repository landing checks without asking, even in alway
   assert.equal(await git(repo, ['rev-parse', 'main']), landing.headSha);
   assert.ok(landing.events.some(event => event.message === 'Skipped by landing checks: lint.'), JSON.stringify(landing.events.map(event => event.message)));
 });
+
+test('an unchanged follow-up reuses the plan the operator approved for that tree; a changed tree or always-ask asks again', async t => {
+  for (const mode of ['agent', 'ask']) {
+    const { live, engine, project } = await fixture(t, async (options, turn) => {
+      writeFileSync(join(options.workspace, 'value.txt'), turn === 3 ? 'changed again' : 'changed');
+      await assess(options, { confidence: 'uncertain', manualReview: turn === 1 ? 'Read the diff of value.txt.' : 'Run the import from a terminal with access.' });
+      return turn === 1 ? { outcome: 'blocked', sessionId: 'session-1', summary: 'DISPATCH_BLOCKED: The import needs access I do not have.' } : completed;
+    }, policy(mode));
+    const approve = async run => {
+      await until(() => live.interactions.pending.has(run.id));
+      const request = run.interactions.at(-1);
+      live.interactions.answer(run.id, { requestId: request.id, answers: { risk: request.questions[0].options[0].label } });
+    };
+    const run = await live.create({ projectId: project.id, input: 'Change value' });
+    await approve(run); await settle(engine, run); assert.equal(run.status, 'blocked');
+    const unchanged = await live.followup(run.id, { input: 'Continue' });
+    if (mode === 'ask') await approve(unchanged);
+    await settle(engine, unchanged); assert.equal(unchanged.status, 'ready', JSON.stringify(unchanged.events));
+    const [plan] = unchanged.riskAssessments;
+    assert.equal(plan.status, 'operator'); assert.equal(plan.manualReviewPassed, true);
+    assert.deepEqual(plan.reusedFrom, mode === 'ask' ? undefined : { assessmentId: run.riskAssessments[0].id, runId: run.id });
+    assert.equal(unchanged.interactions.length, mode === 'ask' ? 1 : 0);
+    if (mode === 'agent') assert.ok(unchanged.events.some(event => /reused: you approved it in run .+ The agent also noted: Run the import/.test(event.message)), JSON.stringify(unchanged.events));
+    const changed = await live.followup(unchanged.id, { input: 'Change it again' });
+    await approve(changed); await settle(engine, changed);
+    assert.equal(changed.status, 'ready'); assert.equal(changed.riskAssessments[0].reusedFrom, undefined);
+  }
+});
+
+test('a plan is not reused when the earlier approval did not cover the review or the checks now asked for', async t => {
+  const { live, engine, project } = await fixture(t, async (options, turn) => {
+    writeFileSync(join(options.workspace, 'value.txt'), 'changed');
+    await assess(options, turn === 1 ? { confidence: 'uncertain' } : turn === 2 ? { manualReview: 'Read the diff of value.txt.' } : { confidence: 'uncertain', checks: ['unit'] });
+    return completed;
+  });
+  const run = await live.create({ projectId: project.id, input: 'Change value' });
+  for (let turn = 1, current = run; turn <= 3; turn++) {
+    await until(() => live.interactions.pending.has(current.id));
+    const request = current.interactions.at(-1);
+    live.interactions.answer(current.id, { requestId: request.id, answers: { risk: request.questions[0].options[0].label } });
+    await settle(engine, current); assert.equal(current.status, 'ready');
+    assert.equal(current.riskAssessments[0].reusedFrom, undefined);
+    if (turn < 3) current = await live.followup(current.id, { input: 'Continue' });
+  }
+});

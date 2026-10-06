@@ -1171,14 +1171,18 @@ export class LiveService {
   priorPass(run, step, target, name) {
     const command = JSON.stringify([step.command, ...step.args]);
     const matches = record => record.name === name && record.status === 'passed' && record.revision === target.revision && record.recipeDigest === target.recipeDigest && JSON.stringify(record.command) === command;
-    let current = run;
-    for (let hops = 0; current && hops <= 10; hops++) {
+    for (const current of this.workspaceHistory(run)) {
       const record = current.checks.findLast(matches);
       if (record) return { record, runId: current.id };
+    }
+    return null;
+  }
+  *workspaceHistory(run, limit = 10) {
+    for (let current = run, hops = 0; current && hops <= limit; hops++) {
+      yield current;
       const previous = current.previousRunId ? this.engine.runs.find(item => item.id === current.previousRunId) : null;
       current = previous?.workspace === run.workspace ? previous : null;
     }
-    return null;
   }
   recordReusedCheck(run, step, { record, runId }, target, name) {
     const origin = record.reusedFrom ?? { runId, attempt: record.attempt, finishedAt: record.finishedAt }, at = new Date().toISOString();
