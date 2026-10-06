@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ClaudeAdapter } from '../src/claude.mjs';
-import { LocalModelAdapter, claudeProviderEnv, endpointList, localSession, minimumContext, ollamaBase, opencodeProvider, piProvider, resolveLocalModel } from '../src/local-models.mjs';
+import { LocalModelAdapter, claudeProviderEnv, endpointList, localSession, minimumContext, ollamaBase, opencodeProvider, piProvider, resolveLocalModel, smallContextPrompt } from '../src/local-models.mjs';
 
 const json = value => ({ ok: true, json: async () => value });
 function server(routes, seen = []) {
@@ -123,4 +123,13 @@ test('a follow-up resumes only its own agent session and starts fresh after the 
   assert.deepEqual(calls.map(call => call.options.sessionId), ['abc', undefined]);
   assert.deepEqual(localSession('5b1c'), { agent: 'claude', id: '5b1c' });
   assert.deepEqual(localSession(undefined), { agent: null, id: undefined });
+});
+
+test('a small context gets guidance to keep command output small; large and unknown contexts do not', async () => {
+  assert.match(smallContextPrompt('Do it.', 32768), /^Do it\.\nThis model has a 32768-token context.*never ls -R/s);
+  assert.equal(smallContextPrompt('Do it.', 131072), 'Do it.');
+  assert.equal(smallContextPrompt('Do it.', null), 'Do it.');
+  const calls = [];
+  await harnessed('pi', calls).run({ prompt: 'Ticket', execution: { provider: 'local-models', model: 'home/qwen3.6:latest' } });
+  assert.match(calls[0].options.prompt, /^Ticket\nThis model has a 32768-token context/);
 });

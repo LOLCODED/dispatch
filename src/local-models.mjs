@@ -3,7 +3,7 @@ import { InputError } from './engine.mjs';
 import { OpencodeAdapter } from './opencode.mjs';
 import { PiAdapter } from './pi.mjs';
 
-export const minimumContext = 32768;
+export const minimumContext = 32768, smallContext = 65536;
 const endpointLimit = 8;
 const kinds = ['ollama', 'server'];
 export const localAgents = ['claude', 'opencode', 'pi'];
@@ -67,6 +67,12 @@ const openaiBase = endpoint => `${endpoint.url}/v1`;
 export function opencodeProvider(endpoint, model, contextWindow = null) {
   return { provider: { [localProvider]: { npm: '@ai-sdk/openai-compatible', name: endpoint.name, options: { baseURL: openaiBase(endpoint) }, models: { [model]: { name: model, tool_call: true, ...(contextWindow ? { limit: { context: contextWindow, output: 8192 } } : {}) } } } } };
 }
+// Local models run in a context a single recursive listing can fill (pi's first call was a 27 KB ls -R into 32k).
+export function smallContextPrompt(prompt, size) {
+  if (!size || size > smallContext || typeof prompt !== 'string') return prompt;
+  return `${prompt}\nThis model has a ${size}-token context, so keep every command's output small: list files with git ls-files <folder> or a targeted find, never ls -R or a search over the whole tree, and read long files in parts.\n`;
+}
+
 export function piProvider(endpoint, model, contextWindow = null) {
   return { providers: { [localProvider]: { api: 'openai-completions', apiKey: 'dispatch-local', baseUrl: openaiBase(endpoint), models: [{ id: model, input: ['text'], ...(contextWindow ? { contextWindow } : {}) }] } } };
 }
@@ -167,9 +173,9 @@ export class LocalModelAdapter {
     if (options.signal?.aborted) return { outcome: 'cancelled', sessionId: options.sessionId };
     if (context.error) return failed(context.error, options.sessionId);
     if (context.size && context.size < minimumContext) return failed(contextFix(target.model, target.endpoint, context.size), options.sessionId);
-    const { id } = this.harness, session = localSession(options.sessionId);
+    const { id } = this.harness, session = localSession(options.sessionId), prompt = smallContextPrompt(options.prompt, context.size);
     const tagged = value => value ? `${id}:${value}` : value;
-    const result = await harnesses[id](this.adapters, { ...options, sessionId: session.agent === id ? session.id : undefined, onSession: value => options.onSession?.(tagged(value)) }, target, context.size);
+    const result = await harnesses[id](this.adapters, { ...options, prompt, sessionId: session.agent === id ? session.id : undefined, onSession: value => options.onSession?.(tagged(value)) }, target, context.size);
     return { ...result, sessionId: tagged(result.sessionId) };
   }
 }
