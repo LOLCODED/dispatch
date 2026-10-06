@@ -17,7 +17,7 @@ const steps = [
   { title: 'Connect your tracker', words: ['Where', 'do', 'your', 'tickets'], accent: 'live?', lede: 'Turn on a connector to pull tickets from your tracker. This is optional; nothing is read until a repository turns it on.' },
 ];
 
-const follow = delay => ({ initial: { opacity: 0, y: 8 }, animate: { opacity: 1, y: 0 }, transition: { delay, duration: 0.5, ease } });
+const follow = delay => ({ initial: { opacity: 0, y: 8 }, animate: { opacity: 1, y: 0 }, transition: { delay, duration: 0.3, ease } });
 
 function useAgentReady(connections) {
   const { state } = useWorkspace();
@@ -67,11 +67,11 @@ export function Welcome({ onFinish }) {
     <div className="welcome-progress" aria-hidden="true"><motion.span animate={{ width: `${((step + 1) / steps.length) * 100}%` }} transition={{ duration: 0.6, ease }}/></div>
     <div className="welcome-inner" key={step}>
       <motion.p className="eyebrow" {...follow(0)}>Step {step + 1} of {steps.length} · {current.title}</motion.p>
-      <h1 ref={heading} tabIndex={-1} className="welcome-title">{current.words.map((word, index) => <span key={word}><motion.span className="intro-word" {...rise(index)}>{word}</motion.span>{' '}</span>)}<motion.em {...rise(current.words.length)}>{current.accent}</motion.em></h1>
-      <motion.p className="welcome-lede" {...follow(0.38)}>{current.lede}</motion.p>
-      <motion.div className="welcome-body" {...follow(0.45)}><StepBody step={step} connections={connections} busy={busy} onProvider={toggle} onConnector={toggleConnector}/></motion.div>
+      <h1 ref={heading} tabIndex={-1} className="welcome-title">{current.words.map((word, index) => <span key={word}><motion.span className="intro-word" {...rise(index, 0)}>{word}</motion.span>{' '}</span>)}<motion.em {...rise(current.words.length, 0)}>{current.accent}</motion.em></h1>
+      <motion.p className="welcome-lede" {...follow(0.12)}>{current.lede}</motion.p>
+      <motion.div className="welcome-body" {...follow(0.16)}><StepBody step={step} connections={connections} busy={busy} onProvider={toggle} onConnector={toggleConnector}/></motion.div>
       {error && <p role="alert" className="error">{error}</p>}
-      <motion.footer className="welcome-nav" {...follow(0.52)}><StepNav step={step} ready={ready} busy={busy} onMove={move} onFinish={finish}/></motion.footer>
+      <motion.footer className="welcome-nav" {...follow(0.2)}><StepNav step={step} ready={ready} busy={busy} onMove={move} onFinish={finish}/></motion.footer>
     </div>
   </main>;
 }
