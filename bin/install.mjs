@@ -6,6 +6,9 @@ import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { activeStatuses } from '../src/board-state.mjs';
 import { migrateData, serviceEnv } from './migrate-data.mjs';
+import { latestTag } from '../src/updates.mjs';
+
+export { latestTag };
 
 export const serviceName = 'dispatch';
 export const launchdLabel = 'dev.dispatch.server';
@@ -16,12 +19,6 @@ export class InstallError extends Error {}
 export function installLayout({ dir, port = 4317 } = {}) {
   const root = resolve(dir ?? join(homedir(), '.local', 'share', 'dispatch'));
   return { root, app: join(root, 'app'), data: dir ? join(root, 'data') : join(homedir(), '.dispatch'), log: join(root, 'server.log'), port: Number(port) };
-}
-
-export function latestTag(tags) {
-  const versions = tags.split('\n').map(tag => tag.trim()).filter(tag => /^v\d+\.\d+\.\d+$/.test(tag));
-  const key = tag => tag.slice(1).split('.').map(Number);
-  return versions.sort((a, b) => { const [x, y] = [key(a), key(b)]; return y[0] - x[0] || y[1] - x[1] || y[2] - x[2]; })[0] ?? null;
 }
 
 export function servicePath(path) {

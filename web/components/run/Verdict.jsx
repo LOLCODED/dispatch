@@ -1,8 +1,8 @@
-import { useState } from 'react';
 import { Check, Code, Copy, FolderOpen, FolderX, Wrench } from 'lucide-react';
 import { IconButton, Tooltip } from '@/components/IconButton';
 import { api, Link, navigate } from '@/lib/workspace';
 import { useAction } from '@/lib/use-action';
+import { useCopied } from '@/lib/use-copied';
 import { TrackerOffers } from '@/components/run/TrackerOffer';
 import { LinkOffer } from '@/components/run/LinkOffer';
 import { usePreferences } from '@/lib/preferences';
@@ -66,11 +66,6 @@ function WorktreeAction({ run, onUpdate }) {
   return <div className="verdict-actions"><IconButton label="Remove worktree" icon={FolderX} variant="outline" disabled={busy} onClick={() => perform(async () => onUpdate(await api(`/api/runs/${run.id}/worktree/remove`, {})))}/>{error && <p className="error" role="alert">{error}</p>}</div>;
 }
 
-function useCopied() {
-  const [copied, setCopied] = useState(false);
-  const copy = async text => { try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* Clipboard can be unavailable; the text stays selectable. */ } };
-  return [copied, copy];
-}
 
 function BranchActions({ run }) {
   const { busy, error, perform } = useAction(), [copied, copy] = useCopied(), { editor } = usePreferences();

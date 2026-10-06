@@ -256,3 +256,14 @@ test('a setting changed through the settings API, as a task or the CLI would, sh
   await expect(page.locator('html')).toHaveClass(/dark/);
   expect(await page.evaluate(() => localStorage.getItem('dispatch-theme'))).toBe('dark');
 });
+
+test('the update alert names a newer release, copies dispatch update and waits until tomorrow', { tag: '@ui' }, async ({ page }) => {
+  await page.route('/api/update', route => route.fulfill({ json: { current: '1.2.0', latest: '1.3.0', checkedAt: '2026-10-06T00:00:00.000Z', error: null, installed: true } }));
+  await page.goto('/');
+  const alert = page.getByRole('complementary', { name: 'Update alert' });
+  await expect(alert).toContainText('dispatch 1.3.0 is available'); await expect(alert).toContainText('You have 1.2.0. Run dispatch update in a terminal');
+  await expect(alert.getByRole('button', { name: 'Copy dispatch update' })).toBeVisible();
+  await alert.getByRole('button', { name: 'Remind me tomorrow' }).click();
+  await expect(alert).toBeHidden();
+  await page.reload(); await expect(page.getByRole('complementary', { name: 'Update alert' })).toBeHidden();
+});
