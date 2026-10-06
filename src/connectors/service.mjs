@@ -35,14 +35,15 @@ export class ConnectorService {
     this.store.state.connectorSettings = updateGlobal(this.global, this.registry.get(id), input ?? {});
     this.save(); return this.describe().find(connector => connector.id === id);
   }
-  active(project, id) { return active(project, this.registry.get(id)); }
+  // Runs carry a snapshot of their repository. Consent, connector settings and memory always come from the saved
+  // repository, so switching an action on or off in settings applies to tasks already running.
+  saved(project) { return (project?.id && this.projects().find(item => item.id === project.id)) || project; }
+  active(project, id) { return active(this.saved(project), this.registry.get(id)); }
   allows(project, id, hook) {
     const found = this.registry.hook(id, hook);
-    return Boolean(found) && permitted(project, this.global, found.connector, found.action);
+    return Boolean(found) && permitted(this.saved(project), this.global, found.connector, found.action);
   }
-  settings(project, connector) { return Object.fromEntries(Object.keys(connector.settings ?? {}).map(key => [key, connectorSetting(project, connector, key)])); }
-  // Runs carry a snapshot of their repository; memory always lives on the saved repository.
-  saved(project) { return (project?.id && this.projects().find(item => item.id === project.id)) || project; }
+  settings(project, connector) { return Object.fromEntries(Object.keys(connector.settings ?? {}).map(key => [key, connectorSetting(this.saved(project), connector, key)])); }
   memory(project, id) { return { ...this.saved(project)?.connectorMemory?.[id] }; }
   remember(project, id, values) {
     const target = this.saved(project);
@@ -55,25 +56,25 @@ export class ConnectorService {
   async invoke(project, id, hook, args, { signal, check = true, database } = {}) {
     const found = this.registry.hook(id, hook);
     if (!found) throw new Error(`${this.registry.get(id)?.name ?? id} cannot ${hook}.`);
-    if (check && !permitted(project, this.global, found.connector, found.action)) throw new ConnectorNotPermitted(found.connector, found.action);
+    if (check && !permitted(this.saved(project), this.global, found.connector, found.action)) throw new ConnectorNotPermitted(found.connector, found.action);
     return withTimeout(Promise.resolve(found.run(...args, this.context(project, found.connector, { signal, database }))), this.timeoutMs, `${found.connector.name} did not answer ${hook} within ${this.timeoutMs / 1000} s.`);
   }
   // Agent tools need the same two things as automatic hooks: the repository uses the connector and the action is permitted.
   agentTools(project, { readOnly = false } = {}) {
     return this.registry.tools()
-      .filter(found => this.active(project, found.connector.id) && permitted(project, this.global, found.connector, found.action) && (!readOnly || found.access === 'read'))
+      .filter(found => this.active(project, found.connector.id) && permitted(this.saved(project), this.global, found.connector, found.action) && (!readOnly || found.access === 'read'))
       .map(found => ({ name: found.name, kind: 'connector', description: found.tool.description, inputSchema: found.tool.inputSchema }));
   }
   async callTool(project, name, args, { signal, workspace, readOnly = false, taskDatabase } = {}) {
     const found = this.registry.tools().find(item => item.name === name);
     if (!found || !this.active(project, found.connector.id)) throw new Error(`No connector tool ${name} for this repository.`);
-    if (!permitted(project, this.global, found.connector, found.action) || (readOnly && found.access !== 'read')) throw new ConnectorNotPermitted(found.connector, found.action);
+    if (!permitted(this.saved(project), this.global, found.connector, found.action) || (readOnly && found.access !== 'read')) throw new ConnectorNotPermitted(found.connector, found.action);
     return withTimeout(Promise.resolve(found.tool.run(args, this.context(project, found.connector, { signal, workspace, taskDatabase }))), this.timeoutMs, `${found.connector.name} did not answer ${name} within ${this.timeoutMs / 1000} s.`);
   }
   connectorOfTool(name) { return this.registry.tools().find(item => item.name === name)?.connector ?? null; }
   deliveryConnector(project) {
     const deliverers = this.registry.list.filter(delivers);
-    return deliverers.find(connector => active(project, connector)) ?? (deliverers.length === 1 ? deliverers[0] : null);
+    return deliverers.find(connector => active(this.saved(project), connector)) ?? (deliverers.length === 1 ? deliverers[0] : null);
   }
   inUse(projects, id) { return this.global[id]?.enabled === true || projects.some(project => this.active(project, id)); }
   async probe(connector) {

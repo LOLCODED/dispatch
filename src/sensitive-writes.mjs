@@ -19,7 +19,7 @@ export function writeTarget(run, args) {
 
 export function sandboxedShell(run, args) {
   if (run.access !== 'home') return deny('dispatch only approves commands that run inside the sandbox.');
-  if (args.input?.dangerouslyDisableSandbox === true) return deny('dispatch keeps every command in the sandbox. Run it without dangerouslyDisableSandbox; if it cannot work there, tell the operator what it needs (for example network access) instead of retrying.');
+  if (args.input?.dangerouslyDisableSandbox === true) return deny('dispatch keeps every command in the sandbox. Run it without dangerouslyDisableSandbox; if it cannot work there, tell the operator what it needs (for example network access, which dispatch_settings can request as repository.network) instead of retrying.');
   return allow(args.input);
 }
 

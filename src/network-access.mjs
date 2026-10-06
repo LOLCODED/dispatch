@@ -14,8 +14,10 @@ export function networkSettings(value) {
 }
 
 // A turn may reach what any repository in its task allows; the sandbox stays on and everything else stays blocked.
-export function taskNetwork(run) {
-  const settings = [run.project, ...(run.linked ?? []).map(member => member.project)].map(project => project?.network ?? noNetwork);
+// A repository still saved gives its current list, so a host the operator adds mid-conversation reaches the next turn.
+export function taskNetwork(run, saved = []) {
+  const current = (id, copy) => saved.find(project => project.id === id) ?? copy;
+  const settings = [current(run.projectId, run.project), ...(run.linked ?? []).map(member => current(member.projectId, member.project))].map(project => project?.network ?? noNetwork);
   return { hosts: [...new Set(settings.flatMap(item => item.hosts ?? []))], localPorts: settings.some(item => item.localPorts === true) };
 }
 

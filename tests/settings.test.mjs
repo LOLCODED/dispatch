@@ -77,3 +77,22 @@ test('dispatch_settings reads freely and changes a setting only when the operato
   assert.equal(live.projects[0].review, false); assert.equal(live.settingsRegistry.get('appearance.theme'), 'dark');
   await assert.rejects(live.settingsTool.call(run, { action: 'set', key: 'appearance.theme' }), /set needs a value/);
 });
+
+test('dispatch_settings finds the task’s repository network and an approved host reaches the task’s next turn', async t => {
+  const { live, project } = await liveFixture(t);
+  live.interactions = { request: async () => ({ answers: { setting: { answers: ['Change it'] } } }) };
+  const run = { id: 'r1', projectId: project.id, project: structuredClone(project), access: 'home', linked: [], events: [] };
+  const started = structuredClone(run.project.network);
+  const call = args => live.settingsTool.call(run, args).then(result => JSON.parse(result.content[0].text));
+  const found = await call({ action: 'list', search: 'network' });
+  assert.deepEqual(found.map(entry => [entry.key, entry.repository]), [['repository.network', project.name]]);
+  const changed = await call({ action: 'set', key: 'repository.network', value: { hosts: ['api.example.test'] }, repository: project.name });
+  assert.deepEqual(changed.value, { hosts: ['api.example.test'], localPorts: false });
+  assert.match(changed.appliesFrom, /next turn of this task.+stop retrying/);
+  assert.deepEqual(live.turnAccess(run).network.hosts, ['api.example.test']);
+  assert.deepEqual(run.project.network, started, 'the task’s own copy is left as it started');
+  live.interactions = { request: async () => ({ answers: { setting: { answers: ['Keep registry.npmjs.org and add api.example.test'] } } }) };
+  assert.match(await live.settingsTool.call(run, { action: 'set', key: 'repository.network', value: { hosts: [] }, repository: project.name }).then(result => result.content[0].text), /did not approve repository.network as asked\. Their reply: Keep registry/);
+  live.interactions = { request: async () => ({ answers: { setting: { answers: ['Change it'] } } }) };
+  await assert.rejects(live.settingsTool.call(run, { action: 'set', key: 'repository.network', value: { localPorts: 'yes' }, repository: project.name }), /Local ports must be true or false\. repository\.network expects: Sandbox network: \{ hosts, localPorts \}\. It is now \{"hosts":\["api\.example\.test"\]/);
+});

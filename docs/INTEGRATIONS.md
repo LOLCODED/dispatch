@@ -96,7 +96,7 @@ Each action resolves, in order: the repository's own switch (Repositories › a 
 
 Separately, a repository chooses which connectors it **uses**. Everything automatic needs both: reading a pasted link, delivering after `ready`, commenting the result, offering a state move, run events, and agent tools. A button the operator presses (**Open pull request**, or a choice on the state-move offer) needs only the action permitted. A repository uses at most one connector that pushes branches, and a plain folder (no Git) uses none.
 
-Per repository the saved shape is `connectors.<id> = { enabled, actions: { <action>: true|false }, settings: { ... } }`; `POST /api/projects/:id/connectors` merges `{ "<id>": { enabled, actions, settings } }`, where `null` resets an action or setting to its default. Global switches are `POST /api/connectors` with `{ id, enabled?, actions? }`, and `GET /api/connectors` lists every connector with its actions and settings.
+Per repository the saved shape is `connectors.<id> = { enabled, actions: { <action>: true|false }, settings: { ... } }`; `POST /api/projects/:id/connectors` merges `{ "<id>": { enabled, actions, settings } }`, where `null` resets an action or setting to its default. Global switches are `POST /api/connectors` with `{ id, enabled?, actions? }`, and `GET /api/connectors` lists every connector with its actions and settings. Switches and settings are read from the saved repository each time an action runs, so turning an action on or off also applies to tasks already in progress.
 
 ### Hooks
 

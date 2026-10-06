@@ -25,3 +25,10 @@ test('Claude Code gets the hosts and local binding inside its sandbox, never for
   assert.equal(readOnly.includes('--settings') ? settingsOf(readOnly).sandbox?.network : undefined, undefined);
   assert.equal(claudeArgs({ ...base, fullAccess: true }).includes('--settings'), false);
 });
+
+test('a saved repository gives its current list, so a host added mid-conversation reaches the next turn', () => {
+  const run = { projectId: 'a', project: { id: 'a', network: { hosts: ['registry.npmjs.org'] } }, linked: [{ projectId: 'b', project: { id: 'b', network: { hosts: [] } } }, { projectId: 'gone', project: { network: { hosts: ['old.example.test'] } } }] };
+  const saved = [{ id: 'a', network: { hosts: ['registry.npmjs.org', 'api.example.test'], localPorts: false } }, { id: 'b', network: { hosts: [], localPorts: true } }];
+  assert.deepEqual(taskNetwork(run, saved), { hosts: ['registry.npmjs.org', 'api.example.test', 'old.example.test'], localPorts: true });
+  assert.deepEqual(taskNetwork(run), { hosts: ['registry.npmjs.org', 'old.example.test'], localPorts: false });
+});

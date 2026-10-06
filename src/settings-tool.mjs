@@ -1,10 +1,12 @@
 import { InputError } from './engine.mjs';
 
 const approve = 'Change it', decline = 'Leave it', maxShown = 600;
+// Claude Code fixes a turn's sandbox when the turn starts, so retrying in the same turn only repeats the refusal.
+const nextTurn = 'The next turn of this task. This turn keeps its sandbox: stop retrying, finish with DISPATCH_BLOCKED: offering to retry, and the operator’s reply continues with the new hosts.';
 
 export const settingsTool = {
   name: 'dispatch_settings', kind: 'settings',
-  description: 'Read and change dispatch’s own settings, the same ones its settings pages change: list (optionally search), get or set a key. Add repository for a repository’s settings, such as repository.databases. Each set waits for the operator’s approval. Secrets cannot be read.',
+  description: 'Read and change dispatch’s own settings, the same ones its settings pages change: list (optionally search), get or set a key. Add repository for a repository’s settings, such as repository.databases or repository.network (the sandbox’s allowed hosts); list without one also shows this task’s repositories. A set replaces the whole value, so keep what is already there, for example every host already listed. Each set waits for the operator’s approval. Secrets cannot be read.',
   inputSchema: { type: 'object', additionalProperties: false, required: ['action'], properties: {
     action: { type: 'string', enum: ['list', 'get', 'set'] }, key: { type: 'string', maxLength: 120 }, value: { description: 'The new value: text, true/false, a number, or JSON for structured settings.' },
     repository: { type: 'string', maxLength: 200, description: 'A saved repository’s name, for repository.* settings.' }, search: { type: 'string', maxLength: 80 },
@@ -21,15 +23,26 @@ export class SettingsTool {
 
   async call(run, args, { signal } = {}) {
     const options = args.repository ? { repository: args.repository } : {};
-    if (args.action === 'list') return text(this.registry.describe(options).filter(entry => !args.search || `${entry.key} ${entry.description}`.toLowerCase().includes(args.search.toLowerCase())));
+    if (args.action === 'list') return text(this.list(run, args).filter(entry => !args.search || `${entry.key} ${entry.description}`.toLowerCase().includes(args.search.toLowerCase())));
     if (!args.key) throw new InputError(`${args.action} needs a key; list shows them.`);
     if (args.action === 'get') return text({ key: args.key, value: this.registry.get(args.key, options) });
     if (args.value === undefined) throw new InputError('set needs a value.');
     const current = this.registry.get(args.key, options);
-    if (await this.ask(run, args, current, signal) !== approve) return text(`The operator kept ${args.key} as it is.`);
-    const result = await this.registry.set(args.key, args.value, options);
+    const answer = await this.ask(run, args, current, signal);
+    if (answer !== approve) return text(answer && answer !== decline ? `The operator did not approve ${args.key} as asked. Their reply: ${answer}` : `The operator kept ${args.key} as it is.`);
+    const result = await this.registry.set(args.key, args.value, options).catch(error => {
+      throw new InputError(`${error.message} ${args.key} expects: ${this.registry.find(args.key, options).description} It is now ${shown(current)}.`);
+    });
     this.live.log(run, 'settings', `Changed ${args.key}${args.repository ? ` for ${args.repository}` : ''} with your approval.`);
-    return text(result);
+    return text(args.key === 'repository.network' ? { ...result, appliesFrom: nextTurn } : result);
+  }
+
+  // An agent searching for a setting rarely knows it is per repository, so its own task's repositories are listed too.
+  list(run, args) {
+    if (args.repository) return this.registry.describe({ repository: args.repository });
+    const ids = new Set([run.projectId ?? run.project?.id, ...(run.linked ?? []).map(member => member.projectId)]);
+    const own = this.live.projects.filter(project => ids.has(project.id)).flatMap(project => this.registry.describe({ repository: project.id }).map(entry => ({ ...entry, repository: project.name })));
+    return [...this.registry.describe({}), ...own];
   }
 
   async ask(run, args, current, signal) {

@@ -339,3 +339,15 @@ test('pull requests opened together use the chosen base and link to each other',
   assert.deepEqual(edits.map(call => call.url), ['https://forge.example/repo/pull/7', 'https://forge.example/repo/pull/8']); assert.match(edits[0].body, /## Related pull requests\n- https:\/\/forge\.example\/repo\/pull\/8/);
   await assert.rejects(live.pullRequests.open({ runIds: [first.id] }), /no tested commit ready for a pull request/);
 });
+
+test('delivery follows the repository’s saved consent, not the copy a task started with', async () => {
+  const forge = forgeDouble(), saved = { id: 'p1', connectors: forgeOn(), connectorMemory: {} };
+  const connectors = new ConnectorService({ registry: new ConnectorRegistry([forge.connector]), store: { state: {}, save() {} }, projects: () => [saved] });
+  const delivery = new Delivery(connectors), startedWithPushOff = { id: 'p1', connectors: { forge: { enabled: true, actions: { openPullRequest: true }, settings: {} } } };
+  await delivery.deliver(sampleRun(), startedWithPushOff);
+  assert.deepEqual(forge.calls.map(call => call.hook).slice(0, 1), ['push'], 'push switched on after the task started is honoured');
+  saved.connectors.forge.actions.push = false;
+  const run = sampleRun();
+  await delivery.deliver(run, { id: 'p1', connectors: forgeOn() });
+  assert.match(run.delivery.error?.message ?? '', /Pushing is switched off/, 'push switched off after the task started is refused');
+});
