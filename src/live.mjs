@@ -71,7 +71,7 @@ import { PullRequests, reviewPages } from './pull-requests.mjs';
 import { commitMessage, commitSubject, withoutCommitLine } from './conventional-commit.mjs';
 import { BaseChecks } from './base-checks.mjs';
 import { LinkedRepositories, appName, browserApps, httpApps, usesBrowser, changedMembers, commitTested, committed, committedMember, deliverable, linkedEnvSettings, linkedSettings, workspaceScripts } from './linked-repositories.mjs';
-import { remainingMarker, remainingWork } from './remaining.mjs';
+import { asIsReport, remainingMarker, remainingWork } from './remaining.mjs';
 
 const rawLogBytes = 16_000_000;
 export const alive = pid => { if (!pid) return false; try { process.kill(pid, 0); return true; } catch (error) { return error.code !== 'ESRCH'; } };
@@ -678,6 +678,12 @@ export class LiveService {
     this.log(previous, 'check', `You accepted ${names} as failing before this task.`);
     return this.followup(id, { input: `The operator accepted ${names} as a failure that already existed before this task: it fails the same way on the base commit. Do not change code for it; if nothing else is needed, make no changes and finish.` });
   }
+  async finishAsIs(id) {
+    const previous = this.engine.get(id);
+    if (previous.mode !== 'live' || previous.kind !== 'change' || previous.status !== 'blocked' || this.engine.active.has(previous.id)) throw new InputError('Take a run as is after it stops blocked.', 409);
+    if (!previous.blockedTree?.files && !previous.blockedTree?.linkedFiles) throw new InputError('This run has no changes to check and save.', 409);
+    return this.followup(id, { input: 'Take the current changes as they are: check and save them without another agent turn.' }, { asIs: asIsReport(previous.summary, previous.question) });
+  }
   // A linked member's recipe reaches the follow-up through refreshRecipes, so it is saved first and restored if the follow-up is refused.
   async continueWithMemberRecipe(id, project, changes) {
     const original = Object.fromEntries(Object.keys(changes).map(key => [key, project[key]]));
@@ -691,7 +697,7 @@ export class LiveService {
     if (scripts === null && run.scriptsAtBase && run.baselineScripts) scripts = run.baselineScripts;
     return digest({ setup: project.setup, checks: project.validation, scripts });
   }
-  async followup(id, input, { project, mergeIn, mergeInto, byLanding = false, attachments = decodeAttachments(input) } = {}) {
+  async followup(id, input, { project, mergeIn, mergeInto, asIs, byLanding = false, attachments = decodeAttachments(input) } = {}) {
     const previous = this.engine.get(id);
     if (previous.mode !== 'live' || !terminal.has(previous.status)) throw new InputError('Wait for the live run to stop before continuing.', 409);
     if (!byLanding && previous.status === 'ready' && (this.openingPullRequests.has(previous.id) || this.landings.landingOf(previous))) throw new InputError('This task is being landed or opened as a pull request. Continue it after that finishes.', 409);
@@ -720,6 +726,7 @@ export class LiveService {
     this.linked.refreshRecipes(run);
     if (previous.nextExecution) { this.applyExecution(run, previous.nextExecution, 'switch'); delete previous.nextExecution; }
     if (mergeIn) Object.assign(run, { mergeIn, ...(mergeInto ? { mergeInto } : {}) });
+    if (asIs !== undefined) Object.assign(run, { asIs: true, summary: asIs });
     this.browserEvidence.attach(run, attachments, { check: 'Follow-up' });
     previous.supersededBy = run.id;
     this.engine.runs.unshift(run); this.engine.event(run, 'queued', `Follow-up queued in ${run.freshSession ? 'a fresh' : 'the original'} ${providerName(run.provider)} session. Earlier evidence is historical.`); queueMicrotask(() => this.engine.pump()); return run;
@@ -1015,6 +1022,10 @@ export class LiveService {
     const result = await this.workerTurn(run, adapter, prompt, signal, options);
     if (signal.aborted) return false;
     if (result.outcome !== 'completed') { if (result.outcome === 'blocked') run.question = run.summary?.match(/^DISPATCH_BLOCKED:\s*([\s\S]*)/m)?.[1]?.trim() ?? run.summary; e.transition(run, result.outcome === 'blocked' ? 'blocked' : 'failed', run.summary || `${name} did not complete.`); return false; }
+    return this.observeTurn(run, signal);
+  }
+  async observeTurn(run, signal) {
+    const e = this.engine;
     run.packageScripts = this.packageScripts(run);
     if (!run.scriptsAtBase && run.attempt === 1 && run.packageScripts !== null) { run.baselineScripts = run.packageScripts; run.scriptsAtBase = true; run.protectedDigest = this.protectedRecipe(run); this.log(run, 'check', 'package.json was created in this turn; its scripts are now the protected baseline for this run and its follow-ups.'); }
     if (this.protectedRecipe(run) !== run.protectedDigest) {
@@ -1025,7 +1036,7 @@ export class LiveService {
     if (!run.shadow && await git(['branch', '--show-current'], { signal }) !== run.branch) throw new Error('Worker changed the workspace branch.');
     if (!run.shadow) await git(['merge-base', '--is-ancestor', run.baseSha, 'HEAD'], { signal });
     run.revision = await this.tree(run, signal);
-    run.changedPaths = (await git(['diff', '--no-ext-diff', '--no-textconv', '--name-only', '-z', run.baseSha, run.revision, '--'], { signal })).split('\0').filter(Boolean);
+    run.changedPaths = await this.changedPaths(run, run.workspace, run.baseSha, run.revision, signal);
     run.flags = changeFlags(run.changedPaths, run.project.protectedPaths);
     run.sqlToRun = await sqlToRun(run.flags.sqlChanged, path => git(['show', `${run.revision}:${path}`], { signal, maxOutput: 40000 }));
     const files = this.steps.append(run, { kind: 'files', paths: run.changedPaths, revision: run.revision });
@@ -1278,6 +1289,7 @@ export class LiveService {
   }
   async attempts(run, adapter, signal) {
     if (run.kind === 'answer') return this.answer(run, adapter, signal);
+    if (run.asIs) return this.takeAsIs(run, adapter, signal);
     const e = this.engine, name = () => providerName(run.execution?.provider ?? 'codex');
     let prompt = this.workerPrompt(run) + this.memoryBlock(run), failure = null;
     for (let attempt = 1; attempt <= run.maxRepairs + 1; attempt++) {
@@ -1291,6 +1303,13 @@ export class LiveService {
     if (await this.escalate(run, adapter, failure, signal)) return;
     e.transition(run, 'failed', `Repair allowance exhausted${run.escalation ? ', including one escalation' : ''}. The workspace and evidence are retained.`);
   }
+  async takeAsIs(run, adapter, signal) {
+    run.attempt = 1;
+    this.log(run, 'worktree', 'Taking the current changes as they are: no agent turn; dispatch checks and saves them.');
+    if (!await this.observeTurn(run, signal)) return;
+    const failure = await this.afterTurn(run, adapter, signal);
+    if (failure && !signal.aborted) this.engine.transition(run, 'blocked', `The changes were taken as they are, but ${failure.reason}. Reply to have the agent fix it, or accept a failure that predates this task.`);
+  }
   async turnPrompt(run, prompt, failure, signal) {
     if (!run.freshSession) return prompt;
     delete run.freshSession;
@@ -1298,8 +1317,11 @@ export class LiveService {
   }
   // One owner turn and its validation. Returns the repair instructions when checks or review fail; null when the run stopped or finished.
   async cycle(run, adapter, prompt, signal, images = []) {
-    const e = this.engine;
     if (!await this.ownerTurn(run, adapter, prompt, signal, { images })) return null;
+    return this.afterTurn(run, adapter, signal);
+  }
+  async afterTurn(run, adapter, signal) {
+    const e = this.engine;
     const changed = run.changedPaths.length > 0 || changedMembers(run).length > 0;
     if (!changed && this.answered(run)) { e.transition(run, 'ready', 'Answer ready. Nothing was changed, checked or committed.'); return null; }
     if (!changed && this.planned(run)) { e.transition(run, 'blocked', 'Plan ready. Approve it to start the work, or reply with adjustments.'); return null; }
@@ -1400,6 +1422,7 @@ export class LiveService {
     try {
       const adapter = await this.prepare(run, signal);
       if (adapter && !signal.aborted) await this.attempts(run, adapter, signal);
+      if (run.status === 'blocked' && !signal.aborted) await this.noteBlocked(run, signal);
     } catch (error) { if (!signal.aborted) e.transition(run, 'failed', redact(error.message)); }
     finally {
       this.interactions.cancel(run);
@@ -1407,6 +1430,23 @@ export class LiveService {
       this.remember(run);
       e.store.save();
     }
+  }
+  // A blocked turn is never checked, so its trees are recorded here: they show whether replies still change anything and whether there is work to take as is.
+  async noteBlocked(run, signal) {
+    if (run.kind !== 'change' || !run.baseSha || !existsSync(run.workspace)) return;
+    try {
+      const own = await this.changeState(run, run.workspace, run.baseSha, signal);
+      const members = await Promise.all((run.linked ?? []).filter(member => member.baseSha && existsSync(member.workspace)).map(member => this.changeState(run, member.workspace, member.baseSha, signal)));
+      const revision = digest([own, ...members].map(item => item.revision)), previous = run.previousRunId && this.engine.runs.find(item => item.id === run.previousRunId);
+      run.blockedTree = { revision, files: own.files, linkedFiles: members.reduce((sum, item) => sum + item.files, 0), repeats: previous?.blockedTree?.revision === revision ? previous.blockedTree.repeats + 1 : 1 };
+    } catch (error) { if (!signal.aborted) this.log(run, 'files', `Changes of the blocked turn were not recorded: ${redact(error.message.split('\n')[0])}`); }
+  }
+  async changeState(run, workspace, base, signal) {
+    const revision = await this.tree(run, signal, workspace);
+    return { revision, files: (await this.changedPaths(run, workspace, base, revision, signal)).length };
+  }
+  async changedPaths(run, workspace, base, revision, signal) {
+    return (await workspaceGit(run, workspace)(['diff', '--no-ext-diff', '--no-textconv', '--name-only', '-z', base, revision, '--'], { signal })).split('\0').filter(Boolean);
   }
   memoryBlock(run) {
     if (run.project.memory === false) return '';

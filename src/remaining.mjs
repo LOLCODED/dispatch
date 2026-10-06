@@ -1,6 +1,6 @@
 export const remainingMarker = 'DISPATCH_REMAINING:';
 const start = /^[*_\s]*DISPATCH_REMAINING:[*_]*[ \t]*/m;
-const end = /^\s*(?:DISPATCH_[A-Z]+\b|[#*\s]*notes for next time\b)/i;
+const end = /^[*_#\s]*(?:DISPATCH_[A-Z]+\b|notes for next time\b)/i;
 const bullet = /^\s*(?:[-*•]|\d{1,2}[.)])\s+/;
 const nothingLeft = /^[\s*_`([]*(?:none|nothing|n\/?a|-)[\s*_`.)\]]*$/i;
 const maxItems = 12, maxItemLength = 500;
@@ -18,6 +18,25 @@ export function splitRemaining(text) {
 }
 
 export const remainingWork = text => splitRemaining(text).items;
+
+const blockedLine = /^[*_\s]*DISPATCH_BLOCKED:/;
+export function withoutBlocked(text) {
+  const kept = [];
+  let skipping = false;
+  for (const line of String(text ?? '').split('\n')) {
+    if (blockedLine.test(line)) skipping = true;
+    else if (skipping && end.test(line)) skipping = false;
+    if (!skipping) kept.push(line);
+  }
+  return kept.join('\n').trim();
+}
+
+export function asIsReport(summary, question) {
+  const { before, items } = splitRemaining(withoutBlocked(summary));
+  const open = String(question ?? '').trim().split('\n')[0].trim();
+  const left = [...(open ? [`Open question: ${open}`] : []), ...items].slice(0, maxItems);
+  return [before, left.length ? `${remainingMarker}\n${left.map(item => `- ${item.slice(0, maxItemLength)}`).join('\n')}` : ''].filter(Boolean).join('\n\n');
+}
 export const openRemaining = run => run?.status === 'ready' && !run.supersededBy && Boolean(run.remaining?.items?.length) && !run.remaining.resolution;
 
 export function remainingTaskInput(run) {

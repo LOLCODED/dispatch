@@ -156,7 +156,7 @@ export class LinkedRepositories {
     if (!member.shadow && await git(['branch', '--show-current'], { signal }) !== member.branch) throw new Error(`Worker changed the branch of linked repository ${member.name}.`);
     if (!member.shadow) await git(['merge-base', '--is-ancestor', member.baseSha, 'HEAD'], { signal });
     member.revision = await this.live.tree(run, signal, member.workspace);
-    member.changedPaths = (await git(['diff', '--no-ext-diff', '--no-textconv', '--name-only', '-z', member.baseSha, member.revision, '--'], { signal })).split('\0').filter(Boolean);
+    member.changedPaths = await this.live.changedPaths(run, member.workspace, member.baseSha, member.revision, signal);
     return true;
   }
 

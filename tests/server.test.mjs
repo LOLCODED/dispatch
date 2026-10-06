@@ -7,7 +7,7 @@ import http from 'node:http';
 import { Engine } from '../src/engine.mjs';
 import { createServer, acquireLock } from '../src/server.mjs';
 import { git } from '../src/local-tools.mjs';
-import { liveFixture, models, waitsForAbort } from './live-double.mjs';
+import { liveFixture, models, settle, waitsForAbort } from './live-double.mjs';
 import { exampleTracker } from './tracker-double.mjs';
 import { forgeDouble } from './forge-double.mjs';
 async function setup(t, options) {
@@ -276,4 +276,18 @@ test('the trace viewer is served same-origin from Playwright’s files and never
   assert.equal(workspace.traceViewer, true);
   const index = await fetch(`${base}/trace-viewer/index.html`); assert.equal(index.status, 200); assert.match(index.headers.get('content-type'), /text\/html/);
   for (const path of ['/trace-viewer/../server.mjs', '/trace-viewer/assets/../../package.json', '/trace-viewer/missing.js', '/trace-viewer/']) assert.equal((await fetch(`${base}${path}`)).status, 404);
+});
+
+test('a blocked run with changes is taken as is over HTTP; without changes it is refused', async t => {
+  const { base, engine, live, project } = await setup(t, { behavior: (options, turn) => {
+    if (turn === 2) writeFileSync(join(options.workspace, 'value.txt'), 'changed');
+    return { outcome: 'blocked', sessionId: 'session-1', summary: 'DISPATCH_BLOCKED: Which export should I use?' };
+  } });
+  const post = id => fetch(`${base}/api/runs/${id}/finish-as-is`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+  const run = await live.create({ projectId: project.id, input: 'Change it' }); await settle(engine, run);
+  assert.equal((await post(run.id)).status, 409);
+  const changed = await live.followup(run.id, { input: 'Use the first one' }); await settle(engine, changed);
+  const response = await post(changed.id); assert.equal(response.status, 201);
+  const taken = engine.get((await response.json()).id); await settle(engine, taken);
+  assert.equal(taken.status, 'ready'); assert.equal(taken.previousRunId, changed.id);
 });

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { openRemaining, remainingWork, splitRemaining } from '../src/remaining.mjs';
+import { asIsReport, openRemaining, remainingWork, splitRemaining, withoutBlocked } from '../src/remaining.mjs';
 
 test('remaining work is the list after the marker, up to the notes or the next marker', () => {
   const text = 'Built part A.\n\n**DISPATCH_REMAINING:**\n- Part B: several repositories.\n2. Extensions\n\nDISPATCH_COMMIT: feat(x): y\nNotes for next time:\n- none';
@@ -25,4 +25,14 @@ test('only an unresolved, ready, latest run has open remaining work', () => {
   assert.equal(openRemaining({ ...run, status: 'failed' }), false);
   assert.equal(openRemaining({ ...run, supersededBy: 'next' }), false);
   assert.equal(openRemaining({ ...run, remaining: { items: ['B'], resolution: 'finish' } }), false);
+});
+
+test('a report taken as is drops the blocked question and its options and keeps the question as work left', () => {
+  const summary = 'Merged the branch.\n\nDISPATCH_BLOCKED: The export needs access I lack. How should I proceed?\n1. You run it — fastest\n2. Allow the host\n\n**DISPATCH_REMAINING:**\n- Commit the export.\n\nNotes for next time:\n- none';
+  assert.equal(withoutBlocked(summary), 'Merged the branch.\n\n**DISPATCH_REMAINING:**\n- Commit the export.\n\nNotes for next time:\n- none');
+  const report = asIsReport(summary, 'The export needs access I lack. How should I proceed?\n1. You run it — fastest');
+  assert.equal(report, 'Merged the branch.\n\nDISPATCH_REMAINING:\n- Open question: The export needs access I lack. How should I proceed?\n- Commit the export.');
+  assert.deepEqual(remainingWork(report), ['Open question: The export needs access I lack. How should I proceed?', 'Commit the export.']);
+  assert.equal(asIsReport('DISPATCH_BLOCKED: Validation scripts changed.', undefined), '');
+  assert.equal(asIsReport('Done.', ''), 'Done.');
 });

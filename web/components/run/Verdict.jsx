@@ -1,4 +1,4 @@
-import { Check, CheckCheck, Code, Copy, FolderOpen, FolderX, Wrench } from 'lucide-react';
+import { Check, CheckCheck, Code, Copy, FolderOpen, FolderX, GitCommitHorizontal, Wrench } from 'lucide-react';
 import { IconButton, Tooltip } from '@/components/IconButton';
 import { api, Link, navigate } from '@/lib/workspace';
 import { useAction } from '@/lib/use-action';
@@ -107,10 +107,22 @@ function AcceptPreexisting({ run, onUpdate }) {
   </div>;
 }
 
+function FinishAsIs({ run, onUpdate }) {
+  const { busy, error, perform } = useAction(), tree = run.blockedTree, files = (tree?.files ?? 0) + (tree?.linkedFiles ?? 0);
+  if (run.status !== 'blocked' || !files || run.supersededBy || !run.sessionId) return null;
+  const finish = () => perform(async () => { const next = await api(`/api/runs/${run.id}/finish-as-is`, {}); onUpdate(next); navigate(`/runs/${next.id}`); });
+  const replies = tree.repeats - 1;
+  return <div className="verdict-ci" role="group" aria-label="Take the changes as they are">
+    <p>{replies > 0 && `Your last ${replies === 1 ? 'reply' : `${replies} replies`} changed no files. `}Take the {plural(files, 'changed file')} as they are: dispatch runs the checks and saves a commit without another agent turn, and lists the open question as work left. You can also open the worktree and finish by hand.</p>
+    <IconButton label="Check and save as is" icon={GitCommitHorizontal} variant="outline" disabled={busy} onClick={finish}/>
+    {error && <p className="error" role="alert">{error}</p>}
+  </div>;
+}
+
 export function Verdict({ run, onUpdate }) {
   const verdict = handingOff[run.handingOff] ?? verdicts[run.status]?.(run);
   if (!verdict) return null;
-  const list = warnings(run), base = baseLine(run), changed = run.changedPaths?.length ?? 0, tone = run.handingOff ? 'active' : tones[run.status] ?? 'muted';
+  const list = warnings(run), base = baseLine(run), changed = run.changedPaths?.length ?? run.blockedTree?.files ?? 0, tone = run.handingOff ? 'active' : tones[run.status] ?? 'muted';
   return <section className={`verdict tone-${tone}`} aria-label="Verdict">
     <h2>{verdict}</h2>
     {!isAnswer(run) && <dl className="verdict-facts">
@@ -127,6 +139,7 @@ export function Verdict({ run, onUpdate }) {
     <RiskDecision decision={run.riskAssessments?.at(-1)} selection={run.riskSelection}/>
     {run.sqlToRun && <SqlBlock sql={run.sqlToRun}/>}
     <AcceptPreexisting run={run} onUpdate={onUpdate}/>
+    <FinishAsIs run={run} onUpdate={onUpdate}/>
     <CiRepair run={run} onUpdate={onUpdate}/>
     <TrackerOffers run={run} onUpdate={onUpdate}/>
     <LinkOffer run={run} onUpdate={onUpdate}/>
