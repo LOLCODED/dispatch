@@ -320,3 +320,17 @@ test('a plan is not reused when the earlier approval did not cover the review or
     if (turn < 3) current = await live.followup(current.id, { input: 'Continue' });
   }
 });
+
+test('accepting a pre-existing failure keeps the approved plan for the same tree instead of running every check', async t => {
+  const broken = { id: 'broken', command: process.execPath, args: ['-e', 'process.exit(1)'] };
+  const { live, engine, project } = await liveFixture(t, { project: { validation: [lint, unitCheck, broken], risk: policy() }, behavior: async options => {
+    writeFileSync(join(options.workspace, 'value.txt'), 'changed');
+    await assess(options, { checks: ['broken'] }); return completed;
+  } });
+  const run = await live.create({ projectId: project.id, input: 'Change value' }); await settle(engine, run);
+  assert.equal(run.status, 'failed', JSON.stringify(run.events.map(event => event.message)));
+  const accepted = await live.acceptPreexisting(run.id); await settle(engine, accepted);
+  assert.equal(accepted.status, 'ready', JSON.stringify(accepted.events.map(event => event.message)));
+  assert.deepEqual(accepted.checks.filter(check => check.revision === accepted.revision).map(check => [check.name, check.status]).sort(), [['broken', 'failed'], ['lint', 'passed'], ['unit', 'skipped']]);
+  assert.match(accepted.events.map(event => event.message).join('\n'), /carried over from run/);
+});

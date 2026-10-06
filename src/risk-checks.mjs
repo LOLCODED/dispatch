@@ -128,6 +128,18 @@ export class RiskChecks {
     this.live.steps.append(run, { kind: 'risk', assessmentId: record.id, revision: record.revision, status: record.status, level: record.level, checks: record.checks });
     this.live.engine.store.saveSoon();
   }
+  // A run that takes changes as they are has no agent turn to assess them; the plan approved for that same tree still stands.
+  carryOver(run) {
+    if (!riskEnabled(run.project)) return null;
+    const history = [...this.live.workspaceHistory(run)].slice(1), earlier = history.map(current => ({ current, record: current.riskAssessments?.at(-1) })).find(item => item.record);
+    const record = earlier?.record;
+    if (!record || !approved.has(record.status) || record.revision !== run.revision || record.recipeDigest !== this.live.protectedRecipe(run) || record.policyDigest !== policyDigest(run)) return null;
+    const copy = { ...structuredClone(record), id: randomUUID(), attempt: run.attempt, createdAt: new Date().toISOString(), reusedFrom: { assessmentId: record.id, runId: earlier.current.id } };
+    delete copy.selectedAt;
+    (run.riskAssessments ??= []).push(copy); this.save(run, copy);
+    this.live.log(run, 'check', `Testing plan for tree ${run.revision.slice(0, 12)} carried over from run ${earlier.current.id.slice(0, 8)}: the changes are the same.`);
+    return copy;
+  }
   async selection(run, signal) {
     if (!riskEnabled(run.project)) return null;
     if (run.kind === 'landing') return this.landingSelection(run);

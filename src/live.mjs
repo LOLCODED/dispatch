@@ -1307,6 +1307,7 @@ export class LiveService {
     run.attempt = 1;
     this.log(run, 'worktree', 'Taking the current changes as they are: no agent turn; dispatch checks and saves them.');
     if (!await this.observeTurn(run, signal)) return;
+    this.riskChecks.carryOver(run);
     const failure = await this.afterTurn(run, adapter, signal);
     if (failure && !signal.aborted) this.engine.transition(run, 'blocked', `The changes were taken as they are, but ${failure.reason}. Reply to have the agent fix it, or accept a failure that predates this task.`);
   }
