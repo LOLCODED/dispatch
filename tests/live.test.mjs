@@ -326,6 +326,7 @@ test('the brief keeps operator-only steps out of blocked options', async t => {
   const { live, engine, project } = await fixture(t, async (options, turn) => { prompts.push(options.prompt); return completesWithFiles(options, turn); });
   const run = await live.create({ projectId: project.id, input: 'Change the value' }); await settle(engine, run);
   assert.match(prompts[0], /two or three numbered options you can act on \("1\. Option — why"\), recommended first; operator-only steps go above\./);
+  assert.match(prompts[0], /Steps only the operator can take \(access, networks, settings\) are no reason to block: finish the rest\. After DISPATCH_REMAINING: list work left unbuilt and operator steps, one per line\./);
 });
 
 test('a worker question persists, releases its slot, and resumes with the snapshotted model and fresh checks', async t => {
@@ -618,7 +619,7 @@ test('the worker brief stays short and adds notes and browser guidance only when
   const prompts = [];
   const { live, engine, project } = await fixture(t, async options => { prompts.push(options.prompt); return completesWithFiles(options); });
   const run = await live.create({ projectId: project.id, input: 'Fix a typo' }); await settle(engine, run);
-  assert.equal(run.status, 'ready'); assert.ok(run.workerTurns[0].promptCharacters < 2450, String(run.workerTurns[0].promptCharacters));
+  assert.equal(run.status, 'ready'); assert.ok(run.workerTurns[0].promptCharacters < 2550, String(run.workerTurns[0].promptCharacters));
   assert.doesNotMatch(prompts[0], /Follow repository instructions|write outside the worktree/); assert.match(prompts[0], /Notes for next time/); assert.match(prompts[0], /own port/); assert.doesNotMatch(prompts[0], /browser checks/);
   await live.saveProject({ ...project, confirmed: true, memory: false, validation: [...project.validation, { id: 'e2e', command: process.execPath, args: ['-e', ''], browser: true }] }, project.id);
   const browser = await live.create({ projectId: project.id, input: 'Fix another typo' }); await settle(engine, browser);
