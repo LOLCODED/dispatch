@@ -122,6 +122,8 @@ test('missing auth blocks before agent execution', async t => {
 test('ticket fields from a tracker are reduced to plain text', () => {
   assert.equal(plainText('<p>Hello &amp; goodbye</p><div>Line</div>'), 'Hello & goodbye\nLine');
   assert.equal(plainText('<b>Pass</b>'), 'Pass'); assert.equal(plainText(undefined), '');
+  assert.equal(plainText('<ul><li>Run <code>npm test</code> </li>\n<li>See <a href="https://example.test/doc">the doc</a></li></ul><p>It&#39;s &#x2014; &quot;done&quot; &amp;lt;</p>'), '- Run `npm test`\n- See the doc (https://example.test/doc)\n\nIt\'s \u2014 "done" &lt;');
+  assert.equal(plainText('<table><tr><td>a</td><td>b</td></tr></table><a href="https://x.test">https://x.test</a> &bogus; &#0;'), 'a b\nhttps://x.test &bogus;');
 });
 test('project registration requires explicit confirmation and a check list, which may be empty', async t => {
   const { live, engine, repo, project } = await fixture(t);

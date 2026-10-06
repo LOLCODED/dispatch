@@ -24,7 +24,18 @@ export async function git(cwd, args, { gitDir, ...options } = {}, execute = runP
   if (result.exitCode !== 0 || result.timedOut || result.cancelled) throw Object.assign(new Error(`Git ${args[0]} failed: ${result.output.slice(-2000)}`), { result });
   return result.output.trimEnd();
 }
+const namedEntities = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
+const codePoint = number => Number.isInteger(number) && number > 0 && number <= 0x10ffff ? String.fromCodePoint(number) : '';
+const decodeEntity = (match, name) => name[0] !== '#' ? namedEntities[name.toLowerCase()] ?? match : codePoint(name[1] === 'x' || name[1] === 'X' ? parseInt(name.slice(2), 16) : Number(name.slice(1)));
+const linkText = (match, href, text) => { const label = text.replace(/<[^>]*>/g, '').trim(); return !href || label === href ? label || href : `${label} (${href})`; };
+
+// Tracker fields are HTML; the agent reads bullets, inline code and link targets, so those survive as text.
 export function plainText(value) {
-  return String(value ?? '').replace(/<\/(?:p|div|li|h[1-6])\s*>/gi, '\n').replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]*>/g, '').replace(/&(?:amp|lt|gt|quot|apos|nbsp);/g, entity => ({ '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&apos;': "'", '&nbsp;': ' ' })[entity]).trim();
+  return String(value ?? '')
+    .replace(/<a\b[^>]*?href\s*=\s*"([^"]*)"[^>]*>([\s\S]*?)<\/a\s*>/gi, linkText)
+    .replace(/<li\b[^>]*>/gi, '\n- ').replace(/<\/?code\b[^>]*>/gi, '`')
+    .replace(/<\/(?:p|div|li|h[1-6]|tr|ul|ol|pre|blockquote)\s*>/gi, '\n').replace(/<br\s*\/?>/gi, '\n').replace(/<\/t[dh]\s*>/gi, ' ')
+    .replace(/<[^>]*>/g, '').replace(/&(#\d{1,7}|#x[0-9a-f]{1,6}|[a-z]{2,8});/gi, decodeEntity)
+    .split('\n').map(line => line.trimEnd()).join('\n').replace(/\n{2,}(?=- )/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 export const textTicket = input => ({ key: `text:${digest(input.trim())}`, title: input.trim().split('\n')[0].slice(0, 120), description: input.trim(), acceptance: '', sourceUrl: null });
