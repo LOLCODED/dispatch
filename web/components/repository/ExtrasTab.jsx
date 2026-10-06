@@ -134,8 +134,10 @@ function Databases({ form, update, connectors }) {
   const add = preset => { const name = ['local', 'staging', 'prod', 'test'].find(item => !databases.some(database => database.name === item)) ?? `db${databases.length + 1}`; change([...databases, preset(name)]); setOpen(current => new Set(current).add(databases.length)); };
   const remove = index => { change(databases.filter((_, position) => position !== index)); setOpen(new Set()); };
   return <section className="tab-section"><div className="section-heading"><h3>Databases</h3>
-    <IconButton type="button" label="Add a database behind a tunnel you run" icon={Cable} onClick={() => add(tunnelDatabase)}/>
-    <IconButton type="button" label="Add a database" icon={Plus} onClick={() => add(newDatabase)}/></div>
+    <div className="composer-actions">
+      <Button type="button" variant="outline" size="sm" onClick={() => add(tunnelDatabase)}><Cable aria-hidden="true"/>Through a tunnel you run</Button>
+      <IconButton type="button" label="Add a database" icon={Plus} onClick={() => add(newDatabase)}/>
+    </div></div>
     <p className="muted">What the agent may query with dispatch_sql, per database. dispatch runs the queries outside the sandbox, so this is how the agent reaches a private database, including one behind an SSH tunnel or Bastion you already have open on a local port. Connection strings stay hidden.</p>
     {databases.length ? <ul className="row-list database-list">{databases.map((database, index) => <DatabaseRow key={index} index={index} database={database} open={open.has(index)} onToggle={() => toggle(index)} onChange={next => replace(index, next)} onRemove={() => remove(index)} connectors={connectors} form={form} update={update} copyTaken={databases.some((item, position) => position !== index && item.perTask.on)}/>)}</ul> : <p className="muted">No databases.</p>}
   </section>;
