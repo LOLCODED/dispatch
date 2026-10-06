@@ -108,6 +108,7 @@ for (const mode of ['ask', 'uncertain', 'manual']) test(`${mode} requires an exp
   await until(() => live.interactions.pending.has(run.id));
   assert.deepEqual(run.checks, []); assert.equal(run.riskAssessments[0].status, 'proposed');
   const request = run.interactions.at(-1), answer = request.questions[0].options[0].label;
+  assert.match(answer, /use the proposed checks \(Recommended\)$/i);
   live.interactions.answer(run.id, { requestId: request.id, answers: { risk: answer } });
   await settle(engine, run); assert.equal(run.status, 'ready', JSON.stringify(run.events));
   assert.equal(run.riskAssessments[0].status, 'operator');
@@ -142,7 +143,7 @@ test('a question left open when the run stops is cancelled, not offered', async 
   const run = await live.create({ projectId: project.id, input: 'Change value' }); await settle(engine, run);
   assert.equal(run.status, 'blocked'); assert.equal(live.interactions.pending.has(run.id), false);
   assert.equal(run.interactions.at(-1).status, 'cancelled');
-  assert.throws(() => live.interactions.answer(run.id, { requestId: run.interactions.at(-1).id, answers: { risk: 'Use suggested checks' } }), /no longer pending/);
+  assert.throws(() => live.interactions.answer(run.id, { requestId: run.interactions.at(-1).id, answers: { risk: 'Use the proposed checks' } }), /no longer pending/);
 });
 
 test('operator can require all checks and a change during approval invalidates selection', async t => {

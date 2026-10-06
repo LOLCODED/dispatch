@@ -86,7 +86,7 @@ export class RiskChecks {
       if (signal.aborted) record.status = 'cancelled';
     } catch (error) { record.status = signal.aborted ? 'cancelled' : 'rejected'; record.reasonForRejection = error.message; throw error; }
     finally { this.save(run, record); }
-    return { status: record.status, level, checks: record.checks, revision: record.revision, message: approved.has(record.status) ? `Plan recorded${record.reusedFrom ? ' without asking: the operator already approved a plan for this exact revision' : ''}. Dispatch will execute the selected checks on this exact revision after your turn.` : 'Plan not accepted. Address the operator’s response and submit again, or finish blocked.', answer: record.answer };
+    return { status: record.status, level, checks: record.checks, revision: record.revision, message: approved.has(record.status) ? `Plan recorded${record.reusedFrom ? ' without asking: the operator already approved a plan for this exact revision' : ''}. Dispatch will execute exactly ${record.checks.join(', ') || 'no checks'} on this exact revision after your turn; do not submit this revision again.` : 'Plan not accepted. Address the operator’s response and submit again, or finish blocked.', answer: record.answer };
   }
   // Every turn submits its own plan, so an unchanged follow-up would otherwise re-ask the operator about a tree they already approved.
   approvedEarlier(run, record) {
@@ -105,7 +105,7 @@ export class RiskChecks {
   }
   async askOperator(run, record, known, signal) {
     const { level, workflows, reason, manualReview, checks } = record;
-    const accept = manualReview ? 'Review passed; use suggested checks' : 'Use suggested checks';
+    const accept = manualReview ? 'Review passed; use the proposed checks' : 'Use the proposed checks';
     const result = await this.live.interactions.request(run, { kind: 'question', source: 'risk', riskAssessmentId: record.id, questions: [{ id: 'risk', header: 'Testing plan',
       question: `**${level[0].toUpperCase() + level.slice(1)} risk** · ${record.likelihood} likelihood / ${record.impact} impact. Estimates are judgments, not measured probabilities.\n\n**Proposed checks:** ${checks.join(', ') || 'none'} (repository minimums included).\n\n${manualReview ? `**Required review:** ${manualReview}${previewUrl(run) ? `\n\n[Open live preview](${previewUrl(run)})` : ''}` : 'Select a verification plan.'}`,
       details: `**Affected workflows:** ${workflows}\n\n${reason}`,
