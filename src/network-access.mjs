@@ -3,6 +3,10 @@ import { InputError } from './engine.mjs';
 const maxHosts = 30;
 const hostPattern = /^(\*\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i;
 export const noNetwork = { hosts: [], localPorts: false };
+const databaseHost = /(^|\.)(postgres|mysql|mariadb)\.database\.azure\.com$|\.database\.windows\.net$|\.rds\.amazonaws\.com$|^(localhost|127(\.\d{1,3}){3})$/i;
+
+// The sandbox lets web requests out through its proxy; database drivers and SSH tunnels open raw connections it never carries.
+export const databaseHosts = hosts => (hosts ?? []).filter(host => typeof host === 'string' && databaseHost.test(host.trim().replace(/^\*\./, '')));
 
 export function networkSettings(value) {
   if (value === undefined || value === null) return { ...noNetwork };

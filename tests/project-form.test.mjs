@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { commandStep, databasesForm, databasesPayload, formChanged, newDatabase, formFromInspect, formFromProject, newCommands, projectPayload, uniqueId, unusedScripts } from '../web/lib/project-form.mjs';
+import { commandStep, databasesForm, databasesPayload, formChanged, newDatabase, tunnelDatabase, formFromInspect, formFromProject, newCommands, projectPayload, uniqueId, unusedScripts } from '../web/lib/project-form.mjs';
 
 const project = {
   repositoryPath: '/repo', name: 'repo', baseBranch: 'main', review: true, memory: true, trackRemote: false,
@@ -66,4 +66,11 @@ test('databases load from both saved shapes and save with their names, access an
   ]);
   assert.deepEqual(databasesPayload(databasesForm(null)), []);
   assert.deepEqual(databasesPayload([newDatabase('prod')]), []);
+});
+
+test('a database behind a tunnel you run reads its URL from your environment and queries it with psql', () => {
+  const [payload] = databasesPayload([tunnelDatabase('staging')]);
+  assert.deepEqual(payload, { name: 'staging', access: 'read', engine: 'commands', connection: { from: 'environment', variables: ['DATABASE_URL'] }, commands: { query: 'psql {DATABASE_URL} -X --csv -c {sql}', format: 'csv' } });
+  assert.equal(databasesForm([{ name: 'staging', connection: payload.connection }])[0].source, 'environment');
+  assert.deepEqual(databasesPayload([{ ...tunnelDatabase('staging'), variable: '' }]), []);
 });

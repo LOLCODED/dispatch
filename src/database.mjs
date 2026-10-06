@@ -20,12 +20,19 @@ export function commandParts(value, what) {
   return { command: parts[0], args: parts.slice(1) };
 }
 
+const variableList = value => [value?.variable ?? value?.variables].flat().filter(Boolean);
+
 function connectionSettings(value) {
+  if (value?.from === 'environment') {
+    const variables = variableList(value);
+    if (!variables.length || variables.some(name => !variable.test(name))) throw new InputError('A database from your environment names the variables dispatch reads, such as DATABASE_URL.');
+    return { from: 'environment', variables };
+  }
   if (value?.from === 'connector') {
     if (!connectorId.test(value.connector ?? '') || !variable.test(value.variable ?? 'DATABASE_URL')) throw new InputError('A connector connection names the connector and the variable it fills.');
     return { from: 'connector', connector: value.connector, variable: value.variable ?? 'DATABASE_URL' };
   }
-  const variables = [value?.variable ?? value?.variables].flat().filter(Boolean);
+  const variables = variableList(value);
   if (typeof value?.envFile !== 'string' || !value.envFile.trim() || value.envFile.includes('..') || value.envFile.startsWith('/') || !variables.length || variables.some(name => !variable.test(name))) throw new InputError('A database needs an env file inside the repository and the variables to read from it, such as DATABASE_URL.');
   return { from: 'envFile', envFile: value.envFile.trim(), variables };
 }
@@ -93,6 +100,13 @@ export function databasesSettings(value) {
 export const projectDatabases = project => databasesSettings(project?.databases ?? project?.database);
 export const databaseSettings = value => databasesSettings(value)[0] ?? null;
 
+// Read when a query runs and never saved, so a tunnel's credentials stay in the shell that started dispatch.
+export function environmentValues(names, environment = process.env) {
+  const missing = names.filter(name => !environment[name]);
+  if (missing.length) throw new Error(`${missing.join(', ')} ${missing.length === 1 ? 'is' : 'are'} not set in dispatch's environment. Export ${missing.length === 1 ? 'it' : 'them'} in the shell that starts dispatch, then restart it.`);
+  return Object.fromEntries(names.map(name => [name, environment[name]]));
+}
+
 export function envFileValues(workspace, envFile, names) {
   let text; try { text = readFileSync(join(workspace, envFile), 'utf8'); } catch { throw new Error(`${envFile} is not in this worktree. Add it under Copied from your checkout.`); }
   const values = {};
@@ -142,7 +156,7 @@ export const databasesBrief = entries => entries.filter(readable).length ? ` Dat
 // Routes each of a repository's named databases to the connector that speaks its engine, or to the operator's own commands; core knows no engine.
 // A connector with database.connect may hold a tunnel open; it stays open for the run and closes when the run's turn ends.
 export class Databases {
-  constructor(live, { execute = runProcess } = {}) { this.live = live; this.execute = execute; this.connected = new Map(); }
+  constructor(live, { execute = runProcess, environment = process.env } = {}) { this.live = live; this.execute = execute; this.environment = environment; this.connected = new Map(); }
 
   available(project) { return projectDatabases(project).filter(readable); }
 
@@ -168,6 +182,7 @@ export class Databases {
   // source reads the operator's checkout: the worktree's copy of the env file points at the task's own database once it has one.
   async connectionEnv(run, entry, signal, { source = false } = {}) {
     const { connection } = entry;
+    if (connection.from === 'environment') return environmentValues(connection.variables, this.environment);
     if (connection.from === 'envFile') return envFileValues(source ? run.project.repositoryPath : run.workspace, connection.envFile, connection.variables);
     if (this.live.connectors.registry.hook(connection.connector, 'database.connect')) return this.connect(run, entry, signal);
     const url = String(await this.live.connectors.invoke(run.project, connection.connector, 'database.url', [], { signal, database: this.hookContext(entry) }) ?? '').trim();
@@ -208,7 +223,8 @@ export class Databases {
 
   async commandQuery(run, entry, sql, env, signal) {
     const { query, format, null: nullMarker } = entry.commands;
-    const args = query.args.includes('{sql}') ? query.args.map(arg => arg === '{sql}' ? sql : arg) : [...query.args, sql];
+    const filled = query.args.map(arg => arg === '{sql}' ? sql : arg.replace(/\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (match, name) => env[name] ?? match));
+    const args = query.args.includes('{sql}') ? filled : [...filled, sql];
     const result = await this.execute(query.command, args, { cwd: run.workspace, signal, timeoutMs: queryTimeoutMs, inheritEnv: false, env: localEnvironment(env) });
     if (result.exitCode !== 0 || result.timedOut) throw new Error(String(result.output ?? '').trim() || `${query.command} exited with ${result.exitCode}.`);
     const [columns = [], ...records] = parseDelimited(String(result.output ?? ''), format === 'tsv' ? '\t' : ',');

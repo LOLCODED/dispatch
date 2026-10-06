@@ -75,3 +75,17 @@ test('dispatch_sql is attached only when the repository has a database the agent
   const tools = databases => toolNames(new DispatchToolCalls({ databases: new Databases({}) }).tools({ project: { memory: false, databases } }, { questions: 'native' }));
   assert.deepEqual(tools(undefined), []); assert.deepEqual(tools(databasesSettings([prod])), []); assert.deepEqual(tools(databasesSettings([local])), ['dispatch_sql']);
 });
+
+test('a database reached through a tunnel you already run reads its URL from dispatch’s environment at query time and never saves it', async () => {
+  const tunnel = { name: 'staging', access: 'read', engine: 'commands', connection: { from: 'environment', variables: ['STAGING_URL'] }, commands: { query: 'psql {STAGING_URL} --csv -c {sql}' } };
+  const [entry] = databasesSettings([tunnel]);
+  assert.deepEqual(entry.connection, { from: 'environment', variables: ['STAGING_URL'] });
+  const calls = [], execute = async (command, args, options) => { calls.push({ command, args, env: options.env }); return { exitCode: 0, output: 'n\n1\n' }; };
+  const run = { id: 'r4', workspace: '/w', project: { databases: [entry] } }, environment = { STAGING_URL: 'postgres://reader:tunnel-secret@127.0.0.1:6543/app' };
+  const result = await new Databases({ connectors: connectorsDouble({ hooks: {} }) }, { execute, environment }).call(run, { query: 'select 1' });
+  assert.deepEqual(calls[0].args, [environment.STAGING_URL, '--csv', '-c', 'select 1']); assert.equal(calls[0].env.STAGING_URL, environment.STAGING_URL);
+  assert.deepEqual(result.view.rows, [['1']]);
+  const missing = await new Databases({ connectors: connectorsDouble({ hooks: {} }) }, { execute, environment: {} }).call(run, { query: 'select 1' });
+  assert.match(missing.content[0].text, /STAGING_URL is not set in dispatch's environment/);
+  assert.throws(() => databasesSettings([{ ...tunnel, connection: { from: 'environment' } }]), /names the variables/);
+});

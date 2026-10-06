@@ -92,10 +92,12 @@ export function projectPayload(form, repositoryPath) {
 export const localFileChoices = (info, form) => [...new Set([...(info?.localFiles ?? []), ...(form.localFiles ?? [])])];
 
 // Repositories saved before engines were chosen hold only the connection; both shapes load into the same form.
+const connectionSources = { connector: 'connector', environment: 'environment', envFile: 'env' };
+
 export function databaseForm(database) {
   const connection = database?.connection ?? (database?.source === 'connector' ? { from: 'connector', connector: database.connector } : { from: 'envFile', envFile: database?.envFile, variables: database?.variable ? [database.variable] : [] });
   const commands = database?.commands;
-  return { name: database?.name ?? 'default', access: database?.access ?? 'read', options: { ...(connection.options ?? {}) }, perTask: perTaskForm(database?.perTask), engine: database?.engine ?? '', source: connection.from === 'connector' ? 'connector' : 'env', connector: connection.connector ?? '', envFile: connection.envFile ?? '', variable: (connection.variables ?? [connection.variable]).filter(Boolean).join(', '), query: optionalCommand(commands?.query), format: commands?.format ?? 'csv', nullMarker: commands?.null ?? '' };
+  return { name: database?.name ?? 'default', access: database?.access ?? 'read', options: { ...(connection.options ?? {}) }, perTask: perTaskForm(database?.perTask), engine: database?.engine ?? '', source: connectionSources[connection.from] ?? 'env', connector: connection.connector ?? '', envFile: connection.envFile ?? '', variable: (connection.variables ?? [connection.variable]).filter(Boolean).join(', '), query: optionalCommand(commands?.query), format: commands?.format ?? 'csv', nullMarker: commands?.null ?? '' };
 }
 
 const optionalCommand = step => step ? commandLine(step) : '';
@@ -112,10 +114,18 @@ function perTaskPayload(perTask) {
 export const databasesForm = value => (Array.isArray(value) ? value : value ? [value] : []).map(databaseForm);
 export const databasesPayload = (list = []) => list.map(databasePayload).filter(Boolean);
 export const newDatabase = name => ({ ...databaseForm(null), name });
+export const tunnelQuery = 'psql {DATABASE_URL} -X --csv -c {sql}';
+export const tunnelDatabase = name => ({ ...newDatabase(name), engine: 'commands', source: 'environment', variable: 'DATABASE_URL', query: tunnelQuery });
+
+function connectionPayload(database) {
+  const variables = (database?.variable ?? '').split(',').map(name => name.trim()).filter(Boolean);
+  if (database?.source === 'connector') return database.connector ? { from: 'connector', connector: database.connector, ...(variables[0] ? { variable: variables[0] } : {}), options: database.options ?? {} } : null;
+  if (database?.source === 'environment') return variables.length ? { from: 'environment', variables } : null;
+  return database?.envFile?.trim() && variables.length ? { from: 'envFile', envFile: database.envFile.trim(), variables } : null;
+}
 
 export function databasePayload(database) {
-  const variables = (database?.variable ?? '').split(',').map(name => name.trim()).filter(Boolean);
-  const connection = database?.source === 'connector' ? (database.connector ? { from: 'connector', connector: database.connector, ...(variables[0] ? { variable: variables[0] } : {}), options: database.options ?? {} } : null) : database?.envFile?.trim() && variables.length ? { from: 'envFile', envFile: database.envFile.trim(), variables } : null;
+  const connection = connectionPayload(database);
   if (!connection) return null;
   const commands = database.engine === 'commands' ? { query: database.query.trim(), format: database.format, ...(database.nullMarker ? { null: database.nullMarker } : {}) } : null;
   const perTask = perTaskPayload(database.perTask);

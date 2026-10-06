@@ -6,10 +6,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { useConnectorCatalog } from '@/components/Connections';
 import { effectiveAction, overridden, setAction, setSetting, setUsed, settingValue } from '@/lib/connectors.mjs';
 import { useState } from 'react';
-import { Ban, ChevronUp, Database, Eye, PenLine, Plus, Settings2, Trash2 } from 'lucide-react';
+import { Ban, Cable, ChevronUp, Database, Eye, PenLine, Plus, Settings2, Trash2 } from 'lucide-react';
 import { Select } from '@/components/Select';
 import { IconButton } from '@/components/IconButton';
-import { newDatabase } from '@/lib/project-form.mjs';
+import { newDatabase, tunnelDatabase } from '@/lib/project-form.mjs';
 
 function Services({ form, update }) {
   const services = form.services ?? [];
@@ -81,21 +81,29 @@ function ConnectorOptions({ id, database, set, connector }) {
 function databaseSummary(database, connectors) {
   const named = id => connectors.find(connector => connector.id === id)?.name ?? id;
   const engine = database.engine === 'commands' ? 'Commands' : database.engine ? named(database.engine) : connectors.filter(connector => connector.queries).length === 1 ? connectors.find(connector => connector.queries).name : 'No engine';
-  const connection = database.source === 'connector' ? named(database.connector) : database.envFile || 'No env file';
+  const connection = database.source === 'connector' ? named(database.connector) : database.source === 'environment' ? 'Your environment' : database.envFile || 'No env file';
   return [engine, connection, database.perTask.on && 'copy per task'].filter(Boolean).join(' · ');
+}
+
+function EnvironmentConnection({ id, database, set }) {
+  return <>
+    {field(`${id}-variable`, 'Variables', database.variable, variable => set({ variable }), 'DATABASE_URL')}
+    <p className="muted">dispatch reads these from the shell that started it, each time the agent queries, and never saves them. For a database you reach through a tunnel you already keep open, export its URL with the tunnel's local port, for example DATABASE_URL=postgres://user:password@127.0.0.1:6543/app, then start dispatch.</p>
+  </>;
 }
 
 function DatabaseDetails({ id, database, set, onChange, connectors, form, update, copyTaken }) {
   const engines = [...connectors.filter(connector => connector.queries).map(connector => [connector.id, connector.name]), ['commands', 'Commands']];
-  const sources = [['env', 'Env file'], ...connectors.filter(connector => connector.databases).map(connector => [`connector:${connector.id}`, connector.name])];
+  const sources = [['env', 'Env file'], ['environment', 'Your environment'], ...connectors.filter(connector => connector.databases).map(connector => [`connector:${connector.id}`, connector.name])];
   return <div className="database-nested">
     {field(`${id}-name`, 'Name', database.name, name => set({ name: name.toLowerCase() }), 'local')}
     <div className="form-columns">
       {choice(`${id}-engine`, 'Engine', database.engine || (engines.length === 2 ? engines[0][0] : ''), engine => set({ engine }), engines)}
-      {choice(`${id}-source`, 'Connection', database.source === 'connector' ? `connector:${database.connector}` : 'env', value => set(value === 'env' ? { source: 'env' } : { source: 'connector', connector: value.slice('connector:'.length) }), sources)}
+      {choice(`${id}-source`, 'Connection', database.source === 'connector' ? `connector:${database.connector}` : database.source, value => set(value.startsWith('connector:') ? { source: 'connector', connector: value.slice('connector:'.length) } : { source: value }), sources)}
     </div>
     {database.engine === 'commands' && <QueryCommands id={id} database={database} set={set}/>}
     {database.source === 'connector' ? <ConnectorOptions id={id} database={database} set={set} connector={connectors.find(item => item.id === database.connector)}/>
+      : database.source === 'environment' ? <EnvironmentConnection id={id} database={database} set={set}/>
       : <div className="form-columns">
         {field(`${id}-env-file`, 'Env file', database.envFile, envFile => set({ envFile }), '.env.development')}
         {field(`${id}-variable`, 'Variables', database.variable, variable => set({ variable }), 'DATABASE_URL')}
@@ -123,10 +131,12 @@ function Databases({ form, update, connectors }) {
   const databases = form.databases ?? [], [open, setOpen] = useState(() => new Set()), change = next => update({ databases: next });
   const replace = (index, next) => change(databases.map((item, position) => position === index ? next : item));
   const toggle = index => setOpen(current => { const next = new Set(current); if (!next.delete(index)) next.add(index); return next; });
-  const add = () => { const name = ['local', 'staging', 'prod', 'test'].find(item => !databases.some(database => database.name === item)) ?? `db${databases.length + 1}`; change([...databases, newDatabase(name)]); setOpen(current => new Set(current).add(databases.length)); };
+  const add = preset => { const name = ['local', 'staging', 'prod', 'test'].find(item => !databases.some(database => database.name === item)) ?? `db${databases.length + 1}`; change([...databases, preset(name)]); setOpen(current => new Set(current).add(databases.length)); };
   const remove = index => { change(databases.filter((_, position) => position !== index)); setOpen(new Set()); };
-  return <section className="tab-section"><div className="section-heading"><h3>Databases</h3><IconButton type="button" label="Add a database" icon={Plus} onClick={add}/></div>
-    <p className="muted">What the agent may query with dispatch_sql, per database. Connection strings stay hidden.</p>
+  return <section className="tab-section"><div className="section-heading"><h3>Databases</h3>
+    <IconButton type="button" label="Add a database behind a tunnel you run" icon={Cable} onClick={() => add(tunnelDatabase)}/>
+    <IconButton type="button" label="Add a database" icon={Plus} onClick={() => add(newDatabase)}/></div>
+    <p className="muted">What the agent may query with dispatch_sql, per database. dispatch runs the queries outside the sandbox, so this is how the agent reaches a private database, including one behind an SSH tunnel or Bastion you already have open on a local port. Connection strings stay hidden.</p>
     {databases.length ? <ul className="row-list database-list">{databases.map((database, index) => <DatabaseRow key={index} index={index} database={database} open={open.has(index)} onToggle={() => toggle(index)} onChange={next => replace(index, next)} onRemove={() => remove(index)} connectors={connectors} form={form} update={update} copyTaken={databases.some((item, position) => position !== index && item.perTask.on)}/>)}</ul> : <p className="muted">No databases.</p>}
   </section>;
 }
@@ -134,7 +144,7 @@ function Databases({ form, update, connectors }) {
 function Network({ form, update }) {
   const network = form.network ?? { hosts: [], localPorts: false }, set = change => update({ network: { ...network, ...change } });
   return <section className="tab-section"><h3>Network for the agent</h3>
-    <p className="muted">The agent's own commands run in a sandbox with the network off. Setup and checks run outside it already. Hosts listed here are reachable from the sandbox, for example your package registry. Applies to Claude Code; other agents keep the network off.</p>
+    <p className="muted">The agent's own commands run in a sandbox with the network off. Setup and checks run outside it already. Hosts listed here are reachable from the sandbox for web requests, for example your package registry. Database connections do not pass through them: add a database below instead. Applies to Claude Code; other agents keep the network off.</p>
     <Label htmlFor="network-hosts">Allowed hosts, one per line</Label>
     <Textarea id="network-hosts" className="mono-input" rows={Math.min(6, Math.max(2, network.hosts.length + 1))} placeholder="registry.npmjs.org" value={network.hosts.join('\n')} onChange={event => set({ hosts: event.target.value.split('\n') })}/>
     <ul className="row-list"><li><SwitchRow label="Let it start local servers" description="Allows listening on local ports, so the agent can run a dev server or a test database itself. macOS only." checked={network.localPorts} onChange={localPorts => set({ localPorts })}/></li></ul>

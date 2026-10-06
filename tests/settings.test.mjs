@@ -118,3 +118,17 @@ test('an approved sandbox host continues the blocked task on its own once, and t
   await live.finished(next);
   assert.equal(next.supersededBy, undefined); assert.equal(next.status, 'blocked');
 });
+
+test('dispatch_settings refuses database addresses as sandbox hosts without asking, since the sandbox never carries their connections', async t => {
+  const { live, project } = await liveFixture(t);
+  let asked = 0;
+  live.interactions = { request: async () => { asked++; return { answers: { setting: { answers: ['Change it'] } } }; } };
+  const run = { id: 'r1', projectId: project.id, project: structuredClone(project), access: 'home', linked: [], events: [] };
+  for (const hosts of [['*.postgres.database.azure.com'], ['app-db.example.postgres.database.azure.com'], ['127.0.0.1'], ['db.rds.amazonaws.com']]) {
+    const result = await live.settingsTool.call(run, { action: 'set', key: 'repository.network', value: JSON.stringify({ hosts }), repository: project.name });
+    assert.equal(result.isError, true); assert.match(result.content[0].text, /database address: the sandbox only carries web requests[\s\S]*dispatch_sql[\s\S]*DISPATCH_REMAINING/);
+  }
+  assert.equal(asked, 0); assert.deepEqual(live.projects[0].network.hosts, project.network.hosts);
+  await live.settingsTool.call(run, { action: 'set', key: 'repository.network', value: { hosts: ['api.example.test'] }, repository: project.name });
+  assert.equal(asked, 1);
+});

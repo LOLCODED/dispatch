@@ -1,4 +1,5 @@
 import { InputError } from './engine.mjs';
+import { databaseHosts } from './network-access.mjs';
 
 const approve = 'Change it', decline = 'Leave it', maxShown = 600;
 // Claude Code fixes a turn's sandbox when the turn starts, so retrying in the same turn only repeats the refusal.
@@ -15,6 +16,14 @@ export const settingsTool = {
 
 const shown = value => { const text = typeof value === 'string' ? value : JSON.stringify(value); return text.length > maxShown ? `${text.slice(0, maxShown)}…` : text; };
 const text = value => ({ content: [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value, null, 2) }], isError: false });
+const parsed = value => { if (typeof value !== 'string') return value; try { return JSON.parse(value); } catch { return value; } };
+
+export function databaseHostRefusal(key, value, current) {
+  if (key !== 'repository.network') return null;
+  const added = databaseHosts(parsed(value)?.hosts).filter(host => !(current?.hosts ?? []).includes(host));
+  if (!added.length) return null;
+  return { content: [{ type: 'text', text: `${added.join(', ')} ${added.length === 1 ? 'is a database address' : 'are database addresses'}: the sandbox only carries web requests, so allowing ${added.length === 1 ? 'it' : 'them'} would not let your commands connect, and the operator was not asked. Query a database the repository lists with dispatch_sql. When none is listed, finish the code without it and, after DISPATCH_REMAINING, list the queries or steps the operator must run; the operator can add the database under Extras › Databases, including one behind a tunnel they keep open.` }], isError: true };
+}
 
 // The agent reads freely; every change is the operator's call, asked in the run like any other question.
 export class SettingsTool {
@@ -28,6 +37,8 @@ export class SettingsTool {
     if (args.action === 'get') return text({ key: args.key, value: this.registry.get(args.key, options) });
     if (args.value === undefined) throw new InputError('set needs a value.');
     const current = this.registry.get(args.key, options);
+    const refused = databaseHostRefusal(args.key, args.value, current);
+    if (refused) { this.live.log(run, 'settings', `Did not ask to allow ${args.key} database hosts: the sandbox cannot carry database connections.`); return refused; }
     const answer = await this.ask(run, args, current, signal);
     if (answer !== approve) return text(answer && answer !== decline ? `The operator did not approve ${args.key} as asked. Their reply: ${answer}` : `The operator kept ${args.key} as it is.`);
     const result = await this.registry.set(args.key, args.value, options).catch(error => {
