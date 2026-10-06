@@ -493,13 +493,14 @@ test('a check that also fails on the base commit is run there once and the repai
   assert.match(prompts.at(-1), /Dispatch ran unit on the untouched base commit/);
 });
 
-test('the operator accepts a check that also fails on the base commit, for that revision only, and it lands', async t => {
-  let value = 'other';
-  const { live, engine, project, repo } = await fixture(t, async options => { writeFileSync(join(options.workspace, 'value.txt'), value); return { outcome: 'completed', sessionId: 'session-1' }; });
+test('the operator accepts a check that also fails on the base commit, for that revision only, and it lands without another agent turn', async t => {
+  let value = 'other', turns = 0;
+  const { live, engine, project, repo } = await fixture(t, async options => { turns++; writeFileSync(join(options.workspace, 'value.txt'), value); return { outcome: 'completed', sessionId: 'session-1', summary: 'Changed the value.' }; });
   const run = await live.create({ projectId: project.id, input: 'Change the value' }); await settle(engine, run);
   assert.equal(run.status, 'failed');
-  const accepted = await live.acceptPreexisting(run.id); await settle(engine, accepted);
+  const before = turns, accepted = await live.acceptPreexisting(run.id); await settle(engine, accepted);
   assert.equal(accepted.status, 'ready', JSON.stringify(accepted.events.map(event => event.message)));
+  assert.equal(turns, before); assert.equal(accepted.asIs, true); assert.match(accepted.handoff.body, /Changed the value\./);
   assert.ok(accepted.checks.find(check => check.name === 'unit' && check.revision === accepted.revision).accepted);
   assert.match(describeChange(changeFacts(accepted)).body, /- unit: failed, also on the base commit; accepted by the operator/);
   await assert.rejects(live.acceptPreexisting(accepted.id), /stopped as blocked or failed/);

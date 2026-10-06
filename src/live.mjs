@@ -676,7 +676,7 @@ export class LiveService {
     const acceptedAt = new Date().toISOString(), names = latest.map(check => check.name).join(', ');
     previous.acceptedFailures = [...(previous.acceptedFailures ?? []), ...latest.map(check => ({ name: check.name, revision: check.revision, baseSha: check.baseSha, acceptedAt }))];
     this.log(previous, 'check', `You accepted ${names} as failing before this task.`);
-    return this.followup(id, { input: `The operator accepted ${names} as a failure that already existed before this task: it fails the same way on the base commit. Do not change code for it; if nothing else is needed, make no changes and finish.` });
+    return this.followup(id, { input: `The operator accepted ${names} as a failure that already existed before this task: it fails the same way on the base commit. dispatch checks and saves the current changes without another agent turn.` }, { asIs: asIsReport(previous.summary) });
   }
   async finishAsIs(id) {
     const previous = this.engine.get(id);
