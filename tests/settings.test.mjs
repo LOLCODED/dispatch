@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { internalProjectKeys, internalStateKeys } from '../src/settings.mjs';
-import { liveFixture } from './live-double.mjs';
+import { liveFixture, settle, until } from './live-double.mjs';
 
 // The hard rule: every setting is reachable through the registry (HTTP, CLI and dispatch_settings).
 // Filling every setting through its own page's setter must leave no state or repository key the registry does not know.
@@ -95,4 +95,26 @@ test('dispatch_settings finds the task’s repository network and an approved ho
   assert.match(await live.settingsTool.call(run, { action: 'set', key: 'repository.network', value: { hosts: [] }, repository: project.name }).then(result => result.content[0].text), /did not approve repository.network as asked\. Their reply: Keep registry/);
   live.interactions = { request: async () => ({ answers: { setting: { answers: ['Change it'] } } }) };
   await assert.rejects(live.settingsTool.call(run, { action: 'set', key: 'repository.network', value: { localPorts: 'yes' }, repository: project.name }), /Local ports must be true or false\. repository\.network expects: Sandbox network: \{ hosts, localPorts \}\. It is now \{"hosts":\["api\.example\.test"\]/);
+});
+
+test('an approved sandbox host continues the blocked task on its own once, and the next turn has the host', async t => {
+  const turns = [];
+  const blocked = summary => ({ outcome: 'blocked', sessionId: 'session-1', summary: `DISPATCH_BLOCKED: ${summary}` });
+  const { live, engine, project } = await liveFixture(t, { behavior: async (options, turn) => {
+    turns.push({ hosts: options.network?.hosts ?? [], prompt: options.prompt });
+    if (turn > 1) return blocked('The request still fails once the host is allowed.');
+    const result = await options.tools.call('dispatch_settings', { action: 'set', key: 'repository.network', value: { hosts: ['api.example.test'] }, repository: project.name });
+    assert.match(result.content[0].text, /dispatch starts on its own once this turn ends/);
+    return blocked('I will retry the request with the new host.');
+  } });
+  const run = await live.create({ projectId: project.id, input: 'Call the example API' });
+  await until(() => live.interactions.pending.has(run.id));
+  live.interactions.answer(run.id, { requestId: run.interactions.at(-1).id, answers: { setting: 'Change it' } });
+  await settle(engine, run); await until(() => run.supersededBy);
+  const next = engine.get(run.supersededBy); await settle(engine, next);
+  assert.match(next.input, /^The sandbox hosts the operator approved apply from this turn/);
+  assert.deepEqual(turns.map(turn => turn.hosts), [[], ['api.example.test']]);
+  assert.ok(run.events.some(event => event.message === 'Continuing with the sandbox hosts you approved.'));
+  await live.finished(next);
+  assert.equal(next.supersededBy, undefined); assert.equal(next.status, 'blocked');
 });

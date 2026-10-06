@@ -2,7 +2,7 @@ import { InputError } from './engine.mjs';
 
 const approve = 'Change it', decline = 'Leave it', maxShown = 600;
 // Claude Code fixes a turn's sandbox when the turn starts, so retrying in the same turn only repeats the refusal.
-const nextTurn = 'The next turn of this task. This turn keeps its sandbox: stop retrying, finish with DISPATCH_BLOCKED: offering to retry, and the operator’s reply continues with the new hosts.';
+const nextTurn = 'The next turn of this task, which dispatch starts on its own once this turn ends. This turn keeps its sandbox: stop retrying and finish with DISPATCH_BLOCKED: naming what you will retry; do not ask the operator to reply.';
 
 export const settingsTool = {
   name: 'dispatch_settings', kind: 'settings',
@@ -34,6 +34,7 @@ export class SettingsTool {
       throw new InputError(`${error.message} ${args.key} expects: ${this.registry.find(args.key, options).description} It is now ${shown(current)}.`);
     });
     this.live.log(run, 'settings', `Changed ${args.key}${args.repository ? ` for ${args.repository}` : ''} with your approval.`);
+    if (args.key === 'repository.network') run.networkChanged = true;
     return text(args.key === 'repository.network' ? { ...result, appliesFrom: nextTurn } : result);
   }
 
