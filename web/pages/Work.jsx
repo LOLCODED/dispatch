@@ -5,7 +5,6 @@ import { Composer } from '@/components/work/Composer';
 import { EditComposer } from '@/components/work/EditComposer';
 import { TaskBoard } from '@/components/work/TaskBoard';
 import { StorageAlert } from '@/components/work/StorageAlert';
-import { UpdateAlert } from '@/components/work/UpdateAlert';
 import { ReviewAlert } from '@/components/work/ReviewAlert';
 import { FolderAlert } from '@/components/work/FolderAlert';
 import { unfiledSuggestions } from '@/lib/folder-suggestion.mjs';
@@ -80,7 +79,6 @@ export function Work() {
   const hints = <span className="hints"><Keys combo={keybinds.focusComposer}/> focus · <Keys combo={keybinds.send}/> dispatch</span>;
   return <main className={`work-page ${showHistory || historyLeaving ? 'history-open' : ''}`}>
     <motion.section layout="position" className="launch">
-      {alerts.update && <UpdateAlert/>}
       {alerts.usage && <UsageAlert/>}
       {alerts.review && <ReviewAlert count={view.review.length}/>}
       {alerts.storage && <StorageAlert count={oldCompletedCount(view)}/>}

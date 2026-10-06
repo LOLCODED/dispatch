@@ -10,7 +10,7 @@ const legacyFullScreenKey = 'dispatch-full-screen-key';
 export const motionModes = ['system', 'reduce', 'full'];
 export const homeModes = ['reveal', 'open'];
 export const afterDispatchModes = ['open', 'stay'];
-export const alertKinds = ['usage', 'review', 'storage', 'folders', 'update'];
+export const alertKinds = ['usage', 'review', 'storage', 'folders'];
 const motionConfig = { system: 'user', reduce: 'always', full: 'never' };
 
 const PreferencesContext = createContext(null);

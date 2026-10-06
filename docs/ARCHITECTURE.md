@@ -81,9 +81,6 @@ Persistence is atomic file replacement, not a transactional distributed store. S
 | `GET /api/workspace` | Compact live run/task summaries and project settings, without events/check output/artifacts |
 | `GET /api/settings[?repository=<name>]` | Every setting from `src/settings.mjs` (global, or one repository's) with its key, type, allowed values, description and current value; secret connector settings read as `<secret>` |
 | `POST /api/settings` | Change one setting `{key, value, repository?}` through the same setter as its settings page; text values are coerced to the setting's type |
-| `GET /api/update` | `{ current, latest, checkedAt, error, installed, progress }`: the running version, a newer release tag on the install's origin if one was found, and the stage of an update the button started (`starting`, `waiting`, `building`, `restarting`, `done`, `failed`), read from `<data>/update.json`; `src/updates.mjs` |
-| `POST /api/update/check` | List the origin's release tags now; only the installed systemd service (`DISPATCH_SERVICE` unit whose `WorkingDirectory` is this app) checks |
-| `POST /api/update` | 202; start `dispatch update --service <name> --port <port> --status <data>/update.json` in its own transient unit (`systemd-run --user --unit=<name>-update`); 409 when not the installed service or an update runs |
 | `GET /api/tasks` | Persistent saved tasks with linked run/status |
 | `POST /api/tasks` | Save `{projectId or projectIds: [...] or "all",input,execution,sourceRunId?}` locally, without provider or tracker calls; `sourceRunId` must be a run in the same repository |
 | `POST /api/tasks/:id/start` | Explicit live start; repeated calls return the existing linked execution |

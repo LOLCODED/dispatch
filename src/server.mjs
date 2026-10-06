@@ -24,7 +24,6 @@ import { committedMember, deliverable } from './linked-repositories.mjs';
 import { changelog } from './changelog.mjs';
 import { parseSubject } from './conventional-commit.mjs';
 import { completeSetup, setupNeeded } from './onboarding.mjs';
-import { Updates } from './updates.mjs';
 
 const appVersion = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version;
 const releaseVersion = /^\d+\.\d+\.\d+$/;
@@ -121,7 +120,7 @@ async function connectorPluginRoute(live, req, path) {
     return [200, removed];
   }
 }
-export function createServer(engine, { assetRoot = root, devFraming = false, updates = new Updates({ root, version: appVersion, dataDir: engine.dataDir }) } = {}) {
+export function createServer(engine, { assetRoot = root, devFraming = false } = {}) {
   const live = engine.live ?? new LiveService(engine);
   const tasks = new Tasks(live), board = new Board(live), storage = new Storage(live), appAssets = snapshotAppAssets(assetRoot), traceViewer = snapshotTraceViewer();
   const viewRun = run => ({ ...run, ...(run.mode === 'live' ? { insights: runInsights(run), ...handoffView(run, live), repositories: repositoriesView(run), linkOffer: live.router.offerFor(run) } : {}) });
@@ -174,9 +173,6 @@ export function createServer(engine, { assetRoot = root, devFraming = false, upd
       const editPath = path.match(/^\/api\/(tasks|runs)\/([a-f0-9-]+)\/edit$/);
       if (editPath) { const result = await editRoute({ tasks, live }, req, editPath[1], editPath[2]); if (result) return json(res, ...result); }
       if (req.method === 'GET' && path === '/api/analytics') return json(res, 200, analytics(engine.runs));
-      if (req.method === 'GET' && path === '/api/update') return json(res, 200, await updates.status());
-      if (req.method === 'POST' && path === '/api/update/check') { await jsonBody(req); return json(res, 200, await updates.check()); }
-      if (req.method === 'POST' && path === '/api/update') { await jsonBody(req); return json(res, 202, await updates.start()); }
       if (req.method === 'GET' && path === '/api/changelog') return json(res, 200, await changelog(root, { version: appVersion, since: releaseVersion.test(url.searchParams.get('since') ?? '') ? url.searchParams.get('since') : null, all: url.searchParams.get('all') === '1' }));
       if (req.method === 'POST' && path === '/api/runs') {
         if (!req.headers['content-type']?.startsWith('application/json')) throw new InputError('Use application/json', 415);
@@ -364,16 +360,14 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   const unlock = acquireLock(dataDir);
   let engine;
   try { engine = new Engine({ dataDir, concurrency }); } catch (error) { unlock(); throw error; }
-  const updates = new Updates({ root, version: appVersion, dataDir });
-  const server = createServer(engine, { devFraming: process.env.DISPATCH_DEV_FRAMING === '1', updates });
-  const stopChecking = updates.service ? updates.schedule() : () => {};
+  const server = createServer(engine, { devFraming: process.env.DISPATCH_DEV_FRAMING === '1' });
   for (const failure of await engine.live.loadConnectors()) console.error(`dispatch: connector ${failure.path} did not load: ${failure.error}`);
   server.on('error', error => { unlock(); console.error(error); process.exitCode = 1; });
   server.listen(port, '127.0.0.1', () => { console.log(`dispatch: http://127.0.0.1:${server.address().port}`); engine.pump(); });
   let stopping = false;
   const stop = async () => {
     if (stopping) return; stopping = true;
-    stopChecking(); server.close(); await engine.shutdown(); unlock();
+    server.close(); await engine.shutdown(); unlock();
   };
   process.on('SIGTERM', stop); process.on('SIGINT', stop);
 }

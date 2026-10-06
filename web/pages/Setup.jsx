@@ -52,7 +52,6 @@ const alertSettings = [
   { kind: 'review', label: 'Review backlog', subject: 'when more than five tasks wait for review' },
   { kind: 'storage', label: 'Storage', subject: 'when old completed tasks pile up' },
   { kind: 'folders', label: 'Folder suggestions', subject: 'when unfiled tasks have a suggested folder' },
-  { kind: 'update', label: 'Updates', subject: 'when a newer dispatch release is available' },
 ];
 
 function AlertRow({ kind, label, subject, on, onChange }) {
