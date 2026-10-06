@@ -1009,6 +1009,10 @@ legend { font-size:12px; font-weight:600; margin-bottom:8px; }
 .chip-toggle { font:11px/1.4 var(--mono); padding:3px 8px; border:1px solid var(--border); border-radius:4px; color:var(--muted-foreground); transition:background .12s, color .12s, border-color .12s; }
 .chip-toggle[aria-pressed=true] { background:var(--primary); border-color:var(--primary); color:var(--primary-foreground); }
 .save-bar { position:sticky; bottom:16px; z-index:5; display:flex; align-items:center; gap:10px; margin-top:16px; padding:10px 10px 10px 14px; border:1px solid var(--muted-foreground); border-radius:5px; background:var(--card); box-shadow:var(--shadow); animation:message-arrive .2s ease-out; }
+/* Content scrolls behind the sticky bar: the strip hides the gap below it and the fade softens the edge above. */
+.save-bar::before, .save-bar::after { content:""; position:absolute; left:-1px; right:-1px; pointer-events:none; }
+.save-bar::before { bottom:calc(100% + 1px); height:12px; background:linear-gradient(to bottom, transparent, var(--background)); }
+.save-bar::after { top:calc(100% + 1px); height:16px; background:var(--background); }
 .save-bar-text { flex:1; min-width:0; display:flex; flex-wrap:wrap; align-items:center; gap:6px; font-size:12px; }
 .save-bar-text { color:var(--muted-foreground); }
 .save-warning { color:var(--attention); }
