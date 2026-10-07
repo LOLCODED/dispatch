@@ -29,6 +29,8 @@ test('Claude args keep owner turns in the sandbox and review turns away from mut
   assert.ok(!auto.includes('--add-dir'));
   const granted = claudeArgs({ sessionId: session, mcpConfig: '/tmp/mcp.json', writableRoots: ['/home/me/code/todo-app'] });
   assert.deepEqual(JSON.parse(granted[granted.indexOf('--settings') + 1]).sandbox.filesystem, { allowWrite: ['/home/me/code/todo-app'] });
+  const confined = claudeArgs({ sessionId: session, mcpConfig: '/tmp/mcp.json', writableRoots: ['/tmp'], reads: { denyRead: ['/home/me'], allowRead: ['/home/me/.dispatch/w1'] } });
+  assert.deepEqual(JSON.parse(confined[confined.indexOf('--settings') + 1]).sandbox.filesystem, { allowWrite: ['/tmp'], denyRead: ['/home/me'], allowRead: ['/home/me/.dispatch/w1'] });
   assert.deepEqual(granted.slice(granted.indexOf('--add-dir'), granted.indexOf('--add-dir') + 2), ['--add-dir', '/home/me/code/todo-app']);
   assert.ok(!claudeArgs({ sessionId: session, readOnly: true, writableRoots: ['/home/me/code/todo-app'] }).includes('--add-dir'));
   const full = claudeArgs({ sessionId: session, mcpConfig: '/tmp/mcp.json', fullAccess: true, writableRoots: ['/home/me'] });

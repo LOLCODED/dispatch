@@ -648,7 +648,7 @@ test('a new repository is created inside the allowed root with a browser smoke c
   assert.deepEqual(project.validation.map(step => [step.id, step.kind, step.command, step.args]), [['browser-smoke', 'browser-smoke', 'dispatch', ['browser-smoke']]]);
   assert.equal(await git(project.repositoryPath, ['branch', '--show-current']), 'main'); assert.match(readFileSync(join(project.repositoryPath, '.gitignore'), 'utf8'), /node_modules/);
   await assert.rejects(live.createRepository({ repositoryPath: join(dir, 'todo-app'), confirmed: true }), /new or empty folder/);
-  await assert.rejects(live.saveProject({ ...project, confirmed: true, access: 'sometimes' }, project.id), /inherit or full/);
+  await assert.rejects(live.saveProject({ ...project, confirmed: true, access: 'sometimes' }, project.id), /inherit, worktrees or full/);
 });
 test('the first turn in a repository without package.json sets the protected script baseline; later script changes still block', async t => {
   const { live, engine, dir } = await fixture(t, async (options, turn) => {

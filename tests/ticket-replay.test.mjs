@@ -44,10 +44,10 @@ test('a replay project reaches nothing outside the sandbox, whatever the overrid
   const info = { repositoryPath: '/tmp/example', name: 'example', baseBranch: 'main', scripts: { test: 'node --test' }, suggestedChecks: ['test'], suggestedLocalFiles: ['.env.test'], registries: [] };
   const input = sandboxInput(info, { network: { hosts: ['db.example.test'], localPorts: true }, localFiles: ['.env'], trackRemote: true }, { tracker: { enabled: true, actions: { read: true } } });
   assert.deepEqual(input.network, { hosts: [], localPorts: false });
-  assert.deepEqual([input.localFiles, input.databases, input.trackRemote, input.baseBranch], [[], [], false, 'replay-base']);
+  assert.deepEqual([input.localFiles, input.databases, input.trackRemote, input.baseBranch, input.access], [[], [], false, 'replay-base', 'worktrees']);
   const connector = { id: 'tracker', actions: { read: { access: 'read' }, comment: { access: 'write' } } };
   const live = { registry: { ids: () => ['tracker'], get: () => connector }, connectors: { active: project => project.connectors.tracker.enabled } };
-  assert.doesNotThrow(() => assertSandboxed(live, [{ name: 'x', network: input.network, connectors: { tracker: { enabled: true, actions: { read: true, comment: false } } } }]));
+  assert.doesNotThrow(() => assertSandboxed(live, [{ name: 'x', access: 'worktrees', network: input.network, connectors: { tracker: { enabled: true, actions: { read: true, comment: false } } } }]));
   assert.throws(() => assertSandboxed(live, [{ name: 'x', network: input.network, connectors: { tracker: { enabled: true, actions: { read: true } } } }]), /write action on/);
   assert.throws(() => assertSandboxed(live, [{ name: 'x', network: { hosts: ['a.example'] }, connectors: { tracker: { enabled: false } } }]), /outside the sandbox/);
 });

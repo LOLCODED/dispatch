@@ -52,7 +52,7 @@ const readHooks = connector => Object.fromEntries(Object.entries(connector.actio
 
 export function sandboxInput(info, overrides, connectors) {
   const input = { ...repositoryInput(info), ...overrides };
-  return { ...input, connectors, network: { hosts: [], localPorts: false }, databases: [], services: [], localFiles: [], linkedEnv: {}, trackRemote: false, baseBranch: replayBranch, confirmed: true };
+  return { ...input, connectors, access: 'worktrees', network: { hosts: [], localPorts: false }, databases: [], services: [], localFiles: [], linkedEnv: {}, trackRemote: false, baseBranch: replayBranch, confirmed: true };
 }
 
 export function assertSandboxed(live, projects) {
@@ -62,7 +62,7 @@ export function assertSandboxed(live, projects) {
       const writes = Object.entries(connector.actions).filter(([, action]) => action.access !== 'read').map(([key]) => key);
       if (live.connectors.active(project, id) && writes.some(key => project.connectors?.[id]?.actions?.[key] !== false)) throw new Error(`${project.name}: ${id} has a write action on.`);
     }
-    if (project.network?.hosts?.length || project.network?.localPorts || project.databases?.length || project.trackRemote) throw new Error(`${project.name} can reach something outside the sandbox.`);
+    if (project.network?.hosts?.length || project.network?.localPorts || project.databases?.length || project.trackRemote || project.access !== 'worktrees') throw new Error(`${project.name} can reach something outside the sandbox.`);
   }
 }
 

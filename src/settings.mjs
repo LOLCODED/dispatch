@@ -37,7 +37,7 @@ export class SettingsRegistry {
   global() {
     const live = this.live, engine = live.engine;
     return [
-      { key: 'access.mode', ...enumOf(accessModes), description: 'Agent access: home (sandboxed to your home folder) or full.', get: () => live.accessMode, set: mode => live.setAccess({ mode }), stateKey: 'accessMode' },
+      { key: 'access.mode', ...enumOf(accessModes), description: 'Agent access: worktrees (sandboxed, reads and writes only the task\'s worktrees), home (sandboxed to your home folder) or full.', get: () => live.accessMode, set: mode => live.setAccess({ mode }), stateKey: 'accessMode' },
       { key: 'branches.naming', ...enumOf(branchModes), description: 'Name task branches automatically, or ask at dispatch.', get: () => live.branchNaming, set: mode => live.setBranchNaming({ mode }), stateKey: 'branchNaming' },
       { key: 'queue.concurrency', type: 'integer', description: 'How many tasks run at once.', get: () => engine.concurrency, set: value => engine.setConcurrency(value), stateKey: 'concurrency' },
       ...providerCatalog.map(({ id }) => ({ key: `providers.${id}.enabled`, ...boolean, description: `Use the ${id} agent CLI.`, get: () => live.providers.settings[id] === true, set: enabled => live.setProvider({ id, enabled }), stateKey: 'providerSettings' })),

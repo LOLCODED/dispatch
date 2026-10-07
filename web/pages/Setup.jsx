@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Slider } from 'radix-ui';
-import { ArrowUpRight, Bell, BellOff, ChevronsDown, Code, Database, FolderOpen, GitBranch, MessageCircleQuestion, Sparkles, HardDrive, House, Info, LayoutGrid, ScrollText, ListOrdered, Palette, ShieldCheck, MousePointer2, MousePointerClick, PanelBottomOpen, Square, SquareDashed, Volume1, Volume2 } from 'lucide-react';
+import { ArrowUpRight, Bell, BellOff, ChevronsDown, Code, Database, FolderLock, FolderOpen, GitBranch, MessageCircleQuestion, Sparkles, HardDrive, House, Info, LayoutGrid, ScrollText, ListOrdered, Palette, ShieldCheck, MousePointer2, MousePointerClick, PanelBottomOpen, Square, SquareDashed, Volume1, Volume2 } from 'lucide-react';
 import { SettingsLayout } from '@/components/SettingsLayout';
 import { SettingsTabs } from '@/components/SettingsTabs';
 import { StorageSettings } from '@/components/StorageSettings';
@@ -123,6 +123,7 @@ function Editor() {
 }
 
 const accessNotes = {
+  worktrees: 'Agents can read and write only the run’s worktrees: your home folder, other checkouts and their history stay closed, and network access stays off. Reads are confined for Claude Code; other agents can still read your files.',
   home: 'Agents can write in the run’s worktree and anywhere in your home folder. The OS sandbox stays on and network access stays off.',
   full: 'No sandbox: agents can write anywhere your user can, including the dispatch checkout, its data and hidden folders like ~/.ssh, and can use the network.',
 };
@@ -130,6 +131,7 @@ const accessNotes = {
 function AgentAccess({ busy, onChange }) {
   const { state } = useWorkspace(), mode = state.accessMode ?? 'home';
   return <section className="panel" id="access"><h2>Agent access</h2><div className="segmented" role="group" aria-label="Agent access">
+    <IconButton label="Worktrees only" icon={FolderLock} aria-pressed={mode === 'worktrees'} disabled={busy} onClick={() => onChange('worktrees')}/>
     <IconButton label="Home folder" icon={FolderOpen} aria-pressed={mode === 'home'} disabled={busy} onClick={() => onChange('home')}/>
     <IconButton label="Full access" icon={HardDrive} aria-pressed={mode === 'full'} disabled={busy} onClick={() => onChange('full')}/>
   </div><p className={mode === 'full' ? 'error' : 'muted'}>{accessNotes[mode]}</p><p className="muted">Applies to runs started after the change. dispatch checks and commits only the worktree.</p></section>;
