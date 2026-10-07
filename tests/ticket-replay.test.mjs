@@ -28,6 +28,7 @@ test('a blocked question with numbered options is answered with the recommended 
 
 test('a stopped run gets the button or reply a person would use', () => {
   assert.deepEqual(nextMove({ status: 'ready' }), { kind: 'done' });
+  assert.deepEqual(nextMove({ status: 'failed', summary: "API Error: Can't reach the API server (ENOTFOUND)" }), { kind: 'outage' });
   assert.deepEqual(nextMove({ status: 'failed', sessionId: 's', revision: 'r', checks: [{ name: 'unit', status: 'failed', base: 'failed', revision: 'r' }] }), { kind: 'accept-preexisting' });
   assert.deepEqual(nextMove({ status: 'blocked', blockedTree: { files: 2, linkedFiles: 0, repeats: 2 } }), { kind: 'finish-as-is' });
   assert.equal(nextMove({ status: 'blocked', asIs: true, blockedTree: { files: 2, linkedFiles: 0, repeats: 3 } }).kind, 'followup');

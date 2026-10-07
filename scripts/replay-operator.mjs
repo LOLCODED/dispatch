@@ -40,8 +40,12 @@ const preexisting = run => {
 };
 
 // What the simulated operator does once a run has stopped: the same buttons and replies a person has in the run view.
+// A provider or network outage is not something a reply fixes; the replay stops so it can be run again.
+const outage = /\b(ENOTFOUND|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN)\b|can't reach the api server|did not answer [\w.]+ within/i;
+
 export function nextMove(run, { finishAsIsAfter = 2 } = {}) {
   if (run.status === 'ready') return { kind: 'done' };
+  if (run.status === 'failed' && outage.test(run.summary ?? run.events?.at(-1)?.message ?? '')) return { kind: 'outage' };
   if (!['blocked', 'failed', 'interrupted'].includes(run.status)) return { kind: 'done' };
   if (preexisting(run) && run.sessionId) return { kind: 'accept-preexisting' };
   const files = (run.blockedTree?.files ?? 0) + (run.blockedTree?.linkedFiles ?? 0);

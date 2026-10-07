@@ -123,6 +123,7 @@ async function drive(live, first, { maxFollowups }) {
     console.log(`${run.id.slice(0, 8)} ${run.status}${run.question ? `: ${run.question.split('\n')[0].slice(0, 200)}` : ''}`);
     const move = nextMove(run);
     if (move.kind === 'done') break;
+    if (move.kind === 'outage') { moves.push(move); break; }
     if (moves.length >= maxFollowups) { moves.push({ kind: 'cap' }); break; }
     if (run.question) friction.push({ runId: run.id, kind: 'blocked', header: 'Blocked question', question: run.question, answer: move.input ?? move.kind });
     moves.push(move);
@@ -149,7 +150,7 @@ function summarize(result, ticket) {
   const tokens = result.runs.reduce((sum, run) => ({ input: sum.input + (run.tokens.input ?? 0), cachedInput: sum.cachedInput + (run.tokens.cachedInput ?? 0), output: sum.output + (run.tokens.output ?? 0) }), { input: 0, cachedInput: 0, output: 0 });
   const last = result.runs.at(-1), checks = last?.checks ?? [];
   return {
-    ticket, status: last?.status ?? 'none', loop: result.moves.some(move => move.kind === 'cap'), turns: result.runs.length, followups: result.moves.filter(move => move.kind !== 'cap').length,
+    ticket, status: last?.status ?? 'none', outage: result.moves.some(move => move.kind === 'outage'), loop: result.moves.some(move => move.kind === 'cap'), turns: result.runs.length, followups: result.moves.filter(move => !['cap', 'outage'].includes(move.kind)).length,
     questions: result.friction.length, repeatedQuestions: [...new Set(repeated)], turnsWithoutChanges: result.runs.filter(run => run.changedFiles === 0).length,
     tokens, wallMs: result.wallMs, checksRun: checks.length, checksPassed: checks.filter(check => check.status === 'passed').length,
   };
