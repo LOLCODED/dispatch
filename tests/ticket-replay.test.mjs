@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { blockedReply, chooseOption, freeTextReply, interactionAnswers, nextMove, numberedOptions } from '../scripts/replay-operator.mjs';
-import { assertSandboxed, sandboxInput } from '../scripts/ticket-replay.mjs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { git } from '../src/local-tools.mjs';
+import { assertSandboxed, sandboxInput, sandboxRepository } from '../scripts/ticket-replay.mjs';
 
 test('the simulated operator picks the recommended option, else the first, else replies in free text', () => {
   assert.equal(chooseOption([{ label: 'Skip' }, { label: 'Approve (Recommended)' }]), 'Approve (Recommended)');
@@ -45,4 +49,17 @@ test('a replay project reaches nothing outside the sandbox, whatever the overrid
   assert.doesNotThrow(() => assertSandboxed(live, [{ name: 'x', network: input.network, connectors: { tracker: { enabled: true, actions: { read: true, comment: false } } } }]));
   assert.throws(() => assertSandboxed(live, [{ name: 'x', network: input.network, connectors: { tracker: { enabled: true, actions: { read: true } } } }]), /write action on/);
   assert.throws(() => assertSandboxed(live, [{ name: 'x', network: { hosts: ['a.example'] }, connectors: { tracker: { enabled: false } } }]), /outside the sandbox/);
+});
+
+test('a replay clone holds only the history of the base commit, so the later change cannot be found', async t => {
+  const root = mkdtempSync(join(tmpdir(), 'dispatch-replay-test-')), source = join(root, 'source');
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  await git(root, ['init', '-q', '-b', 'main', source]);
+  const commit = async message => { writeFileSync(join(source, 'value.txt'), message); await git(source, ['add', '.']); await git(source, ['-c', 'user.name=t', '-c', 'user.email=t@example.test', 'commit', '-q', '-m', message]); return git(source, ['rev-parse', 'HEAD']); };
+  const base = await commit('base');
+  await commit('the shipped fix'); await git(source, ['tag', 'v2']); await git(source, ['branch', 'staging']);
+  const clone = await sandboxRepository(source, base, join(root, 'repos'));
+  assert.equal(await git(clone, ['for-each-ref', '--format=%(refname)']), 'refs/heads/replay-base');
+  assert.equal(await git(clone, ['log', '--all', '--format=%s']), 'base');
+  assert.equal(await git(clone, ['reflog', '--all']), '');
 });

@@ -25,7 +25,16 @@ export async function sandboxRepository(source, commit, directory) {
   if (!present) await git(target, ['fetch', '--quiet', '--no-tags', await git(resolve(source), ['remote', 'get-url', 'origin']), commit]);
   await git(target, ['checkout', '--quiet', '-B', replayBranch, commit]);
   for (const remote of (await git(target, ['remote'])).split('\n').filter(Boolean)) await git(target, ['remote', 'remove', remote]);
+  await forgetLaterHistory(target);
   return target;
+}
+
+// The agent must not find the shipped change: every branch and tag but the replay base goes, with the reflogs that remember them.
+async function forgetLaterHistory(target) {
+  const refs = (await git(target, ['for-each-ref', '--format=%(refname)'])).split('\n').filter(ref => ref && ref !== `refs/heads/${replayBranch}`);
+  for (const ref of refs) await git(target, ['update-ref', '-d', ref]);
+  await git(target, ['reflog', 'expire', '--expire=now', '--all']);
+  for (const file of ['FETCH_HEAD', 'ORIG_HEAD']) rmSync(join(target, '.git', file), { force: true });
 }
 
 function connectorSettings(registry, tracker) {
