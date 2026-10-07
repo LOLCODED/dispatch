@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { git } from '../src/local-tools.mjs';
 import { assertSandboxed, sandboxInput, sandboxRepository } from '../scripts/ticket-replay.mjs';
+import { preWorkText, preWorkTicket } from '../scripts/replay-ticket.mjs';
 
 test('the simulated operator picks the recommended option, else the first, else replies in free text', () => {
   assert.equal(chooseOption([{ label: 'Skip' }, { label: 'Approve (Recommended)' }]), 'Approve (Recommended)');
@@ -71,4 +72,21 @@ test('a replay that finds the change already shipped, or reads another checkout,
   assert.equal(found.claimsShipped.length, 1); assert.match(found.claimsShipped[0], /already merged/);
   assert.equal(found.outsideReads.length, 1);
   assert.deepEqual(contamination([{ events: ['message: Nothing to build: the fix is already on staging.'] }], []).claimsShipped.length, 1);
+});
+
+test('a replay ticket reads as it did before the work: done notes and shipped references are removed, the requirement stays', () => {
+  const ticket = { title: 'Fix it', description: 'Repo: api Goal: Stop the false alarms (see AB#12). Done: - added the retry\n- tests pass\nWhy: users get spammed.\nShipped in PR #4321 and commit abc12345.', acceptance: 'Alarms fire after 3 failures.\nCovered by #4321.' };
+  const { ticket: before, removed } = preWorkTicket(ticket);
+  assert.equal(before.description, 'Repo: api\nGoal: Stop the false alarms (see AB#12).\nWhy: users get spammed.');
+  assert.equal(before.acceptance, 'Alarms fire after 3 failures.');
+  assert.ok(removed.includes('Shipped in PR #4321 and commit abc12345.') && removed.some(line => /added the retry/.test(line)));
+  assert.equal(preWorkText('Merged cohorts stay merged.', /\bPRs?\b/).text, 'Merged cohorts stay merged.');
+});
+
+test('the operator never defers the ticket to work done elsewhere, and a run that does is flagged', () => {
+  assert.equal(chooseOption([{ label: 'Stop: work lives in the PRs (Recommended)' }, { label: 'Rebuild it here' }, { label: 'Ask later' }]), 'Rebuild it here');
+  assert.equal(chooseOption([{ label: 'Keep the work in the existing PRs (Recommended)' }, { label: 'Wait' }]), 'Wait');
+  assert.equal(chooseOption([{ label: 'Accept the existing failure and continue (Recommended)' }, { label: 'Change the checks' }]), 'Accept the existing failure and continue (Recommended)');
+  const flagged = contamination([{ events: ['message: As you chose, the work stays in the existing PRs (api #4321).'] }], [], [{ question: 'Reuse PR #512?' }]);
+  assert.equal(flagged.claimsShipped.length, 2);
 });

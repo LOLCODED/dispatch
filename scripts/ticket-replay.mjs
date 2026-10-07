@@ -1,6 +1,7 @@
 // Explicit opt-in: replays a finished ticket with your signed-in agent CLI against throwaway clones of its repositories.
 // Usage: node scripts/ticket-replay.mjs --ticket <link or text> --repo <path>@<commit> [--repo …] --out <dir>
-//   [--tracker <connector folder>] [--project <overrides.json>] [--provider claude|codex] [--max-followups 6] [--keep]
+//   [--tracker <connector folder>] [--project <overrides.json>] [--provider claude|codex] [--max-followups 6] [--keep] [--as-written]
+// The ticket is read as it stood before the work (shipped PRs, commits and "Done:" notes removed) unless --as-written.
 // Nothing leaves the machine: every connector write action is off, the agent has no network hosts, no env files are copied.
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -15,6 +16,7 @@ import { LiveService } from '../src/live.mjs';
 import { git } from '../src/local-tools.mjs';
 import { repositoryInput } from '../src/repository-setup.mjs';
 import { contamination, interactionAnswers, nextMove } from './replay-operator.mjs';
+import { readPreWork } from './replay-ticket.mjs';
 
 const replayBranch = 'replay-base';
 
@@ -69,7 +71,8 @@ async function setup(args, directory) {
   live.providers.setEnabled(args.provider, true);
   for (const id of live.providers.enabledIds()) if (id !== args.provider) live.providers.setEnabled(id, false);
   for (const failure of await live.loadConnectors()) console.error(`connector ${failure.path}: ${failure.error}`);
-  const tracker = args.tracker ? (await live.connectorPlugins.add(resolve(args.tracker))).id : null;
+  const tracker = args.tracker ? (await live.connectorPlugins.add(resolve(args.tracker))).id : null, strippedFromTicket = [];
+  if (tracker && !args['as-written']) readPreWork(live.registry.get(tracker), strippedFromTicket);
   const overrides = args.project ? JSON.parse(readFileSync(args.project, 'utf8')) : {};
   const projects = [];
   for (const spec of args.repo) {
@@ -79,7 +82,7 @@ async function setup(args, directory) {
     projects.push(await live.saveProject(sandboxInput(info, overrides[basename(resolve(path))] ?? overrides['*'] ?? {}, connectorSettings(live.registry, tracker))));
   }
   assertSandboxed(live, projects);
-  return { engine, live, projects };
+  return { engine, live, projects, strippedFromTicket };
 }
 
 async function workspaceTree(live, run) {
@@ -164,18 +167,18 @@ function summarize(result, ticket, outsideRoots) {
     ticket, status: last?.status ?? 'none', outage: result.moves.some(move => move.kind === 'outage'), loop: result.moves.some(move => move.kind === 'cap'), turns: result.runs.length, followups: result.moves.filter(move => !['cap', 'outage'].includes(move.kind)).length,
     questions: result.friction.length, repeatedQuestions: [...new Set(repeated)], turnsWithoutChanges: result.runs.filter(run => run.changedFiles === 0).length,
     tokens, wallMs: result.wallMs, checksRun: checks.length, checksPassed: checks.filter(check => check.status === 'passed').length,
-    contamination: contamination(result.runs, outsideRoots),
+    contamination: contamination(result.runs, outsideRoots, result.friction),
   };
 }
 
-const options = { ticket: { type: 'string' }, repo: { type: 'string', multiple: true }, out: { type: 'string' }, tracker: { type: 'string' }, project: { type: 'string' }, provider: { type: 'string', default: 'claude' }, 'max-followups': { type: 'string', default: '6' }, keep: { type: 'boolean', default: false } };
+const options = { ticket: { type: 'string' }, repo: { type: 'string', multiple: true }, out: { type: 'string' }, tracker: { type: 'string' }, project: { type: 'string' }, provider: { type: 'string', default: 'claude' }, 'max-followups': { type: 'string', default: '6' }, keep: { type: 'boolean', default: false }, 'as-written': { type: 'boolean', default: false } };
 
 async function main() {
   const { values: args } = parseArgs({ options });
   if (!args.ticket || !args.repo?.length || !args.out) throw new Error('Give --ticket, at least one --repo <path>@<commit>, and --out.');
   const directory = mkdtempSync(join(tmpdir(), 'dispatch-replay-')), out = resolve(args.out);
   mkdirSync(out, { recursive: true });
-  const { engine, live, projects } = await setup(args, directory);
+  const { engine, live, projects, strippedFromTicket } = await setup(args, directory);
   const stop = async () => { await engine.shutdown(); if (!args.keep) rmSync(directory, { recursive: true, force: true }); process.exit(1); };
   process.on('SIGINT', stop); process.on('SIGTERM', stop);
   try {
@@ -183,7 +186,7 @@ async function main() {
     const result = await drive(live, await live.create(input), { maxFollowups: Number(args['max-followups']) });
     writeFileSync(join(out, 'diff.patch'), await finalDiff(result.last));
     const summary = summarize(result, args.ticket, [...new Set(args.repo.map(spec => dirname(resolve(spec.split('@')[0]))))]);
-    writeFileSync(join(out, 'replay.json'), JSON.stringify({ summary, ...result, last: undefined }, null, 2));
+    writeFileSync(join(out, 'replay.json'), JSON.stringify({ summary, strippedFromTicket: [...new Set(strippedFromTicket)], ...result, last: undefined }, null, 2));
     console.log(JSON.stringify(summary, null, 2));
   } finally {
     await engine.shutdown();
