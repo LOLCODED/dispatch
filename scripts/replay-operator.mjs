@@ -52,3 +52,14 @@ export function nextMove(run, { finishAsIsAfter = 2 } = {}) {
   if (run.status === 'blocked' && !run.asIs && files && run.blockedTree.repeats >= finishAsIsAfter) return { kind: 'finish-as-is' };
   return { kind: 'followup', input: run.question ? blockedReply(run.question) : freeTextReply };
 }
+
+// A replay is only evidence when the agent built the change itself; finding it already shipped, or reading another checkout, spoils it.
+const claimsShipped = /\balready (?:merged|on `?(?:main|master|staging)`?|in `?(?:main|master|staging)`?)\b|\bnothing (?:left )?to build\b|\b(?:fix|work|change|ticket)\b[^.]{0,60}\balready (?:exists|done|implemented|in place)\b/i;
+
+export function contamination(runs, outsideRoots) {
+  const events = runs.flatMap(run => run.events);
+  return {
+    claimsShipped: events.filter(event => /^(?:message|ready|blocked|failed):/.test(event) && claimsShipped.test(event)).map(event => event.slice(0, 300)),
+    outsideReads: events.filter(event => event.startsWith('tool:') && outsideRoots.some(root => event.includes(root))).map(event => event.slice(0, 300)),
+  };
+}

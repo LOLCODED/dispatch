@@ -4,7 +4,8 @@
 // Nothing leaves the machine: every connector write action is off, the agent has no network hosts, no env files are copied.
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { runInsights } from '../src/analytics.mjs';
@@ -13,28 +14,29 @@ import { Engine } from '../src/engine.mjs';
 import { LiveService } from '../src/live.mjs';
 import { git } from '../src/local-tools.mjs';
 import { repositoryInput } from '../src/repository-setup.mjs';
-import { interactionAnswers, nextMove } from './replay-operator.mjs';
+import { contamination, interactionAnswers, nextMove } from './replay-operator.mjs';
 
 const replayBranch = 'replay-base';
 
+// A fresh repository fetching only the base commit holds no object, ref, tag, remote or reflog from after it,
+// so the agent cannot find the change that later shipped.
 export async function sandboxRepository(source, commit, directory) {
   const target = join(directory, basename(resolve(source)));
   mkdirSync(directory, { recursive: true });
-  await git(directory, ['clone', '--quiet', '--shared', '--no-checkout', resolve(source), target]);
-  const present = await git(target, ['cat-file', '-e', `${commit}^{commit}`]).then(() => true, () => false);
-  if (!present) await git(target, ['fetch', '--quiet', '--no-tags', await git(resolve(source), ['remote', 'get-url', 'origin']), commit]);
-  await git(target, ['checkout', '--quiet', '-B', replayBranch, commit]);
-  for (const remote of (await git(target, ['remote'])).split('\n').filter(Boolean)) await git(target, ['remote', 'remove', remote]);
-  await forgetLaterHistory(target);
+  await git(directory, ['init', '--quiet', target]);
+  const local = await git(resolve(source), ['cat-file', '-e', `${commit}^{commit}`]).then(() => true, () => false);
+  const from = local ? pathToFileURL(resolve(source)).href : await git(resolve(source), ['remote', 'get-url', 'origin']);
+  await git(target, ['fetch', '--quiet', '--no-tags', from, commit]);
+  await git(target, ['checkout', '--quiet', '-b', replayBranch, commit]);
+  rmSync(join(target, '.git', 'FETCH_HEAD'), { force: true });
+  await assertNoLaterHistory(target, commit);
   return target;
 }
 
-// The agent must not find the shipped change: every branch and tag but the replay base goes, with the reflogs that remember them.
-async function forgetLaterHistory(target) {
-  const refs = (await git(target, ['for-each-ref', '--format=%(refname)'])).split('\n').filter(ref => ref && ref !== `refs/heads/${replayBranch}`);
-  for (const ref of refs) await git(target, ['update-ref', '-d', ref]);
-  await git(target, ['reflog', 'expire', '--expire=now', '--all']);
-  for (const file of ['FETCH_HEAD', 'ORIG_HEAD']) rmSync(join(target, '.git', file), { force: true });
+export async function assertNoLaterHistory(target, commit) {
+  const refs = (await git(target, ['for-each-ref', '--format=%(refname)'])).split('\n').filter(Boolean);
+  const reachable = Number(await git(target, ['rev-list', '--all', '--reflog', '--count'])), base = Number(await git(target, ['rev-list', '--count', commit]));
+  if (refs.join() !== `refs/heads/${replayBranch}` || reachable !== base || await git(target, ['remote'])) throw new Error(`${target} holds history beyond ${commit}.`);
 }
 
 function connectorSettings(registry, tracker) {
@@ -153,7 +155,7 @@ async function finalDiff(run) {
   return parts.join('\n');
 }
 
-function summarize(result, ticket) {
+function summarize(result, ticket, outsideRoots) {
   const questions = result.friction.map(item => `${item.header ?? ''} ${item.question}`.trim());
   const repeated = questions.filter((question, index) => questions.indexOf(question) !== index);
   const tokens = result.runs.reduce((sum, run) => ({ input: sum.input + (run.tokens.input ?? 0), cachedInput: sum.cachedInput + (run.tokens.cachedInput ?? 0), output: sum.output + (run.tokens.output ?? 0) }), { input: 0, cachedInput: 0, output: 0 });
@@ -162,6 +164,7 @@ function summarize(result, ticket) {
     ticket, status: last?.status ?? 'none', outage: result.moves.some(move => move.kind === 'outage'), loop: result.moves.some(move => move.kind === 'cap'), turns: result.runs.length, followups: result.moves.filter(move => !['cap', 'outage'].includes(move.kind)).length,
     questions: result.friction.length, repeatedQuestions: [...new Set(repeated)], turnsWithoutChanges: result.runs.filter(run => run.changedFiles === 0).length,
     tokens, wallMs: result.wallMs, checksRun: checks.length, checksPassed: checks.filter(check => check.status === 'passed').length,
+    contamination: contamination(result.runs, outsideRoots),
   };
 }
 
@@ -179,8 +182,9 @@ async function main() {
     const input = { input: args.ticket, execution: 'auto', ...(projects.length > 1 ? { projectIds: projects.map(project => project.id) } : { projectId: projects[0].id }) };
     const result = await drive(live, await live.create(input), { maxFollowups: Number(args['max-followups']) });
     writeFileSync(join(out, 'diff.patch'), await finalDiff(result.last));
-    writeFileSync(join(out, 'replay.json'), JSON.stringify({ summary: summarize(result, args.ticket), ...result, last: undefined }, null, 2));
-    console.log(JSON.stringify(summarize(result, args.ticket), null, 2));
+    const summary = summarize(result, args.ticket, [...new Set(args.repo.map(spec => dirname(resolve(spec.split('@')[0]))))]);
+    writeFileSync(join(out, 'replay.json'), JSON.stringify({ summary, ...result, last: undefined }, null, 2));
+    console.log(JSON.stringify(summary, null, 2));
   } finally {
     await engine.shutdown();
     if (!args.keep) rmSync(directory, { recursive: true, force: true }); else console.log(`kept ${directory}`);

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { blockedReply, chooseOption, freeTextReply, interactionAnswers, nextMove, numberedOptions } from '../scripts/replay-operator.mjs';
+import { blockedReply, chooseOption, contamination, freeTextReply, interactionAnswers, nextMove, numberedOptions } from '../scripts/replay-operator.mjs';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -57,9 +57,18 @@ test('a replay clone holds only the history of the base commit, so the later cha
   await git(root, ['init', '-q', '-b', 'main', source]);
   const commit = async message => { writeFileSync(join(source, 'value.txt'), message); await git(source, ['add', '.']); await git(source, ['-c', 'user.name=t', '-c', 'user.email=t@example.test', 'commit', '-q', '-m', message]); return git(source, ['rev-parse', 'HEAD']); };
   const base = await commit('base');
-  await commit('the shipped fix'); await git(source, ['tag', 'v2']); await git(source, ['branch', 'staging']);
+  const shipped = await commit('the shipped fix'); await git(source, ['tag', 'v2']); await git(source, ['branch', 'staging']);
   const clone = await sandboxRepository(source, base, join(root, 'repos'));
   assert.equal(await git(clone, ['for-each-ref', '--format=%(refname)']), 'refs/heads/replay-base');
   assert.equal(await git(clone, ['log', '--all', '--format=%s']), 'base');
-  assert.equal(await git(clone, ['reflog', '--all']), '');
+  assert.equal(await git(clone, ['remote']), '');
+  await assert.rejects(git(clone, ['cat-file', '-e', shipped]), 'the shipped commit is not even stored');
+});
+
+test('a replay that finds the change already shipped, or reads another checkout, is flagged', () => {
+  const runs = [{ events: ['message: The Journey work is already merged to `main`, so I made no changes.', 'tool: Bash {"command":"cat /home/me/code/app/src/a.js"}', 'message: Added the guard.', 'tool: Read {"file_path":"/tmp/replay/app/src/a.js"}', 'message: The helper already exists in utils, so I reused it.'] }];
+  const found = contamination(runs, ['/home/me/code']);
+  assert.equal(found.claimsShipped.length, 1); assert.match(found.claimsShipped[0], /already merged/);
+  assert.equal(found.outsideReads.length, 1);
+  assert.deepEqual(contamination([{ events: ['message: Nothing to build: the fix is already on staging.'] }], []).claimsShipped.length, 1);
 });
