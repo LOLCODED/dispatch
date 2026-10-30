@@ -19,6 +19,10 @@ export function localEnvironment(extra = {}) {
   for (const name of ['PATH', 'HOME', 'USER', 'LOGNAME', 'TMPDIR', 'LANG', 'LC_ALL', 'SHELL', 'CODEX_HOME', 'XDG_CONFIG_HOME']) if (process.env[name]) env[name] = process.env[name];
   return { ...env, ...extra };
 }
+const displayVariables = ['DISPLAY', 'WAYLAND_DISPLAY', 'XAUTHORITY', 'XDG_RUNTIME_DIR'];
+export const displayEnvironment = (env = process.env) => Object.fromEntries(displayVariables.filter(name => env[name]).map(name => [name, env[name]]));
+// Full access already lifts the sandbox, so the desktop session adds nothing the agent could not set itself; it lets desktop apps open.
+export const agentEnvironment = (fullAccess, extra = {}) => localEnvironment({ ...(fullAccess ? displayEnvironment() : {}), ...extra });
 export async function git(cwd, args, { gitDir, ...options } = {}, execute = runProcess) {
   const result = await execute('git', ['-c', 'core.hooksPath=/dev/null', '-c', 'commit.gpgsign=false', ...(gitDir ? ['--git-dir', gitDir] : []), ...args], { cwd, inheritEnv: false, env: localEnvironment({ GIT_TERMINAL_PROMPT: '0' }), ...options });
   if (result.exitCode !== 0 || result.timedOut || result.cancelled) throw Object.assign(new Error(`Git ${args[0]} failed: ${result.output.slice(-2000)}`), { result });

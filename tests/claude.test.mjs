@@ -82,6 +82,15 @@ test('Claude passes images from any other tool result to the tool step, and brow
   assert.deepEqual(browser.at(-1).images, [{ type: 'image', mimeType: 'image/jpeg', data: 'BBBB' }]);
 });
 
+test('only a full-access Claude turn sees the desktop session, so desktop apps can open', async () => {
+  const envs = [], saved = process.env.DISPLAY;
+  process.env.DISPLAY = ':7';
+  try {
+    for (const fullAccess of [true, false]) await adapter(encode([init, done()]), {}, (args, options) => envs.push(options.env)).run({ workspace: '/tmp', prompt: 'x', fullAccess });
+  } finally { if (saved === undefined) delete process.env.DISPLAY; else process.env.DISPLAY = saved; }
+  assert.equal(envs[0].DISPLAY, ':7'); assert.equal(envs[1].DISPLAY, undefined);
+});
+
 test('Claude resumes the exact session and fails closed on mismatches, errors and missing results', async () => {
   const resumed = await adapter(encode([init, done()]), {}, args => assert.deepEqual(args.slice(args.indexOf('--resume'), args.indexOf('--resume') + 2), ['--resume', session])).run({ sessionId: session, prompt: 'x', onSession: id => assert.equal(id, session) });
   assert.equal(resumed.outcome, 'completed'); assert.equal(resumed.sessionId, session);

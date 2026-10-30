@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { StringDecoder } from 'node:string_decoder';
-import { localEnvironment } from './local-tools.mjs';
+import { agentEnvironment } from './local-tools.mjs';
 import { blockedOutcome, browserPointer, browserTool } from './cli-stream.mjs';
 import { usageDelta } from './usage.mjs';
 
@@ -22,7 +22,7 @@ export function runAppServer({ command = 'codex', spawnProcess = spawn, workspac
     const pending = new Map(), items = new Map(), decoder = new StringDecoder('utf8');
     const sandbox = fullAccess ? 'danger-full-access' : 'workspace-write';
     const args = ['app-server', '--listen', 'stdio://', '-c', 'approval_policy="never"', '-c', `sandbox_mode="${sandbox}"`, '-c', 'sandbox_workspace_write.network_access=false', '-c', 'features.multi_agent=false', ...extraArgs];
-    const child = spawnProcess(command, args, { cwd: workspace, env: localEnvironment(), detached: process.platform !== 'win32', stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawnProcess(command, args, { cwd: workspace, env: agentEnvironment(fullAccess), detached: process.platform !== 'win32', stdio: ['pipe', 'pipe', 'pipe'] });
     const kill = sig => { try { if (process.platform !== 'win32' && child.pid) process.kill(-child.pid, sig); else child.kill(sig); } catch { /* Process group already gone. */ } };
     const send = value => { if (!closing) child.stdin.write(JSON.stringify(value) + '\n'); };
     const stop = () => {

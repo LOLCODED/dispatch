@@ -4,7 +4,7 @@ import { cp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 import { root } from './app-assets.mjs';
-import { localEnvironment } from './local-tools.mjs';
+import { displayEnvironment, localEnvironment } from './local-tools.mjs';
 
 const hostScript = join(root, 'scripts', 'browser-host.mjs');
 const maxBuffer = 8_000_000, opTimeoutMs = 20_000;
@@ -24,8 +24,7 @@ export async function seedProfile(from, to) {
   catch { await rm(to, { recursive: true, force: true }); }
 }
 
-const displayVariables = ['DISPLAY', 'WAYLAND_DISPLAY', 'XAUTHORITY', 'XDG_RUNTIME_DIR'];
-export const displayEnvironment = (env = process.env) => Object.fromEntries(displayVariables.filter(name => env[name]).map(name => [name, env[name]]));
+export { displayEnvironment };
 
 // One Chromium per run, owned by dispatch (network on, outside every CLI sandbox), with a persistent profile per repository.
 export class BrowserSession {

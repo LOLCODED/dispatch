@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { extname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { runProcess } from './process.mjs';
-import { cliProblem, localEnvironment } from './local-tools.mjs';
+import { agentEnvironment, cliProblem, localEnvironment } from './local-tools.mjs';
 import { openToolBridge } from './tool-bridge.mjs';
 import { blockedOutcome, browserPointer, browserTool, runJsonLines } from './cli-stream.mjs';
 import { claudeLimits, claudeUsageText } from './provider-limits.mjs';
@@ -142,7 +142,7 @@ export class ClaudeAdapter {
     try {
       const mcpConfig = bridge && await bridge.writeConfig('claude-mcp.json', claudeMcpConfig(bridge.mcp));
       const stream = claudeStream({ sessionId: id, onEvent, onProgress, onSession, onBrowser, onLimits, onTool });
-      const result = await runJsonLines(this.execute, this.command, claudeArgs({ sessionId: id, resume: Boolean(sessionId), execution, readOnly, mcpConfig, mcpTools: bridge?.names ?? [], writableRoots, readableRoots, fullAccess, network, reads, streamInput: images.length > 0 }), { cwd: workspace, signal, timeoutMs, input: claudeInput(prompt, images), inheritEnv: false, env: localEnvironment({ MCP_TOOL_TIMEOUT: String(timeoutMs ?? unboundedToolTimeoutMs), ...providerEnv }), onSpawn, onEvent: stream.consume });
+      const result = await runJsonLines(this.execute, this.command, claudeArgs({ sessionId: id, resume: Boolean(sessionId), execution, readOnly, mcpConfig, mcpTools: bridge?.names ?? [], writableRoots, readableRoots, fullAccess, network, reads, streamInput: images.length > 0 }), { cwd: workspace, signal, timeoutMs, input: claudeInput(prompt, images), inheritEnv: false, env: agentEnvironment(fullAccess, { MCP_TOOL_TIMEOUT: String(timeoutMs ?? unboundedToolTimeoutMs), ...providerEnv }), onSpawn, onEvent: stream.consume });
       onProgress?.('');
       return claudeOutcome({ result, state: stream.state, sessionId: id });
     } finally { await bridge?.close(); }
