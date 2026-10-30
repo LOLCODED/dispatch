@@ -97,6 +97,7 @@ test('Claude tags a subagent\'s tools with the call that started it and keeps it
   const result = await adapter(stream).run({ workspace: '/tmp', prompt: 'x', onTool: event => tools.push(event), onEvent: (kind, text) => events.push([kind, text]) });
   assert.deepEqual(tools.map(event => [event.name, event.phase, event.parentId ?? null]), [['Agent', 'started', null], ['Grep', 'started', 'a1'], ['Grep', 'completed', 'a1'], ['Agent', 'completed', null]]);
   assert.deepEqual(events.filter(([kind]) => kind === 'message').map(([, text]) => text), ['Found it']);
+  assert.deepEqual(events.filter(([kind]) => kind === 'tool').map(([, text]) => text.split(' ')[0]), ['Agent', '↳', '↳', 'Agent']);
   assert.equal(result.summary, 'Found it');
 });
 

@@ -59,19 +59,21 @@ export function claudeUsage(usage) {
 
 const resultImages = content => (Array.isArray(content) ? content : []).filter(item => item?.type === 'image' && item.source?.data).slice(0, 4).map(item => ({ type: 'image', mimeType: item.source.media_type, data: item.source.data }));
 const progressEveryMs = 300;
+export const subagentMark = '↳ ';
+
 export function claudeStream({ sessionId, onEvent, onProgress, onSession, onBrowser, onLimits, onTool }) {
   const state = { session: null, result: null, mismatch: false, summary: '', progress: '', tools: new Map(), progressAt: 0 };
   const toolUse = (block, parentId) => {
     state.tools.set(block.id, block.name);
     if (browserTool(block.name)) onBrowser?.({ phase: 'started', label: block.name, pointer: browserPointer(block.name, block.input) });
     onTool?.({ id: block.id, name: block.name, phase: 'started', input: block.input ?? {}, ...(parentId && { parentId }) });
-    onEvent?.('tool', `${block.name} ${JSON.stringify(block.input ?? {}).slice(0, 1000)}`);
+    onEvent?.('tool', `${parentId ? subagentMark : ''}${block.name} ${JSON.stringify(block.input ?? {}).slice(0, 1000)}`);
   };
   const toolResult = (block, parentId) => {
     const name = state.tools.get(block.tool_use_id) ?? 'tool', images = resultImages(block.content), browser = browserTool(name);
     if (browser) onBrowser?.({ phase: 'completed', label: name, images });
     onTool?.({ id: block.tool_use_id, name, phase: 'completed', output: text(block.content), isError: block.is_error === true, images: browser ? [] : images, ...(parentId && { parentId }) });
-    onEvent?.('tool', `${name} · ${block.is_error ? 'failed' : 'completed'}\n${text(block.content).slice(-4000)}`);
+    onEvent?.('tool', `${parentId ? subagentMark : ''}${name} · ${block.is_error ? 'failed' : 'completed'}\n${text(block.content).slice(-4000)}`);
   };
   const consume = event => {
     onEvent?.('raw', JSON.stringify(event));
