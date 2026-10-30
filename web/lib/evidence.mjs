@@ -1,5 +1,11 @@
 const sameSource = (a, b) => a.check === b.check && a.attempt === b.attempt;
 
+export function evidenceLabel({ source, check, attempt }) {
+  if (source === 'context') return 'Pasted with the ticket';
+  if (source === 'tool') return `Image from ${check ?? 'a tool'}`;
+  return `Browser evidence · ${check ?? 'evidence'} · attempt ${attempt ?? 1}`;
+}
+
 export function groupEvidence(entries) {
   const result = [];
   for (const entry of entries) {

@@ -17,8 +17,9 @@ function files(root, max = 300) {
   };
   walk(root); return found;
 }
-const maxArtifacts = 80, maxTotalBytes = 80000000, maxStepArtifacts = 400, maxStepBytes = 60000000;
-const checkArtifacts = run => run.artifacts.filter(artifact => artifact.source !== 'browser');
+const maxArtifacts = 80, maxTotalBytes = 80000000, maxStepArtifacts = 400, maxStepBytes = 60000000, maxToolArtifacts = 200, maxToolBytes = 100000000, maxToolImageBytes = 5000000;
+const budgetedApart = new Set(['browser', 'tool']);
+const checkArtifacts = run => run.artifacts.filter(artifact => !budgetedApart.has(artifact.source));
 const totalBytes = run => checkArtifacts(run).reduce((sum, artifact) => sum + (artifact.size ?? 0), 0);
 function decodeImage(image, maxBytes = 1000000) {
   const extension = image?.mimeType === 'image/png' ? '.png' : image?.mimeType === 'image/jpeg' ? '.jpg' : null;
@@ -65,6 +66,18 @@ export class BrowserEvidence {
     writeFileSync(join(this.directory(run), id + decoded.extension), decoded.bytes, { flag: 'wx', mode: 0o600 });
     const artifact = { id, name: `Browser step ${kept.length + 1}${decoded.extension}`, extension: decoded.extension, mimeType, size: decoded.bytes.length, sha256: createHash('sha256').update(decoded.bytes).digest('hex'), attempt: run.attempt, revision: null, source: 'browser', check: 'dispatch browser', capturedAt: new Date().toISOString(), ...(stepId && { stepId }) };
     run.artifacts.push(artifact); return artifact;
+  }
+  keepToolImages(run, images, tool) {
+    const kept = [];
+    for (const image of (images ?? []).slice(0, 4)) {
+      const decoded = decodeImage(image, maxToolImageBytes), earlier = run.artifacts.filter(artifact => artifact.source === 'tool');
+      if (!decoded || earlier.length >= maxToolArtifacts || earlier.reduce((sum, artifact) => sum + (artifact.size ?? 0), 0) + decoded.bytes.length > maxToolBytes) continue;
+      const id = randomUUID(); mkdirSync(this.directory(run), { recursive: true });
+      writeFileSync(join(this.directory(run), id + decoded.extension), decoded.bytes, { flag: 'wx', mode: 0o600 });
+      const artifact = { id, name: `Tool image ${earlier.length + 1}${decoded.extension}`, extension: decoded.extension, mimeType: image.mimeType, size: decoded.bytes.length, sha256: createHash('sha256').update(decoded.bytes).digest('hex'), attempt: run.attempt, revision: null, source: 'tool', check: tool, capturedAt: new Date().toISOString() };
+      run.artifacts.push(artifact); kept.push(artifact);
+    }
+    return kept;
   }
   attach(run, { images, files }, origin) { return images.length || files.length ? [...this.attachContext(run, images, origin), ...this.attachFiles(run, files, origin)] : []; }
   attachContext(run, decoded, { check = 'Ticket', attempt = 0 } = {}) {

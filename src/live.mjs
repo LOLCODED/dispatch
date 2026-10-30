@@ -768,7 +768,15 @@ export class LiveService {
   recordTool(run, event) {
     if (!event || event.server === 'dispatch' || /^mcp__dispatch__/.test(event.name ?? '')) return;
     if (event.phase === 'started') this.steps.append(run, { kind: 'tool.call', callId: String(event.id ?? ''), name: String(event.name ?? 'tool'), server: event.server ?? null, input: event.input ?? {} });
-    else this.steps.append(run, { kind: 'tool.result', callId: String(event.id ?? ''), name: String(event.name ?? 'tool'), server: event.server ?? null, output: String(event.output ?? ''), isError: event.isError === true });
+    else this.steps.append(run, { kind: 'tool.result', callId: String(event.id ?? ''), name: String(event.name ?? 'tool'), server: event.server ?? null, output: String(event.output ?? ''), isError: event.isError === true, imageArtifactIds: this.keepToolImages(run, event) });
+  }
+  keepToolImages(run, event) {
+    if (!event.images?.length) return [];
+    try {
+      const kept = this.browserEvidence.keepToolImages(run, event.images, String(event.name ?? 'tool'));
+      if (kept.length) this.engine.store.saveSoon();
+      return kept.map(artifact => artifact.id);
+    } catch { this.log(run, 'tool', 'An image from a tool result could not be kept.'); return []; }
   }
   log(run, kind, message) {
     const clean = redact(message);

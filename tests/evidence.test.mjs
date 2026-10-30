@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { groupEvidence, stepThrough } from '../web/lib/evidence.mjs';
+import { evidenceLabel, groupEvidence, stepThrough } from '../web/lib/evidence.mjs';
 
 const shot = (id, check, attempt) => ({ id, at: id, type: 'artifact', artifact: { id, check, attempt } });
 
@@ -13,4 +13,10 @@ test('stepping wraps around and leaves unknown or single items in place', () => 
   const items = [{ id: 1 }, { id: 2 }, { id: 3 }];
   assert.equal(stepThrough(items, items[2], 1), items[0]); assert.equal(stepThrough(items, items[0], -1), items[2]);
   assert.equal(stepThrough([items[0]], items[0], 1), items[0]); const other = { id: 9 }; assert.equal(stepThrough(items, other, 1), other);
+});
+
+test('evidence labels name pasted files, tool images and browser checks', () => {
+  assert.equal(evidenceLabel({ source: 'context' }), 'Pasted with the ticket');
+  assert.equal(evidenceLabel({ source: 'tool', check: 'Read' }), 'Image from Read');
+  assert.equal(evidenceLabel({ source: 'browser', check: 'test:e2e', attempt: 2 }), 'Browser evidence · test:e2e · attempt 2');
 });

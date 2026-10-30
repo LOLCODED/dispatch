@@ -1,7 +1,7 @@
 import { Activity, FileCode2, FlaskConical, Image, Terminal, Wrench } from 'lucide-react';
 import { Link } from '@/lib/workspace';
 import { EvidenceGroup } from '@/components/run/Artifacts';
-import { groupEvidence } from '@/lib/evidence.mjs';
+import { evidenceLabel, groupEvidence } from '@/lib/evidence.mjs';
 import { agentName } from '@/lib/providers.mjs';
 import { parseBlockedQuestion } from '@/lib/question.mjs';
 import { splitRemaining } from '../../src/remaining.mjs';
@@ -57,8 +57,7 @@ function ActivityEntry({ entry, runId, onOpenArtifact }) {
     <details><summary>Command and output</summary><pre>{JSON.stringify(entry.check.command)}{'\n\n'}{entry.check.output ?? 'Running…'}</pre></details>
   </div>;
   if (entry.type === 'evidence') {
-    const [{ check, attempt, source }] = entry.artifacts, count = entry.artifacts.length;
-    const label = source === 'context' ? 'Pasted with the ticket' : `Browser evidence · ${check ?? 'evidence'} · attempt ${attempt ?? 1}`;
+    const label = evidenceLabel(entry.artifacts[0]), count = entry.artifacts.length;
     return <div className="history-artifact"><span className="entry-label"><Image size={12} aria-hidden="true"/>{label} · {count} {count === 1 ? 'file' : 'files'}<Time at={entry.at}/></span><EvidenceGroup runId={runId} artifacts={entry.artifacts} onOpen={onOpenArtifact}/></div>;
   }
   const [label, Icon] = toolLabels[entry.kind] ?? ['Activity', Activity];

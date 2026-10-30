@@ -70,6 +70,18 @@ test('Claude stream reports session, progress, tools, browser images and provide
   assert.ok(events.some(([kind, message]) => kind === 'tool' && message.includes('WebFetch')));
 });
 
+test('Claude passes images from any other tool result to the tool step, and browser images only to the browser', async () => {
+  const tools = [], browser = [];
+  const stream = encode([init,
+    { type: 'assistant', message: { content: [{ type: 'tool_use', id: 'r1', name: 'Read', input: { file_path: '/tmp/scratchpad/shot.png' } }, { type: 'tool_use', id: 'b1', name: 'mcp__playwright__browser_take_screenshot', input: {} }] } },
+    { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'r1', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'AAAA' } }] }, { type: 'tool_result', tool_use_id: 'b1', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: 'BBBB' } }] }] } },
+    done()]);
+  await adapter(stream).run({ workspace: '/tmp', prompt: 'x', onTool: event => tools.push(event), onBrowser: value => browser.push(value) });
+  const completed = tools.filter(event => event.phase === 'completed');
+  assert.deepEqual(completed.map(event => [event.name, event.images]), [['Read', [{ type: 'image', mimeType: 'image/png', data: 'AAAA' }]], ['mcp__playwright__browser_take_screenshot', []]]);
+  assert.deepEqual(browser.at(-1).images, [{ type: 'image', mimeType: 'image/jpeg', data: 'BBBB' }]);
+});
+
 test('Claude resumes the exact session and fails closed on mismatches, errors and missing results', async () => {
   const resumed = await adapter(encode([init, done()]), {}, args => assert.deepEqual(args.slice(args.indexOf('--resume'), args.indexOf('--resume') + 2), ['--resume', session])).run({ sessionId: session, prompt: 'x', onSession: id => assert.equal(id, session) });
   assert.equal(resumed.outcome, 'completed'); assert.equal(resumed.sessionId, session);

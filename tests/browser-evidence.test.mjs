@@ -50,3 +50,15 @@ test('agent browser snapshots carry the latest pointer until the turn is forgott
   evidence.forget(run); evidence.observeAgent(run, { phase: 'completed', images: [image] });
   assert.equal(run.artifacts.at(-1).pointer, undefined);
 });
+
+test('images from agent tool results are kept on their own budget, apart from check evidence', t => {
+  const { run, evidence } = setup(t);
+  const image = { type: 'image', mimeType: 'image/png', data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jcEIAAAAASUVORK5CYII=' };
+  const [kept] = evidence.keepToolImages(run, [image, { ...image, mimeType: 'image/svg+xml' }], 'Read');
+  assert.deepEqual(readFileSync(evidence.artifact(run, kept.id).path), Buffer.from(image.data, 'base64'));
+  assert.equal(run.artifacts.length, 1); assert.equal(kept.source, 'tool'); assert.equal(kept.check, 'Read'); assert.equal(kept.name, 'Tool image 1.png'); assert.equal(kept.revision, null);
+  run.artifacts.push(...Array.from({ length: 79 }, () => ({ size: 1 })));
+  assert.equal(evidence.observeAgent(run, { images: [image] }), true, 'tool images do not use up the check evidence budget');
+  run.artifacts = Array.from({ length: 200 }, () => ({ source: 'tool', size: 1 }));
+  assert.deepEqual(evidence.keepToolImages(run, [image], 'Read'), []);
+});

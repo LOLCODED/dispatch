@@ -812,6 +812,8 @@ test('a ready run leaves an ordered step log, a patch artifact that outlives the
   const { live, engine, project, repo } = await fixture(t, async options => {
     options.onTool({ id: 'c1', name: 'command', phase: 'started', input: { command: 'ls' } });
     options.onTool({ id: 'c1', name: 'command', phase: 'completed', output: 'value.txt', isError: false });
+    options.onTool({ id: 'r1', name: 'Read', phase: 'started', input: { file_path: 'shot.png' } });
+    options.onTool({ id: 'r1', name: 'Read', phase: 'completed', output: '', isError: false, images: [{ type: 'image', mimeType: 'image/png', data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jcEIAAAAASUVORK5CYII=' }] });
     options.onTool({ id: 'd1', name: 'dispatch_memory', server: 'dispatch', phase: 'started', input: {} });
     options.onEvent('message', 'Working on it');
     return completesWithFiles(options);
@@ -826,6 +828,9 @@ test('a ready run leaves an ordered step log, a patch artifact that outlives the
   assert.ok(kinds.indexOf('turn.start') < kinds.indexOf('tool.call') && kinds.indexOf('tool.result') < kinds.indexOf('turn.end') && kinds.indexOf('files') < kinds.indexOf('check.start'));
   const call = steps.find(step => step.kind === 'tool.call'), result = steps.find(step => step.kind === 'tool.result');
   assert.equal(call.callId, 'c1'); assert.equal(result.callId, 'c1'); assert.deepEqual(call.input, { command: 'ls' });
+  assert.deepEqual(result.imageArtifactIds, []);
+  const read = steps.find(step => step.kind === 'tool.result' && step.callId === 'r1'), [image] = run.artifacts.filter(item => item.source === 'tool');
+  assert.deepEqual(read.imageArtifactIds, [image.id]); assert.equal(image.check, 'Read');
   assert.ok(!steps.some(step => step.kind === 'tool.call' && step.name === 'dispatch_memory'));
   assert.deepEqual(steps.find(step => step.kind === 'turn.start').tools, ['dispatch_memory', 'dispatch_settings', 'dispatch_repository']);
   assert.ok(steps.find(step => step.kind === 'check.end').artifactIds.length === 0);
