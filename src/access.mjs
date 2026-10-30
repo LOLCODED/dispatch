@@ -13,6 +13,14 @@ export function setAccessMode(store, mode) {
   return mode;
 }
 
+export const subagentsEnabled = state => state.subagents === true;
+
+export function setSubagents(store, enabled) {
+  if (typeof enabled !== 'boolean') throw new InputError('Subagents are on or off.');
+  store.state.subagents = enabled; store.save();
+  return enabled;
+}
+
 export const sandboxAccess = mode => mode === 'full' ? { fullAccess: true, writableRoots: [] } : mode === 'worktrees' ? { fullAccess: false, writableRoots: [realpathSync(tmpdir())] } : { fullAccess: false, writableRoots: [realpathSync(homedir())] };
 
 // Worktrees-only access closes the home folder to the sandbox's commands, then reopens the task's worktrees, the Git

@@ -6,6 +6,7 @@ import { SettingsTabs } from '@/components/SettingsTabs';
 import { StorageSettings } from '@/components/StorageSettings';
 import { ChangelogDialog } from '@/components/ChangelogDialog';
 import { IconButton } from '@/components/IconButton';
+import { SwitchRow } from '@/components/Switch';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/Select';
 import { LayoutPicker } from '@/components/LayoutDemo';
@@ -128,13 +129,14 @@ const accessNotes = {
   full: 'No sandbox: agents can write anywhere your user can, including the dispatch checkout, its data and hidden folders like ~/.ssh, and can use the network.',
 };
 
-function AgentAccess({ busy, onChange }) {
+function AgentAccess({ busy, onChange, onSubagents }) {
   const { state } = useWorkspace(), mode = state.accessMode ?? 'home';
   return <section className="panel" id="access"><h2>Agent access</h2><div className="segmented" role="group" aria-label="Agent access">
     <IconButton label="Worktrees only" icon={FolderLock} aria-pressed={mode === 'worktrees'} disabled={busy} onClick={() => onChange('worktrees')}/>
     <IconButton label="Home folder" icon={FolderOpen} aria-pressed={mode === 'home'} disabled={busy} onClick={() => onChange('home')}/>
     <IconButton label="Full access" icon={HardDrive} aria-pressed={mode === 'full'} disabled={busy} onClick={() => onChange('full')}/>
-  </div><p className={mode === 'full' ? 'error' : 'muted'}>{accessNotes[mode]}</p><p className="muted">Applies to runs started after the change. dispatch checks and commits only the worktree.</p></section>;
+  </div><p className={mode === 'full' ? 'error' : 'muted'}>{accessNotes[mode]}</p><p className="muted">Applies to runs started after the change. dispatch checks and commits only the worktree.</p>
+    <ul className="row-list"><li><SwitchRow label="Subagents" description="Let Claude Code start subagents during a turn. They work under the same access as the turn, and their steps show indented under it in the timeline." checked={state.subagents === true} disabled={busy} onChange={onSubagents}/></li></ul></section>;
 }
 
 const branchNotes = {
@@ -168,7 +170,7 @@ export function Setup() {
     { value: 'notifications', label: 'Notifications', icon: Bell, content: <Notifications/> },
     { value: 'tiles', label: 'Tiles', icon: LayoutGrid, content: <Tiles/> },
     { value: 'editor', label: 'Editor', icon: Code, content: <Editor/> },
-    { value: 'access', label: 'Agent access', icon: ShieldCheck, content: <AgentAccess busy={busy} onChange={mode => perform(async () => { await api('/api/access', { mode }); window.dispatchEvent(new Event('dispatch-refresh')); })}/> },
+    { value: 'access', label: 'Agent access', icon: ShieldCheck, content: <AgentAccess busy={busy} onChange={mode => perform(async () => { await api('/api/access', { mode }); window.dispatchEvent(new Event('dispatch-refresh')); })} onSubagents={value => perform(async () => { await api('/api/settings', { key: 'access.subagents', value }); window.dispatchEvent(new Event('dispatch-refresh')); })}/> },
     { value: 'branches', label: 'Branches', icon: GitBranch, content: <Branches busy={busy} onChange={mode => perform(async () => { await api('/api/branch-naming', { mode }); window.dispatchEvent(new Event('dispatch-refresh')); })}/> },
     { value: 'queue', label: 'Queue', icon: ListOrdered, content: <Queue busy={busy} onChange={concurrency => perform(async () => { await api('/api/concurrency', { concurrency }); window.dispatchEvent(new Event('dispatch-refresh')); })}/> },
     { value: 'storage', label: 'Storage', icon: Database, content: <StorageSettings/> },

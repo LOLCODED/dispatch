@@ -1264,6 +1264,7 @@ legend { font-size:12px; font-weight:600; margin-bottom:8px; }
 .step-detail { margin:6px 0 10px 29px; }
 .step-row { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:8px; width:100%; padding:6px 8px; border:1px solid transparent; border-radius:5px; background:none; color:var(--foreground); font:inherit; font-size:12px; text-align:left; cursor:pointer; }
 .step-row:hover { background:var(--secondary); }
+.step-row.is-subagent { width:calc(100% - 18px); margin-left:18px; border-left:2px solid var(--border); border-radius:0 5px 5px 0; }
 .step-row[aria-current=true] { background:var(--secondary); border-color:var(--border); }
 .step-row-title { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .step-row small { color:var(--muted-foreground); font-size:10px; font-variant-numeric:tabular-nums; }

@@ -99,12 +99,14 @@ export function browserNarration(steps) {
   }
   return said;
 }
+const subagentTools = new Set(['Agent', 'Task']);
+
 export function stepTitle(step) {
   switch (step.kind) {
     case 'turn.start': return `${step.turn?.role === 'reviewer' ? 'Reviewer' : 'Agent'} turn ${step.turn?.attempt ?? ''} started`;
     case 'turn.end': return `Turn ended · ${step.outcome ?? ''}`;
     case 'message': return short(step.text, 70);
-    case 'tool.call': return `${step.name}${step.input?.command ? ` ${short(step.input.command, 40)}` : ''}`;
+    case 'tool.call': return subagentTools.has(step.name) ? `Subagent · ${short(step.input?.description ?? step.input?.subagent_type ?? 'task', 50)}` : `${step.name}${step.input?.command ? ` ${short(step.input.command, 40)}` : ''}`;
     case 'browser.step': return browserTitle(step);
     case 'files': return `${step.paths?.length ?? 0} file${step.paths?.length === 1 ? '' : 's'} changed`;
     case 'check.end': return `Check ${step.name} · ${step.status}`;

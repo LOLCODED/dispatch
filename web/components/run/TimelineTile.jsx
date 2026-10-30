@@ -22,7 +22,7 @@ function Phase({ phase, multiRun, current, onToggle, renderDetail }) {
     <p className="step-phase-title"><strong>{phaseTitle(phase, multiRun)}</strong><small>{[phase.outcome || time(phase.startedAt), phase.durationMs != null && duration(phase.durationMs)].filter(Boolean).join(' · ')}</small></p>
     {phase.note && <p className="step-phase-note">{phase.note}</p>}
     {phase.rows.length > 0 && <ol>{phase.rows.map(step => { const open = current?.key === step.key; return <li key={step.key}>
-      <button type="button" className={`step-row step-${step.kind.replace('.', '-')}`} aria-current={open ? 'true' : undefined} aria-expanded={open} onClick={() => onToggle(step)}><StepIcon kind={step.kind}/><span className="step-row-title">{stepTitle(step)}</span><small>{rowTime(step)}</small></button>
+      <button type="button" className={`step-row step-${step.kind.replace('.', '-')}${step.parentId ? ' is-subagent' : ''}`} aria-current={open ? 'true' : undefined} aria-expanded={open} onClick={() => onToggle(step)}><StepIcon kind={step.kind}/><span className="step-row-title">{stepTitle(step)}</span><small>{rowTime(step)}</small></button>
       {open && renderDetail(step)}
     </li>; })}</ol>}
   </li>;

@@ -24,6 +24,9 @@ test('Claude args keep owner turns in the sandbox and review turns away from mut
   assert.deepEqual(JSON.parse(auto[auto.indexOf('--settings') + 1]).sandbox, { enabled: true, autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: false, failIfUnavailable: true });
   assert.ok(!auto.includes('Bash') && auto.includes('AskUserQuestion') && auto.includes('Agent'));
   for (const tool of ['EnterPlanMode', 'ExitPlanMode', 'ListAgents', 'SendMessage']) assert.ok(auto.includes(tool), tool);
+  const delegating = claudeArgs({ sessionId: session, subagents: true });
+  for (const tool of ['Agent', 'Task', 'ListAgents', 'SendMessage']) assert.ok(!delegating.includes(tool), tool);
+  assert.ok(delegating.includes('AskUserQuestion') && delegating.includes('EnterPlanMode'));
   assert.deepEqual(auto.slice(auto.indexOf('--model'), auto.indexOf('--model') + 4), ['--model', 'opus', '--effort', 'high']);
   assert.deepEqual(auto.slice(auto.indexOf('--allowedTools'), auto.indexOf('--allowedTools') + 4), ['--allowedTools', 'mcp__dispatch__dispatch_question', 'mcp__dispatch__dispatch_memory', '--mcp-config']);
   assert.ok(!auto.includes('--add-dir'));
@@ -80,6 +83,21 @@ test('Claude passes images from any other tool result to the tool step, and brow
   const completed = tools.filter(event => event.phase === 'completed');
   assert.deepEqual(completed.map(event => [event.name, event.images]), [['Read', [{ type: 'image', mimeType: 'image/png', data: 'AAAA' }]], ['mcp__playwright__browser_take_screenshot', []]]);
   assert.deepEqual(browser.at(-1).images, [{ type: 'image', mimeType: 'image/jpeg', data: 'BBBB' }]);
+});
+
+test('Claude tags a subagent\'s tools with the call that started it and keeps its text out of the summary', async () => {
+  const tools = [], events = [];
+  const stream = encode([init,
+    { type: 'assistant', message: { content: [{ type: 'tool_use', id: 'a1', name: 'Agent', input: { description: 'Find the config', prompt: 'look' } }] } },
+    { type: 'assistant', parent_tool_use_id: 'a1', message: { content: [{ type: 'text', text: 'Searching the repo' }, { type: 'tool_use', id: 'g1', name: 'Grep', input: { pattern: 'port' } }] } },
+    { type: 'user', parent_tool_use_id: 'a1', message: { content: [{ type: 'tool_result', tool_use_id: 'g1', content: 'config.json' }] } },
+    { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'a1', content: 'It is in config.json' }] } },
+    { type: 'assistant', message: { content: [{ type: 'text', text: 'Found it' }] } },
+    done('Found it')]);
+  const result = await adapter(stream).run({ workspace: '/tmp', prompt: 'x', onTool: event => tools.push(event), onEvent: (kind, text) => events.push([kind, text]) });
+  assert.deepEqual(tools.map(event => [event.name, event.phase, event.parentId ?? null]), [['Agent', 'started', null], ['Grep', 'started', 'a1'], ['Grep', 'completed', 'a1'], ['Agent', 'completed', null]]);
+  assert.deepEqual(events.filter(([kind]) => kind === 'message').map(([, text]) => text), ['Found it']);
+  assert.equal(result.summary, 'Found it');
 });
 
 test('only a full-access Claude turn sees the desktop session, so desktop apps can open', async () => {

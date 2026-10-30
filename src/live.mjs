@@ -58,7 +58,7 @@ import { excludePlaceholders, removeSandboxPlaceholders, sandboxPlaceholders } f
 import { pullRequestState } from './board-state.mjs';
 import { riskSettings, riskEnabled, riskPrompt } from './risk-policy.mjs';
 import { usageDelta } from './usage.mjs';
-import { accessMode, sandboxAccess, setAccessMode, worktreeReads } from './access.mjs';
+import { accessMode, sandboxAccess, setAccessMode, setSubagents, subagentsEnabled, worktreeReads } from './access.mjs';
 import { coAuthored, commitIdentity } from './commit-identity.mjs';
 import { runBrowserSmoke, startScripts } from './browser-smoke.mjs';
 import { createFolder, createRepository } from './new-repository.mjs';
@@ -266,6 +266,8 @@ export class LiveService {
   observeLimits(provider, limits) { if (limits.available) this.engine.store.state.providerLimits = { ...this.engine.store.state.providerLimits, [provider]: limits }; }
   get accessMode() { return accessMode(this.engine.store.state); }
   setAccess(input) { return { accessMode: setAccessMode(this.engine.store, input.mode) }; }
+  get subagents() { return subagentsEnabled(this.engine.store.state); }
+  setSubagents(enabled) { return setSubagents(this.engine.store, enabled); }
   get branchNaming() { return branchMode(this.engine.store.state); }
   setBranchNaming(input) { return { branchNaming: setBranchMode(this.engine.store, input.mode) }; }
   async inspect(path) {
@@ -767,8 +769,8 @@ export class LiveService {
   }
   recordTool(run, event) {
     if (!event || event.server === 'dispatch' || /^mcp__dispatch__/.test(event.name ?? '')) return;
-    if (event.phase === 'started') this.steps.append(run, { kind: 'tool.call', callId: String(event.id ?? ''), name: String(event.name ?? 'tool'), server: event.server ?? null, input: event.input ?? {} });
-    else this.steps.append(run, { kind: 'tool.result', callId: String(event.id ?? ''), name: String(event.name ?? 'tool'), server: event.server ?? null, output: String(event.output ?? ''), isError: event.isError === true, imageArtifactIds: this.keepToolImages(run, event) });
+    if (event.phase === 'started') this.steps.append(run, { kind: 'tool.call', callId: String(event.id ?? ''), name: String(event.name ?? 'tool'), server: event.server ?? null, input: event.input ?? {}, ...(event.parentId && { parentId: String(event.parentId) }) });
+    else this.steps.append(run, { kind: 'tool.result', callId: String(event.id ?? ''), name: String(event.name ?? 'tool'), server: event.server ?? null, output: String(event.output ?? ''), isError: event.isError === true, imageArtifactIds: this.keepToolImages(run, event), ...(event.parentId && { parentId: String(event.parentId) }) });
   }
   keepToolImages(run, event) {
     if (!event.images?.length) return [];
@@ -1141,7 +1143,7 @@ export class LiveService {
     const turn = { role: 'worker', attempt: run.attempt, startedAt: new Date().toISOString(), promptCharacters: prompt.length, ...(images.length && { images: images.length }), resumed: Boolean(run.sessionId), status: 'running', tools: toolNames(tools), toolCharacters: toolSchemaCharacters(tools) };
     run.workerTurns.push(turn); e.store.saveSoon();
     this.steps.append(run, { kind: 'turn.start', provider: run.execution?.provider ?? 'codex', model: run.execution?.model ?? null, promptCharacters: prompt.length, tools: turn.tools, toolCharacters: turn.toolCharacters, resumed: turn.resumed });
-    const result = await adapter.run({ workspace: run.workspace, sessionId: run.sessionId, prompt, images, signal, interactive: !readOnly, ...(readOnly ? { readOnly: true } : this.turnAccess(run)), execution: run.execution, onLimits: limits => this.observeLimits(run.execution?.provider ?? 'codex', limits),
+    const result = await adapter.run({ workspace: run.workspace, sessionId: run.sessionId, prompt, images, signal, interactive: !readOnly, ...(readOnly ? { readOnly: true } : this.turnAccess(run)), subagents: this.subagents, execution: run.execution, onLimits: limits => this.observeLimits(run.execution?.provider ?? 'codex', limits),
       tools: tools.length ? { list: tools, call: (name, args) => this.toolCalls.call(run, name, args, { tools, signal, readOnly }) } : undefined, onTool: event => this.recordTool(run, event),
       onBrowser: observation => { try { if (this.browserEvidence.observeAgent(run, observation)) e.store.saveSoon(); } catch { this.log(run, 'browser', 'Agent browser capture was unavailable.'); } },
       onProgress: message => { run.streamingMessage = redact(message).slice(-16000); e.store.saveSoon(); },

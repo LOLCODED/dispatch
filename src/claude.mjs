@@ -16,7 +16,8 @@ const aliases = [['fable', 'Fable', efforts], ['opus', 'Opus', efforts], ['sonne
 const unboundedToolTimeoutMs = 2 ** 31 - 1;
 const mutating = ['Bash', 'Edit', 'Write', 'NotebookEdit'];
 // Plan mode waits for an approval nobody gives in a dispatch turn, and session messaging reaches agents outside the ticket's one owner.
-const excluded = ['AskUserQuestion', 'Agent', 'Task', 'WebFetch', 'WebSearch', 'EnterPlanMode', 'ExitPlanMode', 'ListAgents', 'SendMessage'];
+const subagentTools = ['Agent', 'Task', 'ListAgents', 'SendMessage'];
+const excluded = ['AskUserQuestion', 'WebFetch', 'WebSearch', 'EnterPlanMode', 'ExitPlanMode'];
 const sandboxNetwork = network => network?.hosts?.length || network?.localPorts ? { network: { ...(network.hosts?.length ? { allowedDomains: network.hosts } : {}), ...(network.localPorts ? { allowLocalBinding: true } : {}) } } : {};
 const filesystem = (writableRoots, reads) => writableRoots.length || reads ? { filesystem: { ...(writableRoots.length ? { allowWrite: writableRoots } : {}), ...(reads ?? {}) } } : {};
 const sandbox = (writableRoots, network, reads) => ({ sandbox: { enabled: true, autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: false, failIfUnavailable: true, ...filesystem(writableRoots, reads), ...sandboxNetwork(network) } });
@@ -24,7 +25,7 @@ const sandbox = (writableRoots, network, reads) => ({ sandbox: { enabled: true, 
 // Owner turns write through Claude's OS sandbox unless the operator chose full access. Prompts go to dispatch's
 // permission tool when the turn has it (it approves sandboxed shell commands and file writes in the worktrees) and are refused otherwise.
 // Review turns cannot call mutating tools.
-export function claudeArgs({ sessionId, resume, execution, readOnly = false, mcpConfig, mcpTools = [], writableRoots = [], readableRoots = [], fullAccess = false, streamInput = false, network = null, reads = null }) {
+export function claudeArgs({ sessionId, resume, execution, readOnly = false, mcpConfig, mcpTools = [], writableRoots = [], readableRoots = [], fullAccess = false, streamInput = false, network = null, reads = null, subagents = false }) {
   const prompts = mcpConfig && !readOnly && mcpTools.includes(permissionTool.name) ? ['host', '--permission-prompt-tool', `mcp__dispatch__${permissionTool.name}`] : ['none'];
   const args = ['-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages', '--permission-prompts', ...prompts];
   if (streamInput) args.push('--input-format', 'stream-json');
@@ -33,7 +34,7 @@ export function claudeArgs({ sessionId, resume, execution, readOnly = false, mcp
   if (execution?.effort) args.push('--effort', execution.effort);
   const allowed = [...(readOnly ? ['Read', 'Grep', 'Glob'] : []), ...(mcpConfig ? mcpTools.map(name => `mcp__dispatch__${name}`) : [])];
   const sandboxed = !readOnly && !fullAccess;
-  args.push('--permission-mode', readOnly ? 'dontAsk' : fullAccess ? 'bypassPermissions' : 'acceptEdits', '--disallowedTools', ...excluded, ...(readOnly ? mutating : []));
+  args.push('--permission-mode', readOnly ? 'dontAsk' : fullAccess ? 'bypassPermissions' : 'acceptEdits', '--disallowedTools', ...excluded, ...(subagents ? [] : subagentTools), ...(readOnly ? mutating : []));
   if (sandboxed) args.push('--settings', JSON.stringify(sandbox(writableRoots, readOnly ? null : network, reads)));
   if (sandboxed && writableRoots.length) args.push('--add-dir', ...writableRoots);
   if (readOnly && readableRoots.length) args.push('--add-dir', ...readableRoots);
@@ -60,16 +61,16 @@ const resultImages = content => (Array.isArray(content) ? content : []).filter(i
 const progressEveryMs = 300;
 export function claudeStream({ sessionId, onEvent, onProgress, onSession, onBrowser, onLimits, onTool }) {
   const state = { session: null, result: null, mismatch: false, summary: '', progress: '', tools: new Map(), progressAt: 0 };
-  const toolUse = block => {
+  const toolUse = (block, parentId) => {
     state.tools.set(block.id, block.name);
     if (browserTool(block.name)) onBrowser?.({ phase: 'started', label: block.name, pointer: browserPointer(block.name, block.input) });
-    onTool?.({ id: block.id, name: block.name, phase: 'started', input: block.input ?? {} });
+    onTool?.({ id: block.id, name: block.name, phase: 'started', input: block.input ?? {}, ...(parentId && { parentId }) });
     onEvent?.('tool', `${block.name} ${JSON.stringify(block.input ?? {}).slice(0, 1000)}`);
   };
-  const toolResult = block => {
+  const toolResult = (block, parentId) => {
     const name = state.tools.get(block.tool_use_id) ?? 'tool', images = resultImages(block.content), browser = browserTool(name);
     if (browser) onBrowser?.({ phase: 'completed', label: name, images });
-    onTool?.({ id: block.tool_use_id, name, phase: 'completed', output: text(block.content), isError: block.is_error === true, images: browser ? [] : images });
+    onTool?.({ id: block.tool_use_id, name, phase: 'completed', output: text(block.content), isError: block.is_error === true, images: browser ? [] : images, ...(parentId && { parentId }) });
     onEvent?.('tool', `${name} · ${block.is_error ? 'failed' : 'completed'}\n${text(block.content).slice(-4000)}`);
   };
   const consume = event => {
@@ -79,15 +80,16 @@ export function claudeStream({ sessionId, onEvent, onProgress, onSession, onBrow
       state.session = event.session_id; onSession?.(event.session_id);
     }
     if (event.type === 'rate_limit_event' && event.rate_limit_info) onLimits?.(claudeLimits(event.rate_limit_info));
-    if (event.type === 'stream_event') {
+    const parentId = event.parent_tool_use_id ?? null;
+    if (event.type === 'stream_event' && !parentId) {
       if (event.event?.type === 'message_start') state.progress = '';
       if (event.event?.delta?.type === 'text_delta') { state.progress = (state.progress + event.event.delta.text).slice(-100000); if (Date.now() - state.progressAt >= progressEveryMs) { state.progressAt = Date.now(); onProgress?.(state.progress); } }
     }
     if (event.type === 'assistant') for (const block of event.message?.content ?? []) {
-      if (block.type === 'text' && block.text.trim()) { state.summary = block.text; onProgress?.(''); onEvent?.('message', block.text); }
-      if (block.type === 'tool_use') toolUse(block);
+      if (block.type === 'text' && block.text.trim() && !parentId) { state.summary = block.text; onProgress?.(''); onEvent?.('message', block.text); }
+      if (block.type === 'tool_use') toolUse(block, parentId);
     }
-    if (event.type === 'user') for (const block of Array.isArray(event.message?.content) ? event.message.content : []) if (block.type === 'tool_result') toolResult(block);
+    if (event.type === 'user') for (const block of Array.isArray(event.message?.content) ? event.message.content : []) if (block.type === 'tool_result') toolResult(block, parentId);
     if (event.type === 'result') {
       state.result = event;
       const denied = Array.isArray(event.permission_denials) ? event.permission_denials : [];
@@ -135,14 +137,14 @@ export class ClaudeAdapter {
   async models() {
     return { available: true, models: aliases.map(([model, displayName, supportedReasoningEfforts]) => ({ model, displayName, isDefault: false, defaultReasoningEffort: null, supportedReasoningEfforts })), message: 'Claude Code model aliases; the CLI resolves each to the newest version your account can use.' };
   }
-  async run({ workspace, sessionId, prompt, images = [], signal, onEvent, onSession, onSpawn, timeoutMs = null, readOnly = false, interactive = false, execution, onQuestion, onMemory, tools, onTool, writableRoots = [], readableRoots = [], fullAccess = false, network = null, reads = null, onProgress, onBrowser, onLimits }, providerEnv = {}) {
+  async run({ workspace, sessionId, prompt, images = [], signal, onEvent, onSession, onSpawn, timeoutMs = null, readOnly = false, interactive = false, execution, onQuestion, onMemory, tools, onTool, writableRoots = [], readableRoots = [], fullAccess = false, network = null, reads = null, subagents = false, onProgress, onBrowser, onLimits }, providerEnv = {}) {
     const id = sessionId ?? randomUUID();
     const handlers = tools?.list?.length ? { tools: tools.list, call: tools.call } : interactive && !readOnly ? { onQuestion, onMemory } : null;
     const bridge = handlers ? await this.bridge(handlers) : null;
     try {
       const mcpConfig = bridge && await bridge.writeConfig('claude-mcp.json', claudeMcpConfig(bridge.mcp));
       const stream = claudeStream({ sessionId: id, onEvent, onProgress, onSession, onBrowser, onLimits, onTool });
-      const result = await runJsonLines(this.execute, this.command, claudeArgs({ sessionId: id, resume: Boolean(sessionId), execution, readOnly, mcpConfig, mcpTools: bridge?.names ?? [], writableRoots, readableRoots, fullAccess, network, reads, streamInput: images.length > 0 }), { cwd: workspace, signal, timeoutMs, input: claudeInput(prompt, images), inheritEnv: false, env: agentEnvironment(fullAccess, { MCP_TOOL_TIMEOUT: String(timeoutMs ?? unboundedToolTimeoutMs), ...providerEnv }), onSpawn, onEvent: stream.consume });
+      const result = await runJsonLines(this.execute, this.command, claudeArgs({ sessionId: id, resume: Boolean(sessionId), execution, readOnly, mcpConfig, mcpTools: bridge?.names ?? [], writableRoots, readableRoots, fullAccess, network, reads, subagents, streamInput: images.length > 0 }), { cwd: workspace, signal, timeoutMs, input: claudeInput(prompt, images), inheritEnv: false, env: agentEnvironment(fullAccess, { MCP_TOOL_TIMEOUT: String(timeoutMs ?? unboundedToolTimeoutMs), ...providerEnv }), onSpawn, onEvent: stream.consume });
       onProgress?.('');
       return claudeOutcome({ result, state: stream.state, sessionId: id });
     } finally { await bridge?.close(); }

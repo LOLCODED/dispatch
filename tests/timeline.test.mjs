@@ -50,6 +50,7 @@ test('neighbour clamps at the ends and titles stay short and specific', () => {
   assert.equal(neighbour(visible, visible[0], -1).seq, 1); assert.equal(neighbour(visible, visible.at(-1), 1).seq, 9); assert.equal(neighbour(visible, null, 1).seq, 1); assert.equal(neighbour(visible, visible[1], 1).seq, 3);
   assert.equal(stepTitle(steps[4]), 'click e12'); assert.equal(stepTitle(steps[5]), 'type e3 “hello world this is lon…”');
   assert.equal(stepTitle(steps[2]), 'command npm test -- --grep balance'); assert.equal(stepTitle(steps[7]), 'Check unit · passed'); assert.equal(stepTitle(steps[8]), 'Reviewer turn 1 started');
+  assert.equal(stepTitle({ kind: 'tool.call', name: 'Agent', input: { description: 'Find the config' } }), 'Subagent · Find the config');
   assert.equal(stepHash(steps[4], 'run-2'), '#step=5'); assert.equal(hashStep('#step=5', 'run-2'), 'run-2:5'); assert.equal(hashStep('', 'run-2'), null);
 });
 
