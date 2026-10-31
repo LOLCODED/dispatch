@@ -13,11 +13,11 @@ export function setAccessMode(store, mode) {
   return mode;
 }
 
-export const subagentsEnabled = state => state.subagents === true;
+export const switchOn = (state, key) => state[key] === true;
 
-export function setSubagents(store, enabled) {
-  if (typeof enabled !== 'boolean') throw new InputError('Subagents are on or off.');
-  store.state.subagents = enabled; store.save();
+export function setSwitch(store, key, enabled) {
+  if (typeof enabled !== 'boolean') throw new InputError(`${key} is on or off.`);
+  store.state[key] = enabled; store.save();
   return enabled;
 }
 
