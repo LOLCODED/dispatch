@@ -15,6 +15,7 @@ import { prefersReducedMotion } from '@/lib/motion';
 import { agentName } from '@/lib/providers.mjs';
 import { Markdown } from '@/components/Markdown';
 import { ChatHandoff, HandoffOutcome, LandingTurn, offersHandoff, useTaskEntry } from '@/components/run/ChatHandoff';
+import { actionRequest } from '../../../src/network-ask.mjs';
 
 const activityText = (run, event) => ({ queued: run.previousRunId ? 'Continuing your ticket.' : 'Your ticket is queued.', preparing: 'Getting the repository ready.', implementing: run.mergeIn ? `${agentName(run)} is resolving conflicts.` : `${agentName(run)} is working on your ticket.`, repairing: `${agentName(run)} is addressing check or review findings.`, reviewing: `An independent ${agentName(run)} session is reviewing the checked changes.`, validating: 'Testing the changes.', publishing: 'Saving the tested result.', ready: 'The result is ready for your review.' }[event.kind] ?? event.message);
 
@@ -53,7 +54,7 @@ function questionRequest(run, question) {
 
 const answerQuestion = (run, options) => ({ answers: { answer }, requestId, ...attachments }) => {
   const chosen = options.find(option => option.label === answer);
-  if (chosen?.action) return api(`/api/runs/${run.id}/remaining`, { action: chosen.action });
+  if (chosen?.action) return api(...actionRequest(run.id, chosen.action));
   return api(`/api/runs/${run.id}/followup`, { input: chosen?.value ?? answer, ...attachments });
 };
 

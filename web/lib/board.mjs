@@ -1,4 +1,5 @@
 import { blockedQuestionOf, answerOptions, remainingOptions, remainingQuestion } from './question.mjs';
+import { openNetworkAsk, networkQuestion } from '../../src/network-ask.mjs';
 import { openRemaining } from '../../src/remaining.mjs';
 import { pullRequestState } from '../../src/board-state.mjs';
 export * from '../../src/board-state.mjs';
@@ -31,6 +32,7 @@ function pullRequestAsk({ pr, ci }, state) {
 // What the Needs decision row asks, and which answers send without opening the task.
 export function askOf(latest) {
   if (latest.pendingRequest) return requestAsk(latest.pendingRequest);
+  if (openNetworkAsk(latest)) { const asked = networkQuestion(latest.networkAsk); return { kind: 'followup', text: asked.question, options: answerOptions(asked.options).map(option => ({ label: option.text, value: option.text, action: option.action, recommended: option.recommended })) }; }
   if (latest.status === 'blocked' && latest.question) return blockedAsk(latest.question, latest.plan);
   if (openRemaining(latest)) return { kind: 'followup', text: remainingQuestion, options: answerOptions(remainingOptions).map(option => ({ label: option.text, value: option.value, action: option.action, recommended: option.recommended })) };
   const pullRequest = pullRequestState(latest);

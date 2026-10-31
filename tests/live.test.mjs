@@ -622,7 +622,7 @@ test('the worker brief stays short and adds notes and browser guidance only when
   const prompts = [];
   const { live, engine, project } = await fixture(t, async options => { prompts.push(options.prompt); return completesWithFiles(options); });
   const run = await live.create({ projectId: project.id, input: 'Fix a typo' }); await settle(engine, run);
-  assert.equal(run.status, 'ready'); assert.ok(run.workerTurns[0].promptCharacters < 2550, String(run.workerTurns[0].promptCharacters));
+  assert.equal(run.status, 'ready'); assert.ok(run.workerTurns[0].promptCharacters < 2625, String(run.workerTurns[0].promptCharacters));
   assert.doesNotMatch(prompts[0], /Follow repository instructions|write outside the worktree/); assert.match(prompts[0], /Notes for next time/); assert.match(prompts[0], /own port/); assert.doesNotMatch(prompts[0], /browser checks/);
   await live.saveProject({ ...project, confirmed: true, memory: false, validation: [...project.validation, { id: 'e2e', command: process.execPath, args: ['-e', ''], browser: true }] }, project.id);
   const browser = await live.create({ projectId: project.id, input: 'Fix another typo' }); await settle(engine, browser);

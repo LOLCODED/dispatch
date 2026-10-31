@@ -1,4 +1,5 @@
 import { conversationTree, latestRun, rootOf } from './conversations.mjs';
+import { openNetworkAsk } from './network-ask.mjs';
 import { openRemaining } from './remaining.mjs';
 
 export const activeStatuses = new Set(['queued', 'preparing', 'implementing', 'validating', 'reviewing', 'repairing', 'publishing', 'landing']);
@@ -30,7 +31,7 @@ export function taskState({ latest, item = {} }) {
   if (item.pause?.runId === latest.id) return 'paused';
   const pullRequest = pullRequestState(latest);
   if (item.done?.runId === latest.id || latest.worktreeRemovedAt || latest.landed || pullRequest === 'merged') return 'completed';
-  if (decisionStatuses.has(latest.status) || openRemaining(latest) || pullRequest && pullRequest !== 'open') return 'decision';
+  if (decisionStatuses.has(latest.status) || openRemaining(latest) || openNetworkAsk(latest) || pullRequest && pullRequest !== 'open') return 'decision';
   return pullRequest === 'open' && latest.delivery.submittedAt ? 'awaiting' : 'review';
 }
 

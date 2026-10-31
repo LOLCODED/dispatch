@@ -67,6 +67,8 @@ Turning a provider on is consent for dispatch to check its CLI and list its mode
 
 **Subagents**, on the same page, let Claude Code start subagents during a turn. They are off by default. When on, they work under the turn's access, and the timeline shows their steps indented under the **Subagent** step that started them. Other agent CLIs ignore the switch.
 
+When the sandbox refuses a web host during a turn (Claude Code reports it as `deny network-outbound <host>`), the run ends on a decision: **Allow and continue** adds the host to the repository's sandbox hosts and starts a turn that can reach it; **Keep blocked** leaves it. Database and SSH ports are not asked about: the sandbox only carries web requests, however the host is listed. Full access has no sandbox, so nothing is refused there.
+
 **AFK**, on the same page, is for when you step away. Agents never stop to ask: they take the recommended option, name it in their report and keep going. Claude Code loses the dispatch question tool, and a Codex question is answered with its recommended option. If a turn still ends blocked with numbered options, dispatch continues with the recommended one, at most three times in a row before it waits for you. A blocker with no options (a login, missing access) still waits. dispatch's own approvals, such as testing plans and sensitive writes, still ask.
 
 dispatch's own tools (`dispatch_question`, `dispatch_memory`, `dispatch_repository`, `dispatch_browser_*`) are one registry served to both CLIs by a per-turn local MCP server. The MCP server name `dispatch` is reserved.

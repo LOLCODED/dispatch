@@ -21,6 +21,7 @@ import { matches, tileIndex, usesCommandModifier } from '@/lib/keybinds.mjs';
 import { shortcutLabel, usePreferences } from '@/lib/preferences';
 import { api, Link, navigate, useWorkspace, terminal } from '@/lib/workspace';
 import { blockedQuestionOf, remainingOptions, remainingQuestion } from '@/lib/question.mjs';
+import { openNetworkAsk, networkQuestion } from '../../src/network-ask.mjs';
 import { openRemaining } from '../../src/remaining.mjs';
 import { lineReference } from '@/lib/diff.mjs';
 import { diffWanted, layoutPolicy, relevantTiles } from '@/lib/run-layouts.mjs';
@@ -28,6 +29,7 @@ import { useBrowserFocus, useDecisionFocus, useDiffFocus } from '@/lib/run-layou
 import { hashStep } from '@/lib/timeline.mjs';
 
 function blockedQuestion(run) {
+  if (openNetworkAsk(run)) return networkQuestion(run.networkAsk);
   if (openRemaining(run)) return { question: remainingQuestion, options: remainingOptions };
   if (run.status !== 'blocked') return null;
   const text = run.question ?? (run.summary?.startsWith('DISPATCH_BLOCKED:') ? run.summary.slice('DISPATCH_BLOCKED:'.length).trim() : null);

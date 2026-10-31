@@ -5,11 +5,12 @@ import { Tooltip } from '@/components/IconButton';
 import { LandingMark } from '@/components/work/LandingMark';
 import { StateDot } from '@/components/work/StateDot';
 import { askOf, recommendedFirst } from '@/lib/board.mjs';
+import { actionRequest } from '../../../src/network-ask.mjs';
 import { useBoardAction } from '@/lib/board-actions';
 import { Link } from '@/lib/workspace';
 
 function answerRequest(latest, ask, value, action) {
-  if (action) return [`/api/runs/${latest.id}/remaining`, { action }];
+  if (action) return actionRequest(latest.id, action);
   if (ask.kind === 'request') return [`/api/runs/${latest.id}/respond`, { requestId: ask.requestId, answers: { [ask.questionId]: value } }];
   return [`/api/runs/${latest.id}/followup`, { input: value }];
 }

@@ -132,3 +132,36 @@ test('dispatch_settings refuses database addresses as sandbox hosts without aski
   await live.settingsTool.call(run, { action: 'set', key: 'repository.network', value: { hosts: ['api.example.test'] }, repository: project.name });
   assert.equal(asked, 1);
 });
+
+test('a host the sandbox refused is asked about after the turn, and allowing it continues with the host', async t => {
+  const turns = [];
+  const { live, engine, project } = await liveFixture(t, { behavior: async (options, turn) => {
+    turns.push(options.network?.hosts ?? []);
+    if (turn === 1) {
+      options.onTool({ id: 'b1', name: 'Bash', phase: 'started', input: { command: 'npx some-mcp' } });
+      options.onTool({ id: 'b1', name: 'Bash', phase: 'completed', output: 'failed\n<sandbox_violations>\ndeny network-outbound registry.npmjs.org:443 (user denied)\ndeny network-outbound db.example.test:5432\n</sandbox_violations>' });
+    }
+    return { outcome: 'completed', sessionId: 'session-1', summary: 'Done what I could.\nDISPATCH_COMMIT: chore: nothing' };
+  } });
+  const run = await live.create({ projectId: project.id, input: 'Start the connector' });
+  await settle(engine, run); await until(() => run.networkAsk);
+  assert.deepEqual(run.networkAsk, { hosts: ['registry.npmjs.org'], projectId: project.id, repository: project.name });
+  assert.equal(run.supersededBy, undefined, 'nothing continues until the operator answers');
+  const next = await live.settleNetwork(run.id, { action: 'allow-network' });
+  assert.deepEqual(live.projects.find(item => item.id === project.id).network.hosts, ['registry.npmjs.org']);
+  assert.equal(run.networkAsk.resolution, 'allowed'); await settle(engine, next);
+  assert.deepEqual(turns.at(-1), ['registry.npmjs.org']);
+  await assert.rejects(live.settleNetwork(run.id, { action: 'allow-network' }), /no blocked hosts/);
+});
+
+test('keeping a refused host blocked closes the question without a new turn', async t => {
+  const { live, engine, project } = await liveFixture(t, { behavior: async options => {
+    options.onTool({ id: 'b1', name: 'Bash', phase: 'completed', output: 'deny network-outbound example.com:443' });
+    return { outcome: 'completed', sessionId: 'session-1', summary: 'Done.\nDISPATCH_COMMIT: chore: nothing' };
+  } });
+  const run = await live.create({ projectId: project.id, input: 'Fetch it' });
+  await settle(engine, run); await until(() => run.networkAsk);
+  await live.settleNetwork(run.id, { action: 'keep-network' });
+  assert.equal(run.networkAsk.resolution, 'kept'); assert.equal(run.supersededBy, undefined);
+  assert.deepEqual(live.projects.find(item => item.id === project.id).network?.hosts ?? [], []);
+});

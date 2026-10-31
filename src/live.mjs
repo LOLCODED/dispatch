@@ -40,7 +40,8 @@ import { agentMembers, taskRepositories } from './repository-selection.mjs';
 import { longRunningScript, npmScript } from './recipe-roles.mjs';
 import { repositoryInsight } from './repository-insight.mjs';
 import { copyLocalFiles, localFileSettings } from './local-files.mjs';
-import { networkSettings, taskNetwork } from './network-access.mjs';
+import { databaseHosts, networkSettings, taskNetwork } from './network-access.mjs';
+import { deniedHosts, mergeHosts, networkActions, openNetworkAsk, retryWithHosts } from './network-ask.mjs';
 import { httpCall } from './http-tool.mjs';
 import { Databases, databasesBrief, databasesSettings } from './database.mjs';
 import { Services, serviceSettings } from './services.mjs';
@@ -773,7 +774,11 @@ export class LiveService {
   recordTool(run, event) {
     if (!event || event.server === 'dispatch' || /^mcp__dispatch__/.test(event.name ?? '')) return;
     if (event.phase === 'started') this.steps.append(run, { kind: 'tool.call', callId: String(event.id ?? ''), name: String(event.name ?? 'tool'), server: event.server ?? null, input: event.input ?? {}, ...(event.parentId && { parentId: String(event.parentId) }) });
-    else this.steps.append(run, { kind: 'tool.result', callId: String(event.id ?? ''), name: String(event.name ?? 'tool'), server: event.server ?? null, output: String(event.output ?? ''), isError: event.isError === true, imageArtifactIds: this.keepToolImages(run, event), ...(event.parentId && { parentId: String(event.parentId) }) });
+    else { this.noteDeniedHosts(run, event.output); this.steps.append(run, { kind: 'tool.result', callId: String(event.id ?? ''), name: String(event.name ?? 'tool'), server: event.server ?? null, output: String(event.output ?? ''), isError: event.isError === true, imageArtifactIds: this.keepToolImages(run, event), ...(event.parentId && { parentId: String(event.parentId) }) }); }
+  }
+  noteDeniedHosts(run, output) {
+    const hosts = deniedHosts(output).filter(host => !databaseHosts([host]).length);
+    if (hosts.length) run.deniedHosts = mergeHosts(run.deniedHosts, hosts);
   }
   keepToolImages(run, event) {
     if (!event.images?.length) return [];
@@ -902,7 +907,7 @@ export class LiveService {
     if (run.kind === 'answer') return this.answerPrompt(run);
     const place = run.shadow ? `directly in the folder ${run.workspace}. It is not a Git repository: do not run git init, create version control or move the folder; dispatch snapshots it itself` : 'in the current isolated worktree';
     const asking = ' When a requirement or decision is unclear, ask instead of guessing: a native question with two or three concrete choices, recommended first and labelled "(Recommended)". If you need a decision you cannot make, finish with DISPATCH_BLOCKED: and the question with two or three numbered options you can act on ("1. Option — why"), recommended first; operator-only steps go above.';
-    const brief = `Work on this ticket ${place}. Scale effort to the change: for copy, text or documentation edits, make the edit, confirm it and finish; otherwise read the relevant code, implement the smallest complete fix, and review ${run.shadow ? 'your changes' : 'the diff'} before finishing. Prefer targeted checks while developing; dispatch runs the mandatory checks afterwards, so do not run entire suites. Keep the final report concise: changes, checks you ran, remaining risks. If the ticket only asks a question, answer it without editing files, conclusion first with path:line evidence, and end with ${answerMarker} on its own line; if it asks for a plan, write it without editing files and end with ${planMarker}. Do not push, publish, change branches, create other agents, edit documentation the ticket did not ask for, or modify package scripts used for validation. Pushing, pull requests and landing are dispatch buttons the operator picks once ready; name one, not git steps. Keep every change inside this ${run.shadow ? 'folder' : 'worktree'}; dispatch checks${run.shadow ? '' : ' and commits'} nothing elsewhere.${this.afk ? afkBrief : asking} Steps only the operator can take (access, networks, settings) are no reason to block: finish the rest. After ${remainingMarker} list work left unbuilt and operator steps, one per line.`;
+    const brief = `Work on this ticket ${place}. Scale effort to the change: for copy, text or documentation edits, make the edit, confirm it and finish; otherwise read the relevant code, implement the smallest complete fix, and review ${run.shadow ? 'your changes' : 'the diff'} before finishing. Prefer targeted checks while developing; dispatch runs the mandatory checks afterwards, so do not run entire suites. Keep the final report concise: changes, checks you ran, remaining risks. If the ticket only asks a question, answer it without editing files, conclusion first with path:line evidence, and end with ${answerMarker} on its own line; if it asks for a plan, write it without editing files and end with ${planMarker}. Do not push Git branches, change branches, start other agent CLIs, edit documentation the ticket did not ask for, or modify package scripts used for validation. Pushing, pull requests and landing are dispatch buttons the operator picks once ready; name one, not git steps. Publish or deploy anything else (a game, a package) only when the ticket asks. Keep every change inside this ${run.shadow ? 'folder' : 'worktree'}; dispatch checks${run.shadow ? '' : ' and commits'} nothing elsewhere.${this.afk ? afkBrief : asking} Steps only the operator can take (access, networks, settings) are no reason to block: finish the rest. After ${remainingMarker} list work left unbuilt and operator steps, one per line.`;
     const rules = ' Constraints given in a follow-up bind the rest of the run. Never run migrations or DDL; write the statements to a .sql file instead. Do not edit existing tests unless the ticket asks; name any test you changed. No attribution lines. When you change files, end with "DISPATCH_COMMIT: <type>(<scope>): <summary>", a Conventional Commits subject (feat, fix, perf, refactor, docs, test, build, chore; at most 120 characters) saying what the task changes for users.';
     const offered = this.offeredTools(run);
     const notes = run.project.memory === false ? '' : ` End your final message with a section "Notes for next time:" holding at most three one-line bullets about setup, checks or conventions that would help a future task, or "none".${offered.has('dispatch_memory') ? ' Use dispatch_memory to keep a repository fact worth remembering (remember) or retract one (forget).' : ''}`;
@@ -1484,6 +1489,7 @@ export class LiveService {
   // What the operator approved mid-turn (a repository joining, sandbox hosts) only takes effect in a new turn, so the ticket continues on its own.
   async finished(run) {
     if (run.kind !== 'change' || !['ready', 'blocked'].includes(run.status) || run.supersededBy || this.engine.stopping) return;
+    if (this.askNetwork(run)) return;
     const next = this.continuation(run);
     if (!next) return;
     try {
@@ -1500,6 +1506,26 @@ export class LiveService {
     this.engine.event(run, 'decision', `AFK: answered with the recommended option: ${Object.values(chosen).join('; ')}`);
     return { answers };
   }
+  askNetwork(run) {
+    const project = this.projects.find(item => item.id === run.projectId), allowed = new Set(project?.network?.hosts ?? []);
+    const hosts = (run.deniedHosts ?? []).filter(host => !allowed.has(host));
+    if (!project || !hosts.length || run.networkChanged) return false;
+    run.networkAsk = { hosts, projectId: project.id, repository: project.name };
+    this.engine.event(run, 'decision', `The sandbox blocked ${hosts.join(', ')}. Allow ${hosts.length === 1 ? 'it' : 'them'} to continue?`); this.engine.store.save();
+    return true;
+  }
+  async settleNetwork(id, { action } = {}) {
+    const run = this.engine.get(id);
+    if (!openNetworkAsk(run)) throw new InputError('This run has no blocked hosts waiting for a decision.', 409);
+    if (!Object.values(networkActions).includes(action)) throw new InputError(`Choose ${Object.values(networkActions).join(' or ')}.`);
+    if (action === networkActions.keep) { run.networkAsk.resolution = 'kept'; this.engine.store.save(); return run; }
+    const project = this.projects.find(item => item.id === run.networkAsk.projectId);
+    await this.settingsRegistry.set('repository.network', { ...project.network, hosts: mergeHosts(project.network?.hosts, run.networkAsk.hosts) }, { repository: project.id });
+    run.networkAsk.resolution = 'allowed'; this.engine.store.save();
+    const followup = await this.followup(run.id, { input: retryWithHosts });
+    this.log(followup, 'worktree', `Continuing with ${run.networkAsk.hosts.join(', ')} allowed.`);
+    return followup;
+  }
   continuation(run) {
     const joining = this.linked.joining(run);
     if (joining.length) {
@@ -1507,7 +1533,7 @@ export class LiveService {
       return { what: `in ${names}`, input: `${names} ${joining.length === 1 ? 'is' : 'are'} now part of this task, each in its own isolated workspace listed below. Continue the ticket there.`, event: `Continuing in ${names}, added with your approval.`, log: `Continuing automatically: ${names} joined this task.` };
     }
     if (!run.networkChanged || run.status !== 'blocked') return this.afk ? afkContinuation(run) : null;
-    return { what: 'with the new sandbox hosts', input: 'The sandbox hosts the operator approved apply from this turn. Retry what the sandbox refused. If it still fails, the cause is outside the sandbox: do not change the network again; finish the change and list what the operator must do after DISPATCH_REMAINING.',
+    return { what: 'with the new sandbox hosts', input: retryWithHosts,
       event: 'Continuing with the sandbox hosts you approved.', log: 'Continuing automatically: the sandbox hosts you approved apply from this turn.' };
   }
   remember(run) {

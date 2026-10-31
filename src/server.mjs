@@ -65,7 +65,7 @@ function runSummary(run, live) {
   return {
     id: run.id, mode: run.mode, kind: run.kind ?? 'change', title: run.title, summary: workerSummary(run), request: cap(run.input, requestLength), status: run.status, projectId: run.projectId, project: { name: run.project?.name },
     ticketId: run.ticketId, taskId: run.taskId, createdAt: run.createdAt, startedAt: run.startedAt, finishedAt: run.finishedAt, previousRunId: run.previousRunId, supersededBy: run.supersededBy,
-    resumable: Boolean(run.sessionId), question: cap(run.question, 2000), plan: run.plan === true, remaining: run.remaining && { items: run.remaining.items.slice(0, 12), resolution: run.remaining.resolution ?? null }, pendingRequest: pendingRequest(run),
+    resumable: Boolean(run.sessionId), question: cap(run.question, 2000), plan: run.plan === true, remaining: run.remaining && { items: run.remaining.items.slice(0, 12), resolution: run.remaining.resolution ?? null }, networkAsk: run.networkAsk ?? null, pendingRequest: pendingRequest(run),
     reason: cap(run.events?.findLast(event => event.kind === run.status)?.message, 240), insights: runInsights(run), ...handoffView(run, live), worktreeRemovedAt: run.worktreeRemovedAt, delivery: deliveryView(run.delivery),
     repositories: repositoriesView(run), landedRunIds: run.landing?.items.map(item => item.runId), resolvesConflicts: Boolean(run.mergeIn),
   };
@@ -154,6 +154,8 @@ export function createServer(engine, { assetRoot = root, devFraming = false, upd
         const input = await body(req, runBodyLimit); await live.prepareRepositories(input);
         return json(res, 201, tasks.save(input));
       }
+      const networkPath = path.match(/^\/api\/runs\/([a-f0-9-]+)\/network$/);
+      if (req.method === 'POST' && networkPath) return json(res, 200, viewRun(await live.settleNetwork(networkPath[1], await jsonBody(req))));
       const remainingPath = path.match(/^\/api\/runs\/([a-f0-9-]+)\/remaining$/);
       if (req.method === 'POST' && remainingPath) {
         if (!req.headers['content-type']?.startsWith('application/json')) throw new InputError('Use application/json', 415);
