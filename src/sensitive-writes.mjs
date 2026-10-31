@@ -32,7 +32,7 @@ export class SensitiveWrites {
   constructor(live) { this.live = live; }
 
   async call(run, args, { signal } = {}) {
-    if (args?.tool_name === 'Bash') return sandboxedShell(run, args);
+    if (args?.tool_name === 'Bash') return sandboxedShell({ ...run, access: this.live.runAccess?.(run) ?? run.access }, args);
     const target = writeTarget(run, args);
     if (!target) return deny('dispatch only approves file edits inside this task\'s worktrees; nobody can approve anything else during a run.');
     if ((run.sensitiveApprovals ?? []).includes(target.path)) return allow(args.input);

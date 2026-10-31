@@ -19,3 +19,16 @@ test('a blocked AFK run continues with its recommended option until the streak l
   assert.equal(afkContinuation({ status: 'blocked', question: 'Log in to the CLI first.' }), null, 'no options means a real blocker');
   assert.equal(afkContinuation({ status: 'ready', question }), null);
 });
+
+test('AFK runs every turn with full access without changing the saved access', async t => {
+  const { liveFixture, settle } = await import('./live-double.mjs');
+  const turns = [];
+  const { live, engine, project } = await liveFixture(t, { behavior: async options => { turns.push(options.fullAccess === true); return { outcome: 'completed', sessionId: 'session-1', summary: 'Done.\nDISPATCH_COMMIT: chore: nothing' }; } });
+  live.setAccess({ mode: 'home' }); live.setAfk(true);
+  const run = await live.create({ projectId: project.id, input: 'Publish it' });
+  await settle(engine, run);
+  assert.deepEqual(turns, [true]); assert.equal(run.access, 'home'); assert.equal(live.accessMode, 'home');
+  assert.ok(run.events.some(event => event.message === 'AFK is on, so this turn runs with full access.'));
+  live.setAfk(false);
+  assert.equal(live.turnAccess(run).fullAccess, false);
+});

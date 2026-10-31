@@ -138,7 +138,7 @@ function AgentAccess({ busy, onChange, onSwitch }) {
   </div><p className={mode === 'full' ? 'error' : 'muted'}>{accessNotes[mode]}</p><p className="muted">Applies to runs started after the change. dispatch checks and commits only the worktree.</p>
     <ul className="row-list">
       <li><SwitchRow label="Subagents" description="Let Claude Code start subagents during a turn. They work under the same access as the turn, and their steps show indented under it in the timeline." checked={state.subagents === true} disabled={busy} onChange={value => onSwitch('access.subagents', value)}/></li>
-      <li><SwitchRow label="AFK" description="Agents never stop to ask: they take the recommended option, say so in their report and keep going. A blocked turn with numbered options continues with the recommended one, up to three times in a row. dispatch's own approvals, such as testing plans, still ask." checked={state.afk === true} disabled={busy} onChange={value => onSwitch('access.afk', value)}/></li>
+      <li><SwitchRow label="AFK" description="Agents never stop to ask and run with full access, no sandbox, while it is on: they take the recommended option, say so in their report and keep going. A blocked turn with numbered options continues with the recommended one, up to three times in a row. dispatch's own approvals, such as testing plans, still ask." checked={state.afk === true} disabled={busy} onChange={value => onSwitch('access.afk', value)}/></li>
     </ul></section>;
 }
 
