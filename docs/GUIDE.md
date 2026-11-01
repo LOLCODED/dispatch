@@ -126,6 +126,7 @@ A connector can react to a run becoming ready, blocked, failed or cancelled, for
 - Every check assigned to the change must pass on the same candidate tree before a matching local commit is marked ready. Follow-ups rerun them.
 - Cancellation stops process groups. Restart marks working runs interrupted; nothing is replayed. Queued runs had not started, so they stay queued.
 - Usage is provider-reported per turn. Missing values stay unknown.
+- **Follow the repository's AGENTS.md** (a repository's **Extras**, `repository.repositoryPolicy`, off by default) is for repositories whose own rules ask for more than dispatch's brief allows. When it is on, the agent runs the checks the repository's AGENTS.md requires instead of being told to skip entire suites, makes the documentation, roadmap and journal updates it requires, and may let tools its AGENTS.md names write where it says, such as a journal in a sibling repository, when the sandbox allows it. The brief's other rules stay: no pushing or changing branches, publishing only when the ticket asks, no attribution lines, and landing and approvals through dispatch. dispatch still checks and commits only the task's worktree, and the sandbox still decides what the agent can reach. Changing it applies to new tasks and to **Edit checks and continue**; ordinary follow-ups keep the value the task started with. Tested with doubles only.
 
 ## Installed release
 

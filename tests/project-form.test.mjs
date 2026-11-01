@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { commandStep, databasesForm, databasesPayload, formChanged, newDatabase, tunnelDatabase, formFromInspect, formFromProject, newCommands, projectPayload, uniqueId, unusedScripts } from '../web/lib/project-form.mjs';
+import { blankForm, commandStep, databasesForm, databasesPayload, formChanged, newDatabase, tunnelDatabase, formFromInspect, formFromProject, newCommands, projectPayload, uniqueId, unusedScripts } from '../web/lib/project-form.mjs';
 
 const project = {
   repositoryPath: '/repo', name: 'repo', baseBranch: 'main', review: true, memory: true, trackRemote: false,
@@ -16,6 +16,12 @@ test('a saved project round-trips through the form unchanged', () => {
   assert.deepEqual(payload.connectors, { example: { enabled: true, actions: { comment: true }, settings: {} }, forge: { enabled: false, actions: {}, settings: { remote: 'upstream' } } });
   assert.equal(payload.trackRemote, false); assert.equal(payload.confirmed, true);
   assert.equal(formChanged(form, formFromProject(project)), false);
+});
+
+test('the repository policy starts off and round-trips through the form', () => {
+  assert.equal(projectPayload(formFromProject(project), '/repo').repositoryPolicy, false);
+  assert.equal(projectPayload(formFromProject({ ...project, repositoryPolicy: true }), '/repo').repositoryPolicy, true);
+  assert.equal(projectPayload(blankForm('/new'), '/new').repositoryPolicy, false);
 });
 
 test('only commands that were not saved before need approval', () => {

@@ -32,6 +32,19 @@ test('settings read and change through the registry, with CLI text turned into t
   assert.ok(listed.every(entry => entry.key.startsWith('repository.') && entry.description)); assert.ok(registry.describe().some(entry => entry.key === 'providers.claude.enabled'));
 });
 
+test('a repository’s policy starts off and changes through the registry, CLI text and dispatch_settings', async t => {
+  const { live, project } = await liveFixture(t);
+  const registry = live.settingsRegistry, repository = { repository: project.name };
+  assert.equal(registry.get('repository.repositoryPolicy', repository), false);
+  assert.ok(registry.describe(repository).some(entry => entry.key === 'repository.repositoryPolicy' && entry.type === 'boolean' && /AGENTS\.md/.test(entry.description)));
+  assert.deepEqual(await registry.set('repository.repositoryPolicy', 'on', repository), { key: 'repository.repositoryPolicy', value: true });
+  assert.equal(live.projects[0].repositoryPolicy, true);
+  live.interactions = { request: async () => ({ answers: { setting: { answers: ['Change it'] } } }) };
+  const changed = await live.settingsTool.call({ id: 'r1', project, events: [] }, { action: 'set', key: 'repository.repositoryPolicy', value: false, repository: project.name });
+  assert.deepEqual(JSON.parse(changed.content[0].text), { key: 'repository.repositoryPolicy', value: false });
+  assert.equal(live.projects[0].repositoryPolicy, false);
+});
+
 test('a connector setting marked secret is never read back', async t => {
   const { live, project } = await liveFixture(t);
   Object.defineProperty(live, 'connectorList', { value: [{ id: 'vault', name: 'Vault', enabled: false, actions: [], settings: [{ key: 'token', secret: true }, { key: 'region', secret: false }] }] });

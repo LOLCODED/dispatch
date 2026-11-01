@@ -153,7 +153,7 @@ function Network({ form, update }) {
   </section>;
 }
 
-export const extrasOn = form => [form.review, form.browser, form.memory, form.trackRemote, form.dispatchCoAuthor, form.allowSensitiveFiles, ...Object.values(form.connectors ?? {}).map(connector => connector?.enabled)].filter(Boolean).length;
+export const extrasOn = form => [form.review, form.browser, form.memory, form.trackRemote, form.dispatchCoAuthor, form.allowSensitiveFiles, form.repositoryPolicy, ...Object.values(form.connectors ?? {}).map(connector => connector?.enabled)].filter(Boolean).length;
 
 function ConnectorSetting({ form, connector, setting, update }) {
   const value = settingValue(form.connectors, connector, setting), change = next => update({ connectors: setSetting(form.connectors, connector, setting, next) });
@@ -180,6 +180,7 @@ export function ExtrasTab({ form, update }) {
       {form.browser && <li className="nested"><SwitchRow label="Show the browser window" description="Also open a real window on this machine." checked={form.headed} onChange={headed => update({ headed })}/></li>}
       <li><SwitchRow label="Remember things" description="Keep notes from earlier tasks and reuse them. Stored outside the repository." checked={form.memory} onChange={memory => update({ memory })}/></li>
       {form.git && <li><SwitchRow label={`Start from origin/${form.base || 'base'}`} description="Fetch first so each run starts from the latest pushed code." checked={form.trackRemote} onChange={trackRemote => update({ trackRemote })}/></li>}
+      <li><SwitchRow label="Follow the repository's AGENTS.md" description="It decides the checks the agent runs, the docs, roadmap and journal it updates, and where its own tools write. Pushing, publishing and landing stay with dispatch." checked={form.repositoryPolicy} onChange={repositoryPolicy => update({ repositoryPolicy })}/></li>
       <li><SwitchRow label="Write sensitive files without asking" description="Claude Code asks before writing files such as .npmrc or .env; when this is off, you approve each one during the run. Files under .git or .claude always ask." checked={form.allowSensitiveFiles} onChange={allowSensitiveFiles => update({ allowSensitiveFiles })}/></li>
       {form.git && <li><SwitchRow label="dispatch as co-author" description="Commits carry a Co-authored-by trailer for dispatch, so code hosts show it beside you." checked={form.dispatchCoAuthor} onChange={dispatchCoAuthor => update({ dispatchCoAuthor })}/></li>}
     </ul></section>

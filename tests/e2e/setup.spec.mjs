@@ -201,7 +201,7 @@ test('settings switch agent access and the usage page shows plan limits and toke
   await expect(codex).toContainText('test-plan'); await expect(codex).toContainText(/Output tokens|No runs yet/);
 });
 
-test('standing rules, protected paths and remote tracking are saved from repository settings', { tag: '@setup' }, async ({ page, request }) => {
+test('standing rules, protected paths, remote tracking and the repository policy are saved from repository settings', { tag: '@setup' }, async ({ page, request }) => {
   const project = (await (await request.get('/api/projects')).json()).find(item => item.name === 'Browser test repository');
   await page.goto(`/admin/projects/${project.id}`);
   await page.getByRole('tab', { name: /^Agent rules/ }).click();
@@ -209,11 +209,13 @@ test('standing rules, protected paths and remote tracking are saved from reposit
   await rule.fill('Prefer staging.'); await rule.press('Enter'); await rule.fill('Never use Prisma.'); await rule.press('Enter');
   await page.getByRole('textbox', { name: 'Add a protected path' }).fill('src/legacy/**'); await page.getByRole('button', { name: 'Add a protected path', exact: true }).click();
   await page.getByRole('tab', { name: /^Extras/ }).click(); await page.getByRole('switch', { name: /^Start from origin/ }).click();
+  const policy = page.getByRole('switch', { name: 'Follow the repository\'s AGENTS.md' });
+  await expect(policy).not.toBeChecked(); await policy.click();
   await page.getByRole('button', { name: 'Save repository', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Unsaved changes' })).toHaveCount(0);
   const saved = (await (await request.get('/api/projects')).json()).find(item => item.id === project.id);
-  expect(saved.instructions).toEqual(['Prefer staging.', 'Never use Prisma.']); expect(saved.protectedPaths).toEqual(['src/legacy/**']); expect(saved.trackRemote).toBe(false);
-  await request.post(`/api/projects/${project.id}`, { data: { ...saved, confirmed: true, instructions: [], protectedPaths: [], trackRemote: true } });
+  expect(saved.instructions).toEqual(['Prefer staging.', 'Never use Prisma.']); expect(saved.protectedPaths).toEqual(['src/legacy/**']); expect(saved.trackRemote).toBe(false); expect(saved.repositoryPolicy).toBe(true);
+  await request.post(`/api/projects/${project.id}`, { data: { ...saved, confirmed: true, instructions: [], protectedPaths: [], trackRemote: true, repositoryPolicy: false } });
 });
 
 test('the Brain lists remembered rules, toggles them, forgets them from the composer and lives in settings', { tag: '@setup' }, async ({ page, request }) => {

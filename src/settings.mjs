@@ -24,6 +24,7 @@ const repositoryFields = [
   ['risk', json, 'How tests are chosen: { mode: agent | ask | off, minimumChecks, guidance }.'], ['browser', json, 'Live browser: { enabled, headed }.'], ['review', boolean, 'Second-opinion review after checks pass.'],
   ['memory', boolean, 'Keep notes from earlier tasks.'], ['trackRemote', boolean, 'Start from the remote base branch.'], ['dispatchCoAuthor', boolean, 'Add dispatch as co-author on commits.'],
   ['allowSensitiveFiles', boolean, 'Let the agent write files such as .npmrc without asking.'], ['access', enumOf(['inherit', 'full']), 'Agent access for this repository.'],
+  ['repositoryPolicy', boolean, 'Let the repository\'s AGENTS.md decide the checks the agent runs, the documentation, roadmap and journal updates it makes, and where the repository\'s own tools write.'],
   ['localFiles', json, 'Ignored files copied from the checkout into each worktree.'], ['network', json, 'Sandbox network: { hosts, localPorts }.'],
   ['databases', json, 'Named databases: [{ name, access: none | read | write, engine, connection, commands, perTask }].'], ['services', json, 'Background services: [{ id, command, args }].'],
   ['instructions', json, 'Standing rules for the agent.'], ['protectedPaths', json, 'Paths the agent may not change.'], ['linked', json, 'Repositories every task here also gets.'], ['linkedEnv', json, 'Variables pointing a linked app at another.'],
